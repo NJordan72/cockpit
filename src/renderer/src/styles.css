@@ -1,0 +1,64 @@
+:root {
+  --bg: #1e1f24;
+  --fg: #d8dae0;
+  --muted: #8a8f9c;
+  --border: #2c2e36;
+  --accent: #7aa2f7;
+  --titlebar-h: 30px;
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--fg);
+  font:
+    13px -apple-system,
+    BlinkMacSystemFont,
+    sans-serif;
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+/* Space for the inset traffic lights; draggable like a native title bar. */
+.titlebar {
+  height: var(--titlebar-h);
+  flex: none;
+  -webkit-app-region: drag;
+  border-bottom: 1px solid var(--border);
+}
+
+.workspace {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.terminal-pane {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  padding: 6px 4px 4px 8px;
+  background: var(--bg);
+}
+
+.terminal-pane .xterm {
+  height: 100%;
+}
+
+/* xterm paints the viewport black; the leftover strip under the last row shows it. */
+.terminal-pane .xterm .xterm-viewport {
+  background-color: var(--bg) !important;
+}
