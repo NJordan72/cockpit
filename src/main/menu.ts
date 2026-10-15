@@ -34,14 +34,13 @@ export function buildMenu(): Menu {
     },
     {
       label: 'View',
-      submenu: [
-        { role: 'reload' },
-        { role: 'toggleDevTools' },
-        { type: 'separator' },
-        { role: 'togglefullscreen' }
-      ]
+      submenu: [{ role: 'toggleDevTools' }, { type: 'separator' }, { role: 'togglefullscreen' }]
     },
-    { role: 'windowMenu' }
+    {
+      // Built by hand: the stock window menu binds Cmd+W, which closes panes here.
+      label: 'Window',
+      submenu: [{ role: 'minimize' }, { role: 'zoom' }, { type: 'separator' }, { role: 'front' }]
+    }
   ]
   return Menu.buildFromTemplate(template)
 }

@@ -9,12 +9,31 @@ import {
   type IpcMainEvent,
   type IpcMainInvokeEvent
 } from 'electron'
-import { IPC, type PtyCreateOptions } from '@shared/ipc'
-import { PtyManager } from './pty'
+import { migrateConfig, type Layout, type LayoutNode } from '@shared/config'
+import { IPC, type DirListing, type PtyCreateOptions, type PtyCreated } from '@shared/ipc'
+import { ConfigStore } from './config'
+import { listProjects, processCwd, processCwdSync, resolveCwd } from './dirs'
 import { buildMenu } from './menu'
+import { abbreviateHome } from './paths'
+import { PtyManager } from './pty'
 
 const ptys = new PtyManager()
+let config: ConfigStore
 let mainWindow: BrowserWindow | null = null
+
+/** Record where each live pane's process is now, so a relaunch reopens it there. */
+function captureCwds(): void {
+  const pids = ptys.pids()
+  if (pids.size === 0) return
+  const update = (n: LayoutNode): LayoutNode => {
+    if (n.type === 'split') return { ...n, children: n.children.map(update) }
+    const pid = pids.get(n.id)
+    const cwd = pid === undefined ? null : processCwdSync(pid)
+    return cwd ? { ...n, cwd: abbreviateHome(cwd) } : n
+  }
+  const layout = config.get().layout
+  config.setLayout({ ...layout, tabs: layout.tabs.map((t) => ({ ...t, root: update(t.root) })) })
+}
 
 function createWindow(): void {
   const win = new BrowserWindow({
@@ -46,6 +65,13 @@ function createWindow(): void {
   win.webContents.on('will-navigate', (e) => e.preventDefault())
 
   const wc = win.webContents
+  // A reload starts the renderer over; its old PTYs have no view any more.
+  wc.on('did-start-navigation', (details) => {
+    if (details.isMainFrame && !details.isSameDocument) ptys.killAllFor(wc)
+  })
+  win.on('close', () => {
+    captureCwds()
+  })
   win.on('closed', () => {
     ptys.killAllFor(wc)
     if (mainWindow === win) mainWindow = null
@@ -66,9 +92,21 @@ function trusted(e: IpcMainEvent | IpcMainInvokeEvent): boolean {
 }
 
 function registerIpc(): void {
-  ipcMain.handle(IPC.ptyCreate, (e, opts: PtyCreateOptions) => {
+  ipcMain.handle(IPC.ptyCreate, async (e, opts: PtyCreateOptions): Promise<PtyCreated> => {
     if (!trusted(e)) throw new Error('untrusted sender')
-    return ptys.create(e.sender, opts)
+    const preset = config.get().presets.find((p) => p.id === opts.presetId)
+    if (!preset) throw new Error(`unknown preset: ${opts.presetId}`)
+    const cwd = await resolveCwd(opts.cwd, preset.cwd)
+    const { pid } = ptys.create(e.sender, {
+      id: opts.id,
+      cols: opts.cols,
+      rows: opts.rows,
+      command: preset.command,
+      cwd
+    })
+    const display = abbreviateHome(cwd)
+    if (display !== '~') config.addRecentDir(display)
+    return { pid, cwd: display }
   })
   ipcMain.on(IPC.ptyWrite, (e, id: string, data: string) => {
     if (trusted(e)) ptys.write(id, data)
@@ -79,9 +117,28 @@ function registerIpc(): void {
   ipcMain.on(IPC.ptyKill, (e, id: string) => {
     if (trusted(e)) ptys.kill(id)
   })
+  ipcMain.handle(IPC.ptyCwd, async (e, id: string) => {
+    if (!trusted(e)) return null
+    const pid = ptys.pid(id)
+    const cwd = pid === null ? null : await processCwd(pid)
+    return cwd ? abbreviateHome(cwd) : null
+  })
   ipcMain.handle(IPC.clipboardRead, (e) => (trusted(e) ? clipboard.readText() : ''))
   ipcMain.on(IPC.clipboardWrite, (e, text: string) => {
     if (trusted(e) && typeof text === 'string') void clipboard.writeText(text)
+  })
+  ipcMain.handle(IPC.configGet, (e) => {
+    if (!trusted(e)) throw new Error('untrusted sender')
+    return config.get()
+  })
+  ipcMain.on(IPC.layoutSave, (e, layout: Layout) => {
+    // Run it through migration so a bad layout can't corrupt the file.
+    if (trusted(e)) config.setLayout(migrateConfig({ ...config.get(), layout }).layout)
+  })
+  ipcMain.handle(IPC.dirsList, async (e): Promise<DirListing> => {
+    if (!trusted(e)) throw new Error('untrusted sender')
+    const c = config.get()
+    return { recent: c.recentDirs, projects: await listProjects(c.projectsDir) }
   })
 }
 
@@ -91,6 +148,11 @@ void app.whenReady().then(() => {
     contents.session.setPermissionRequestHandler((_wc, _perm, cb) => cb(false))
     contents.on('will-attach-webview', (ev) => ev.preventDefault())
   })
+
+  config = new ConfigStore((c) => {
+    mainWindow?.webContents.send(IPC.configChanged, c)
+  })
+  config.watch()
 
   Menu.setApplicationMenu(buildMenu())
   registerIpc()
@@ -106,4 +168,9 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
 })
 
-app.on('before-quit', () => ptys.killAll())
+app.on('before-quit', () => {
+  captureCwds()
+  ptys.killAll()
+})
+
+app.on('will-quit', () => config.close())

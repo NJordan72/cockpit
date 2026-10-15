@@ -23,6 +23,3 @@ export const darkTheme: ITheme = {
   brightCyan: '#a4daff',
   brightWhite: '#e6e9f5'
 }
-
-export const fontFamily =
-  '"0xProto Nerd Font Mono", "JetBrainsMono Nerd Font Mono", ui-monospace, Menlo, monospace'

@@ -1,22 +1,50 @@
-import { useEffect, useRef } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebglAddon } from '@xterm/addon-webgl'
 import { Unicode11Addon } from '@xterm/addon-unicode11'
 import { SearchAddon } from '@xterm/addon-search'
 import { WebLinksAddon } from '@xterm/addon-web-links'
+import type { PaneNode, TerminalSettings } from '@shared/config'
+import type { PtyExitInfo } from '@shared/ipc'
 import { classifyKey } from './keys'
 import { terminals } from './registry'
-import { darkTheme, fontFamily } from './theme'
+import { darkTheme } from './theme'
 
 interface Props {
-  id: string
-  command?: string
-  cwd?: string
+  pane: PaneNode
+  presetName: string
+  settings: TerminalSettings
+  focused: boolean
+  visible: boolean
+  onFocus: () => void
+  onStarted: (cwd: string) => void
 }
 
-export function TerminalPane({ id, command, cwd }: Props): React.JSX.Element {
+export function TerminalPane({
+  pane,
+  presetName,
+  settings,
+  focused,
+  visible,
+  onFocus,
+  onStarted
+}: Props): React.JSX.Element {
+  const { id } = pane
   const hostRef = useRef<HTMLDivElement>(null)
+  const termRef = useRef<Terminal | null>(null)
+  const fitRef = useRef<FitAddon | null>(null)
+  const [exit, setExit] = useState<PtyExitInfo | null>(null)
+  const exitRef = useRef<PtyExitInfo | null>(null)
+
+  // Values the long-lived terminal effect reads later without re-running.
+  const spawnArgs = useRef({ presetId: pane.presetId, cwd: pane.cwd, onFocus, onStarted })
+  useLayoutEffect(() => {
+    exitRef.current = exit
+    spawnArgs.current = { presetId: pane.presetId, cwd: pane.cwd, onFocus, onStarted }
+  })
+
+  const startRef = useRef<() => void>(() => undefined)
 
   useEffect(() => {
     const host = hostRef.current
@@ -24,8 +52,8 @@ export function TerminalPane({ id, command, cwd }: Props): React.JSX.Element {
     const api = window.cockpit
 
     const term = new Terminal({
-      fontFamily,
-      fontSize: 13,
+      fontFamily: settings.fontFamily,
+      fontSize: settings.fontSize,
       lineHeight: 1.1,
       cursorBlink: true,
       macOptionIsMeta: true,
@@ -34,11 +62,12 @@ export function TerminalPane({ id, command, cwd }: Props): React.JSX.Element {
       scrollback: 10_000,
       theme: darkTheme
     })
+    termRef.current = term
 
     const fit = new FitAddon()
     term.loadAddon(fit)
-    const unicode = new Unicode11Addon()
-    term.loadAddon(unicode)
+    fitRef.current = fit
+    term.loadAddon(new Unicode11Addon())
     term.unicode.activeVersion = '11'
     term.loadAddon(new SearchAddon())
     term.loadAddon(
@@ -63,7 +92,37 @@ export function TerminalPane({ id, command, cwd }: Props): React.JSX.Element {
       console.warn('WebGL renderer unavailable, using DOM renderer', err)
     }
 
+    let disposed = false
+    const start = (): void => {
+      setExit(null)
+      fit.fit()
+      const { presetId, cwd } = spawnArgs.current
+      api.pty
+        .create({ id, cols: term.cols, rows: term.rows, presetId, cwd })
+        .then((created) => {
+          if (!disposed) spawnArgs.current.onStarted(created.cwd)
+        })
+        .catch((err: unknown) => {
+          if (disposed) return
+          term.write(`\r\n\x1b[31m[could not start: ${String(err)}]\x1b[0m\r\n`)
+          setExit({ exitCode: -1 })
+        })
+    }
+    startRef.current = () => {
+      term.reset()
+      start()
+      term.focus()
+    }
+
     term.attachCustomKeyEventHandler((e) => {
+      if (exitRef.current) {
+        // While exited, Enter restarts; everything else is ignored.
+        if (e.type === 'keydown' && e.key === 'Enter' && !e.metaKey && !e.ctrlKey && !e.altKey) {
+          e.preventDefault()
+          startRef.current()
+        }
+        return false
+      }
       const action = classifyKey(e)
       switch (action.kind) {
         case 'pass':
@@ -94,36 +153,42 @@ export function TerminalPane({ id, command, cwd }: Props): React.JSX.Element {
     const offData = api.pty.onData(id, (data) => {
       term.write(data)
     })
-    const offExit = api.pty.onExit(id, ({ exitCode, signal }) => {
-      const how = signal ? `signal ${signal}` : `code ${exitCode}`
+    const offExit = api.pty.onExit(id, (info) => {
+      const how = info.signal ? `signal ${info.signal}` : `code ${info.exitCode}`
       term.write(`\r\n\x1b[2m[process exited with ${how}]\x1b[0m\r\n`)
+      setExit(info)
     })
     const onInput = term.onData((data) => {
-      api.pty.write(id, data)
+      if (!exitRef.current) api.pty.write(id, data)
     })
     const onBinary = term.onBinary((data) => {
-      api.pty.write(id, data)
+      if (!exitRef.current) api.pty.write(id, data)
     })
     const onResize = term.onResize(({ cols, rows }) => {
       api.pty.resize(id, cols, rows)
     })
+    const onFocusIn = (): void => {
+      spawnArgs.current.onFocus()
+    }
+    term.textarea?.addEventListener('focus', onFocusIn)
 
-    fit.fit()
-    void api.pty.create({ id, cols: term.cols, rows: term.rows, command, cwd })
-    term.focus()
+    start()
 
     let frame = 0
     const observer = new ResizeObserver(() => {
       cancelAnimationFrame(frame)
       frame = requestAnimationFrame(() => {
+        // Hidden tabs have zero size; fitting then would shrink the PTY to 1x1.
         if (host.clientWidth > 0 && host.clientHeight > 0) fit.fit()
       })
     })
     observer.observe(host)
 
     return () => {
+      disposed = true
       observer.disconnect()
       cancelAnimationFrame(frame)
+      term.textarea?.removeEventListener('focus', onFocusIn)
       onInput.dispose()
       onBinary.dispose()
       onResize.dispose()
@@ -131,9 +196,50 @@ export function TerminalPane({ id, command, cwd }: Props): React.JSX.Element {
       offExit()
       api.pty.kill(id)
       if (terminals.get(id) === term) terminals.delete(id)
+      termRef.current = null
+      fitRef.current = null
       term.dispose()
     }
-  }, [id, command, cwd])
+    // The terminal lives as long as the pane id; settings changes are applied below.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id])
 
-  return <div className="terminal-pane" ref={hostRef} />
+  useEffect(() => {
+    const term = termRef.current
+    if (!term) return
+    if (
+      term.options.fontFamily === settings.fontFamily &&
+      term.options.fontSize === settings.fontSize
+    )
+      return
+    term.options.fontFamily = settings.fontFamily
+    term.options.fontSize = settings.fontSize
+    // New cell size means a new grid size; hidden panes refit when shown.
+    if (visible) fitRef.current?.fit()
+  }, [settings.fontFamily, settings.fontSize, visible])
+
+  useEffect(() => {
+    if (focused && visible) termRef.current?.focus()
+  }, [focused, visible])
+
+  const restart = useCallback(() => {
+    startRef.current()
+  }, [])
+
+  return (
+    <div className={`terminal-pane${focused ? ' focused' : ''}`}>
+      <div className="terminal-host" ref={hostRef} />
+      {exit && (
+        <div className="exit-bar">
+          <span>
+            {presetName} exited with{' '}
+            {exit.signal ? `signal ${exit.signal}` : `code ${exit.exitCode}`}
+          </span>
+          <button type="button" onClick={restart}>
+            Restart <kbd>⏎</kbd>
+          </button>
+        </div>
+      )}
+    </div>
+  )
 }

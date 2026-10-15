@@ -244,6 +244,43 @@ action that removes merged worktrees.
   renderer calls preventDefault, which should stop the menu from firing too.
   If paste ever doubles, that's where to look.
 - Seen once and not reproduced in five more cold launches: a stray `ions`
-  command typed into a fresh shell at startup. Watch for it in M1.
+  command typed into a fresh shell at startup. Watch for it in M1. (M1: not
+  seen again across about ten launches.)
 
-Next: M1.
+### M1: done (2026-10-15)
+
+- Config: `~/.cockpit/config.json` (or `$COCKPIT_HOME`), versioned, read
+  through `migrateConfig`, which repairs bad values field by field instead of
+  rejecting the file. Atomic writes; hand edits are watched and applied live
+  (keybindings, presets, font). The live layout always wins over a hand-edited
+  one.
+- Layout is a split tree per tab. Every pane of every tab renders in one flat
+  keyed list positioned from the tree, so splitting, closing a neighbour, or
+  switching tabs never remounts a terminal (which would kill its PTY).
+- Presets are resolved in the main process: the renderer sends a preset id,
+  never a command line.
+- Cmd+T and the split keys open one picker: preset (Tab cycles), then a
+  directory from the focused pane's live cwd, recent dirs, and `~/dev`
+  subdirectories by mtime. Splitting without a picker felt too limited for
+  "Claude left, Codex right in the same repo".
+- Restore: on quit, each live pane's cwd is read with `lsof` and saved, so a
+  shell you `cd`'d in reopens there.
+- PTY env: variables describing the parent terminal (TMUX, iTerm, VS Code ...)
+  and a parent Claude Code session (CLAUDECODE, CLAUDE_CODE_SESSION_*, ...)
+  are stripped. Without that, Claude Code inside Cockpit warned about tmux
+  focus events and turned off transcript saving whenever Cockpit was started
+  from a terminal or from Claude Code.
+- Verified with the driver, using a scratch COCKPIT_HOME and a Dock-like env:
+  Claude Code and Codex in a 40/60 split of `~/dev/cockpit` plus a shell tab
+  that had `cd /tmp`; quit and relaunch brought back both tabs, the split
+  sizes, the presets, and `/private/tmp`. Also checked: exit status bar and
+  Enter-to-restart, Cmd+W closing a split, Cmd+Alt+Left/Right focus, tab
+  cycling, divider drag, and rebinding newTab to Cmd+N plus a font size change
+  in config.json while running.
+- Tests: config migration, split tree ops and focus geometry, the layout
+  reducer, keybinding parsing, and picker ranking (45 tests).
+- Left for later: a "rename tab" action, and showing the OSC window title
+  (Claude Code sets one) in tabs. Panes in a hidden tab start at 80x24 and
+  resize when first shown.
+
+Next: M2.

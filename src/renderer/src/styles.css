@@ -1,10 +1,15 @@
 :root {
   --bg: #1e1f24;
+  --bg-raised: #26282f;
+  --bg-hover: #2e3039;
   --fg: #d8dae0;
   --muted: #8a8f9c;
   --border: #2c2e36;
   --accent: #7aa2f7;
-  --titlebar-h: 30px;
+  --danger: #f7768e;
+  --titlebar-h: 34px;
+  /* Room for the inset traffic lights. */
+  --traffic-lights-w: 78px;
   color-scheme: dark;
 }
 
@@ -26,39 +31,348 @@ body,
     sans-serif;
 }
 
+button {
+  font: inherit;
+  color: inherit;
+}
+
+kbd {
+  font:
+    11px ui-monospace,
+    Menlo,
+    monospace;
+  padding: 1px 4px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--muted);
+}
+
 .app {
   display: flex;
   flex-direction: column;
   height: 100%;
 }
 
-/* Space for the inset traffic lights; draggable like a native title bar. */
+/* ---- title bar and tabs ---- */
+
 .titlebar {
   height: var(--titlebar-h);
   flex: none;
-  -webkit-app-region: drag;
+  display: flex;
+  align-items: stretch;
+  padding-left: var(--traffic-lights-w);
   border-bottom: 1px solid var(--border);
+  -webkit-app-region: drag;
+  user-select: none;
 }
+
+.tabs {
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.tab {
+  -webkit-app-region: no-drag;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 240px;
+  min-width: 0;
+  padding: 0 6px 0 10px;
+  border-right: 1px solid var(--border);
+  color: var(--muted);
+  cursor: default;
+}
+
+.tab:first-child {
+  border-left: 1px solid var(--border);
+}
+
+.tab.active {
+  color: var(--fg);
+  background: var(--bg-raised);
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
+
+.tab-index {
+  font-size: 10px;
+  opacity: 0.6;
+}
+
+.tab-label {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.tab-close,
+.tab-new {
+  -webkit-app-region: no-drag;
+  border: 0;
+  background: none;
+  border-radius: 4px;
+  line-height: 1;
+  cursor: default;
+}
+
+.tab-close {
+  width: 18px;
+  height: 18px;
+  opacity: 0;
+  color: var(--muted);
+}
+
+.tab:hover .tab-close,
+.tab.active .tab-close {
+  opacity: 1;
+}
+
+.tab-close:hover,
+.tab-new:hover {
+  background: var(--bg-hover);
+  color: var(--fg);
+}
+
+.tab-new {
+  width: 28px;
+  margin: 4px;
+  font-size: 16px;
+  color: var(--muted);
+}
+
+/* ---- workspace, panes, dividers ---- */
 
 .workspace {
   flex: 1;
   min-height: 0;
-  display: flex;
+  position: relative;
+}
+
+.pane-slot {
+  position: absolute;
 }
 
 .terminal-pane {
-  flex: 1;
-  min-width: 0;
-  min-height: 0;
-  padding: 6px 4px 4px 8px;
+  position: relative;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
   background: var(--bg);
 }
 
-.terminal-pane .xterm {
+.terminal-host {
+  flex: 1;
+  min-height: 0;
+  padding: 6px 4px 4px 8px;
+}
+
+.terminal-host .xterm {
   height: 100%;
 }
 
 /* xterm paints the viewport black; the leftover strip under the last row shows it. */
-.terminal-pane .xterm .xterm-viewport {
+.terminal-host .xterm .xterm-viewport {
   background-color: var(--bg) !important;
+}
+
+/* Only distinguish the focused pane when there is more than one. */
+.pane-slot:not(:only-child) .terminal-pane:not(.focused) .terminal-host {
+  opacity: 0.72;
+}
+
+.exit-bar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 10px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-raised);
+  color: var(--muted);
+}
+
+.exit-bar button {
+  border: 1px solid var(--border);
+  background: var(--bg-hover);
+  border-radius: 4px;
+  padding: 3px 8px;
+}
+
+.divider {
+  position: absolute;
+  z-index: 2;
+}
+
+.divider::after {
+  content: '';
+  position: absolute;
+  background: var(--border);
+}
+
+.divider.row {
+  width: 7px;
+  margin-left: -3px;
+  cursor: col-resize;
+}
+
+.divider.row::after {
+  left: 3px;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+}
+
+.divider.column {
+  height: 7px;
+  margin-top: -3px;
+  cursor: row-resize;
+}
+
+.divider.column::after {
+  top: 3px;
+  left: 0;
+  right: 0;
+  height: 1px;
+}
+
+.divider:hover::after,
+.divider:active::after {
+  background: var(--accent);
+}
+
+.empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+}
+
+.empty p {
+  margin: 4px;
+}
+
+/* ---- picker ---- */
+
+.picker-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding-top: 12vh;
+  background: rgb(0 0 0 / 0.35);
+}
+
+.picker {
+  width: min(640px, 90vw);
+  max-height: 65vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 16px 48px rgb(0 0 0 / 0.5);
+  overflow: hidden;
+}
+
+.picker-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px 6px;
+}
+
+.picker-title {
+  font-weight: 600;
+}
+
+.picker-presets {
+  display: flex;
+  gap: 4px;
+  flex: 1;
+}
+
+.picker-presets button {
+  border: 1px solid var(--border);
+  background: none;
+  border-radius: 4px;
+  padding: 2px 8px;
+  color: var(--muted);
+}
+
+.picker-presets button.on {
+  border-color: var(--accent);
+  color: var(--fg);
+  background: rgb(122 162 247 / 0.15);
+}
+
+.picker-hint {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.picker-input {
+  margin: 4px 12px 8px;
+  padding: 7px 9px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+  outline: none;
+}
+
+.picker-input:focus {
+  border-color: var(--accent);
+}
+
+.picker-list {
+  list-style: none;
+  margin: 0;
+  padding: 0 6px 6px;
+  overflow-y: auto;
+}
+
+.picker-list li {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 5px 8px;
+  border-radius: 4px;
+}
+
+.picker-list li.selected {
+  background: var(--bg-hover);
+}
+
+.dir-name {
+  flex: none;
+}
+
+.dir-path {
+  flex: 1;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 12px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.dir-tag {
+  flex: none;
+  font-size: 11px;
+  color: var(--accent);
+}
+
+.picker-empty {
+  color: var(--muted);
 }
