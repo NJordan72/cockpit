@@ -7,6 +7,7 @@
   --border: #2c2e36;
   --accent: #7aa2f7;
   --danger: #f7768e;
+  --font-ui: -apple-system, BlinkMacSystemFont, sans-serif;
   --titlebar-h: 34px;
   /* Room for the inset traffic lights. */
   --traffic-lights-w: 78px;
@@ -25,10 +26,8 @@ body,
   overflow: hidden;
   background: var(--bg);
   color: var(--fg);
-  font:
-    13px -apple-system,
-    BlinkMacSystemFont,
-    sans-serif;
+  font-family: var(--font-ui);
+  font-size: 13px;
 }
 
 button {
@@ -145,9 +144,15 @@ kbd {
 
 /* ---- workspace, panes, dividers ---- */
 
-.workspace {
+.main {
   flex: 1;
   min-height: 0;
+  display: flex;
+}
+
+.workspace {
+  flex: 1;
+  min-width: 0;
   position: relative;
 }
 
@@ -375,4 +380,262 @@ kbd {
 
 .picker-empty {
   color: var(--muted);
+}
+
+/* ---- widget sidebar ---- */
+
+.sidebar {
+  position: relative;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border-left: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.sidebar.hidden {
+  display: none;
+}
+
+.sidebar-resize {
+  position: absolute;
+  z-index: 3;
+  left: -4px;
+  top: 0;
+  bottom: 0;
+  width: 7px;
+  cursor: col-resize;
+}
+
+.sidebar-resize:hover,
+.sidebar-resize:active {
+  background: linear-gradient(to right, transparent 3px, var(--accent) 3px 4px, transparent 4px);
+}
+
+.sidebar-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 28px;
+  padding: 0 4px 0 10px;
+  border-bottom: 1px solid var(--border);
+  user-select: none;
+}
+
+.sidebar-title {
+  flex: 1;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.sidebar-tabs {
+  flex: 1;
+  display: flex;
+  gap: 2px;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.sidebar-tabs button {
+  flex: none;
+  max-width: 160px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  padding: 2px 8px;
+  color: var(--muted);
+}
+
+.sidebar-tabs button.on {
+  color: var(--fg);
+  background: var(--bg-raised);
+}
+
+.sidebar button.icon,
+.widget-toggle {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: var(--muted);
+  line-height: 1;
+}
+
+.sidebar button.icon:hover,
+.widget-toggle:hover,
+.sidebar-tabs button:hover {
+  background: var(--bg-hover);
+  color: var(--fg);
+}
+
+.sidebar-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+.widget {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.sidebar.tabs .widget {
+  border-bottom: 0;
+}
+
+.widget.hidden {
+  display: none;
+}
+
+.widget-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 26px;
+  padding: 0 4px 0 2px;
+  user-select: none;
+}
+
+.widget-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.widget-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.widget.collapsed .widget-body {
+  display: none;
+}
+
+.widget-frame {
+  display: block;
+  width: 100%;
+  flex: 1;
+  min-height: 0;
+  border: 0;
+  background: var(--bg);
+  color-scheme: dark;
+}
+
+.widget-frame[style*='height'] {
+  flex: none;
+}
+
+.widget-divider {
+  flex: none;
+  height: 5px;
+  margin: -3px 0 -2px;
+  position: relative;
+  z-index: 2;
+  cursor: row-resize;
+}
+
+.widget-divider:hover,
+.widget-divider:active {
+  background: linear-gradient(to bottom, transparent 2px, var(--accent) 2px 3px, transparent 3px);
+}
+
+.widget-error {
+  padding: 8px 12px 12px;
+  color: var(--muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.widget-error strong {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+.widget-error p {
+  margin: 6px 0 0;
+}
+
+.widget-dir {
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 11px;
+}
+
+/* ---- secret prompt ---- */
+
+.secret-prompt {
+  width: min(460px, 90vw);
+  display: flex;
+  flex-direction: column;
+  padding: 14px 14px 12px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 16px 48px rgb(0 0 0 / 0.5);
+}
+
+.secret-title {
+  margin-bottom: 10px;
+}
+
+.secret-label code,
+.secret-hint code {
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 12px;
+}
+
+.secret-label {
+  color: var(--accent);
+}
+
+.secret-prompt .picker-input {
+  margin: 6px 0 8px;
+}
+
+.secret-hint {
+  margin: 0 0 12px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.secret-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.secret-actions button {
+  border: 1px solid var(--border);
+  background: var(--bg-hover);
+  border-radius: 5px;
+  padding: 4px 12px;
+}
+
+.secret-actions button.primary {
+  border-color: var(--accent);
+  background: rgb(122 162 247 / 0.2);
+}
+
+.secret-actions button:disabled {
+  opacity: 0.5;
 }

@@ -1,0 +1,15 @@
+{
+  "id": "hello",
+  "name": "Hello",
+  "version": "1.0.0",
+  "description": "Exercises every widget API call. A starting point for new widgets.",
+  "entry": "index.html",
+  "sizing": "fill",
+  "permissions": {
+    "network": ["example.com"],
+    "openExternal": ["https://example.com/*"],
+    "secrets": ["hello-secret"],
+    "storage": true,
+    "sessions": "read"
+  }
+}

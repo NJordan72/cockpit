@@ -283,4 +283,52 @@ action that removes merged worktrees.
   (Claude Code sets one) in tabs. Panes in a hidden tab start at 80x24 and
   resize when first shown.
 
-Next: M2.
+### M2: done (2026-10-17)
+
+- Widgets load from `~/.cockpit/widgets/<id>/` (symlinks followed; the real
+  folder is watched recursively) and are served over `cockpit-widget://<id>/`,
+  registered as standard and secure. Each runs in an
+  `<iframe sandbox="allow-scripts">` with a CSP response header that has
+  `connect-src 'none'` and only allows loads from the widget's own origin.
+- The SDK (`src/widget-sdk/cockpit-widget.ts`) is compiled into the main
+  bundle by a small Vite plugin and served at `/cockpit-widget.js`, injected
+  ahead of the widget's scripts along with the theme variables. The chrome
+  attributes each postMessage to a widget by its source window, then the main
+  process checks the call against that widget's manifest. Calls carry ids,
+  timeouts, and typed error codes.
+- API as planned, plus `storage.keys()`, `secrets.delete()`,
+  `secrets.get(name, { prompt: false })`, `cockpit.ready`, `cockpit.widget`,
+  and `cockpit.visibility` (false when collapsed, in a background tab, or the
+  window is hidden), which M3's polling needs. Manifests also take
+  `"sizing": "content"`. Documented in `docs/widgets.md`.
+- Decisions: the manifest id must equal the folder name, so ids are unique.
+  Secrets are namespaced per widget (`secrets/<id>/<name>.bin`). Unknown
+  permission keys are a manifest error. Session `status` is `running` or
+  `exited` until M4. Theme colors moved to `src/shared/theme.ts`, and
+  `config.json`'s `theme` overrides them live for the chrome, the terminals,
+  and widgets.
+- Changed from the plan's assumptions: Electron 44 doesn't emit
+  `will-frame-navigate` for widget frames (they are out-of-process iframes),
+  so a widget could navigate its frame to `https://...?data`. A
+  `webRequest.onBeforeRequest` filter now cancels every subframe load that
+  isn't `cockpit-widget:`; checked against a local server that no request
+  arrives. data: navigations don't commit, and mailto: is refused by the
+  sandbox.
+- Cmd shortcuts pressed while a widget has focus are forwarded from
+  `before-input-event`. Playwright's `keyboard.press` bypasses that event, so
+  the driver gained `nkey`, which uses `sendInputEvent`.
+- Verified in the built app with a scratch COCKPIT_HOME: `hello` fetches
+  example.com, is refused example.org with an error naming the fix, stores and
+  reads data (and the file on disk), reloads when a file in the symlinked repo
+  folder changes, prompts for a secret in the host UI (cancel, persist across
+  relaunch, encrypted at rest), opens allowed URLs only, lists sessions and
+  updates on split, follows a theme edit in config.json, and reports
+  visibility through collapse, tabs mode, and Cmd+B. Direct fetch and remote
+  images from inside the widget are blocked by CSP. Sidebar width and widget
+  sizes persist. Dev mode loads widgets with no CSP errors.
+- Tests: permission matchers, manifest parsing, the broker's permission
+  checks, fetch (allowlist, redirects off the list, size cap, timeout),
+  storage, the registry (symlinks, broken links, reload on edit), serving
+  helpers, sidebar placement, and config migration (132 total).
+
+Next: M3.

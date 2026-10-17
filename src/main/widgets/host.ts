@@ -1,0 +1,233 @@
+// Main-process side of the widget sidebar: serves widget files over
+// cockpit-widget://, answers widget API calls from the chrome, asks the user
+// for secrets, and pushes storage and session changes to the chrome, which
+// forwards them into the right iframe.
+import { randomUUID } from 'node:crypto'
+import fs from 'node:fs/promises'
+import path from 'node:path'
+import {
+  ipcMain,
+  protocol,
+  shell,
+  type IpcMainEvent,
+  type IpcMainInvokeEvent,
+  type WebContents
+} from 'electron'
+import sdkSource from 'virtual:cockpit-widget-sdk'
+import { IPC } from '@shared/ipc'
+import type { Theme } from '@shared/theme'
+import { themeVars } from '@shared/theme'
+import {
+  SDK_PATH,
+  WIDGET_SCHEME,
+  type SecretPrompt,
+  type SessionInfo,
+  type WidgetEventTopic,
+  type WidgetEvents
+} from '@shared/widgets'
+import { WidgetBroker } from './broker'
+import { WidgetRegistry, type LoadedWidget } from './registry'
+import { SecretStore } from './secrets'
+import { contentType, injectIntoHtml, injection, resolveWidgetFile, widgetHeaders } from './serve'
+import { WidgetStorage } from './storage'
+
+/** Must run before the app is ready. */
+export function registerWidgetScheme(): void {
+  protocol.registerSchemesAsPrivileged([
+    {
+      scheme: WIDGET_SCHEME,
+      // standard: host is the widget id and relative URLs resolve. secure:
+      // widgets get a secure context. corsEnabled: module scripts load.
+      privileges: { standard: true, secure: true, corsEnabled: true }
+    }
+  ])
+}
+
+export interface WidgetHostOptions {
+  home: string
+  theme: () => Theme
+  sessions: () => SessionInfo[]
+  /** Only accept IPC from the chrome's own top-level frame. */
+  trusted: (e: IpcMainEvent | IpcMainInvokeEvent) => boolean
+}
+
+export class WidgetHost {
+  readonly registry: WidgetRegistry
+  private readonly storage: WidgetStorage
+  private readonly secrets: SecretStore
+  private readonly broker: WidgetBroker
+  /** The chrome that shows the sidebar. One window, so one target. */
+  private target: WebContents | null = null
+  private prompts = new Map<string, (value: string | null) => void>()
+  private openPrompts = new Map<string, Promise<string | null>>()
+  private lastSessions = ''
+
+  constructor(private readonly opts: WidgetHostOptions) {
+    this.registry = new WidgetRegistry(path.join(opts.home, 'widgets'), (list) => {
+      this.send(IPC.widgetsChanged, list)
+    })
+    this.storage = new WidgetStorage(path.join(opts.home, 'data'), (id, key, value) => {
+      if (this.registry.get(id)?.parsed?.manifest.permissions.storage) {
+        this.sendEvent(id, 'storage', { key, value })
+      }
+    })
+    this.secrets = new SecretStore(path.join(opts.home, 'secrets'))
+    this.broker = new WidgetBroker({
+      widget: (id) => this.registry.get(id),
+      storage: this.storage,
+      secrets: this.secrets,
+      promptSecret: (w, name) => this.promptSecret(w, name),
+      sessions: opts.sessions,
+      openExternal: (url) => shell.openExternal(url)
+    })
+  }
+
+  /** Call once the app is ready. */
+  start(): void {
+    protocol.handle(WIDGET_SCHEME, (req) => this.serve(req))
+    this.registry.start()
+    this.storage.watch()
+    this.registerIpc()
+  }
+
+  close(): void {
+    this.registry.close()
+    this.storage.close()
+  }
+
+  /** Point the host at the chrome window and guard its widget frames. */
+  attach(wc: WebContents): void {
+    this.target = wc
+    // A widget can navigate its own frame, and a URL can carry data out. The
+    // chrome only ever frames widgets, so cancel every other frame load.
+    // (will-frame-navigate would be the natural hook, but Electron 44 doesn't
+    // emit it for these out-of-process frames.) Non-network targets need no
+    // rule: Chromium doesn't commit a widget's data: navigation, the sandbox
+    // refuses external protocols like mailto:, and another widget's page would
+    // still run with this frame's identity and permissions.
+    wc.session.webRequest.onBeforeRequest(
+      { urls: ['<all_urls>'], types: ['subFrame'] },
+      (details, callback) => {
+        callback({ cancel: !details.url.startsWith(`${WIDGET_SCHEME}://`) })
+      }
+    )
+    // A widget with keyboard focus would swallow the app's shortcuts. Pass
+    // Cmd chords on to the chrome, which runs them if they're bound.
+    wc.on('before-input-event', (_e, input) => {
+      if (input.type !== 'keyDown' || !input.meta) return
+      if (!wc.focusedFrame?.parent) return
+      wc.send(IPC.appKey, {
+        code: input.code,
+        metaKey: input.meta,
+        ctrlKey: input.control,
+        altKey: input.alt,
+        shiftKey: input.shift
+      })
+    })
+    // CSP doesn't cover WebRTC; keep it from talking to arbitrary hosts.
+    wc.setWebRTCIPHandlingPolicy('disable_non_proxied_udp')
+  }
+
+  /** The chrome went away or reloaded; nobody is left to answer prompts. */
+  detach(wc: WebContents): void {
+    if (this.target !== wc) return
+    for (const resolve of this.prompts.values()) resolve(null)
+    this.prompts.clear()
+    this.lastSessions = ''
+  }
+
+  /** Recompute sessions and push them to widgets that may read them, if changed. */
+  sessionsChanged(): void {
+    const list = this.opts.sessions()
+    const json = JSON.stringify(list)
+    if (json === this.lastSessions) return
+    this.lastSessions = json
+    for (const info of this.registry.list()) {
+      if (info.manifest?.permissions.sessions === 'read') this.sendEvent(info.id, 'sessions', list)
+    }
+  }
+
+  private registerIpc(): void {
+    const { trusted } = this.opts
+    ipcMain.handle(IPC.widgetsList, (e) => {
+      if (!trusted(e)) throw new Error('untrusted sender')
+      return this.registry.list()
+    })
+    ipcMain.handle(IPC.widgetCall, (e, widgetId: unknown, method: unknown, params: unknown) => {
+      if (!trusted(e)) throw new Error('untrusted sender')
+      if (typeof widgetId !== 'string') throw new Error('widget id must be a string')
+      return this.broker.call(widgetId, method, params)
+    })
+    ipcMain.on(IPC.secretAnswer, (e, promptId: unknown, value: unknown) => {
+      if (!trusted(e) || typeof promptId !== 'string') return
+      const resolve = this.prompts.get(promptId)
+      if (!resolve) return
+      this.prompts.delete(promptId)
+      resolve(typeof value === 'string' && value !== '' ? value : null)
+    })
+  }
+
+  private promptSecret(widget: LoadedWidget, name: string): Promise<string | null> {
+    const wc = this.target
+    const manifest = widget.parsed?.manifest
+    if (!wc || wc.isDestroyed() || !manifest) return Promise.resolve(null)
+    // Several calls waiting for the same secret share one prompt.
+    const key = `${manifest.id}/${name}`
+    const open = this.openPrompts.get(key)
+    if (open) return open
+    const prompt: SecretPrompt = {
+      promptId: randomUUID(),
+      widgetId: manifest.id,
+      widgetName: manifest.name,
+      name
+    }
+    const answer = new Promise<string | null>((resolve) => {
+      this.prompts.set(prompt.promptId, resolve)
+    }).finally(() => this.openPrompts.delete(key))
+    this.openPrompts.set(key, answer)
+    wc.send(IPC.secretPrompt, prompt)
+    return answer
+  }
+
+  private async serve(req: Request): Promise<Response> {
+    const url = new URL(req.url)
+    const id = url.hostname
+    const headers = widgetHeaders(id)
+    const text = (status: number, body: string): Response =>
+      new Response(body, { status, headers: { ...headers, 'content-type': 'text/plain' } })
+
+    if (req.method !== 'GET' && req.method !== 'HEAD') return text(405, 'method not allowed')
+    const widget = this.registry.get(id)
+    if (!widget?.parsed || !widget.root) return text(404, `no widget "${id}" is loaded`)
+    if (url.pathname === SDK_PATH) {
+      return new Response(sdkSource, {
+        headers: { ...headers, 'content-type': 'text/javascript; charset=utf-8' }
+      })
+    }
+
+    const pathname = url.pathname === '/' ? `/${widget.parsed.manifest.entry}` : url.pathname
+    const file = resolveWidgetFile(widget.root, pathname)
+    if (!file) return text(404, 'not found')
+    let body: Buffer
+    try {
+      body = await fs.readFile(file)
+    } catch {
+      return text(404, `not found: ${pathname}`)
+    }
+    const type = contentType(file)
+    if (type.startsWith('text/html')) {
+      const snippet = injection(themeVars(this.opts.theme()))
+      body = Buffer.from(injectIntoHtml(body.toString('utf8'), snippet))
+    }
+    return new Response(new Uint8Array(body), { headers: { ...headers, 'content-type': type } })
+  }
+
+  private send(channel: string, ...args: unknown[]): void {
+    const wc = this.target
+    if (wc && !wc.isDestroyed()) wc.send(channel, ...args)
+  }
+
+  private sendEvent<T extends WidgetEventTopic>(id: string, topic: T, data: WidgetEvents[T]): void {
+    this.send(IPC.widgetEvent, id, topic, data)
+  }
+}

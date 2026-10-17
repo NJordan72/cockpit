@@ -59,6 +59,9 @@ interface Session {
 export class PtyManager {
   private sessions = new Map<string, Session>()
 
+  /** onExit runs after a PTY's process ends on its own (not when killed). */
+  constructor(private readonly onExit: (id: string) => void = () => undefined) {}
+
   create(owner: WebContents, opts: SpawnOptions): { pid: number } {
     this.kill(opts.id)
 
@@ -94,6 +97,7 @@ export class PtyManager {
       if (this.sessions.get(opts.id) !== session) return
       this.sessions.delete(opts.id)
       if (!owner.isDestroyed()) owner.send(IPC.ptyExit, opts.id, { exitCode, signal })
+      this.onExit(opts.id)
     })
 
     return { pid: proc.pid }

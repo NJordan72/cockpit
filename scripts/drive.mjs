@@ -43,6 +43,12 @@ function launchEnv() {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
+function widgetFrame(id) {
+  const frame = page.frames().find((f) => f.url().startsWith(`cockpit-widget://${id}/`))
+  if (!frame) throw new Error(`no frame for widget ${id}`)
+  return frame
+}
+
 const COMMANDS = {
   async launch() {
     if (app) return console.log('already launched')
@@ -72,6 +78,22 @@ const COMMANDS = {
   // Playwright key names, e.g. Enter, Shift+Enter, Meta+k, Control+c, Alt+b
   async press(key) {
     await page.keyboard.press(key)
+  },
+
+  // A key sent through Electron's input path (sendInputEvent), which, unlike
+  // `press`, goes through before-input-event: nkey Meta+t
+  async nkey(chord) {
+    const parts = chord.split('+')
+    const keyCode = parts.pop()
+    const modifiers = parts.map((m) => m.toLowerCase())
+    await app.evaluate(
+      ({ BrowserWindow }, { keyCode, modifiers }) => {
+        const wc = BrowserWindow.getAllWindows()[0].webContents
+        wc.sendInputEvent({ type: 'keyDown', keyCode, modifiers })
+        wc.sendInputEvent({ type: 'keyUp', keyCode, modifiers })
+      },
+      { keyCode, modifiers }
+    )
   },
 
   // Mouse drag in CSS pixels: drag 640,400 500,400
@@ -172,6 +194,71 @@ const COMMANDS = {
     console.log(JSON.stringify(await page.evaluate(expr)))
   },
 
+  // Widget frames: list them, or run an expression inside one.
+  //   widgets
+  //   weval hello document.querySelector('#count').textContent
+  //   weval hello await cockpit.storage.keys()
+  async widgets() {
+    const urls = await app.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows()[0]
+        .webContents.mainFrame.framesInSubtree.filter((f) => f.parent)
+        .map((f) => f.url)
+    )
+    for (const url of urls) console.log('frame:', url)
+    console.log(JSON.stringify(await page.evaluate(() => window.__cockpitWidgets?.())))
+  },
+
+  async weval(arg) {
+    const sp = arg.indexOf(' ')
+    const frame = widgetFrame(arg.slice(0, sp))
+    const body = arg.slice(sp + 1)
+    const fn = `(async () => { return (${body}) })()`
+    console.log(JSON.stringify(await frame.evaluate(fn)))
+  },
+
+  // Click an element inside a widget: wclick hello #fetch-allowed
+  async wclick(arg) {
+    const [id, selector] = [arg.slice(0, arg.indexOf(' ')), arg.slice(arg.indexOf(' ') + 1)]
+    await widgetFrame(id).click(selector)
+  },
+
+  // Text of an element inside a widget: wtext hello #fetch-out
+  async wtext(arg) {
+    const [id, selector] = [arg.slice(0, arg.indexOf(' ')), arg.slice(arg.indexOf(' ') + 1)]
+    console.log(await widgetFrame(id).locator(selector).innerText())
+  },
+
+  // Record shell.openExternal calls instead of opening the browser.
+  async stubopen() {
+    await app.evaluate(({ shell }) => {
+      globalThis.__opened = []
+      shell.openExternal = async (url) => {
+        globalThis.__opened.push(url)
+      }
+    })
+  },
+
+  async opened() {
+    console.log(JSON.stringify(await app.evaluate(() => globalThis.__opened ?? null)))
+  },
+
+  // Answer the host's secret prompt: `secret value`, `secret $ENV_VAR` (the
+  // value is read from the driver's environment and never printed), or
+  // `secret` alone to cancel.
+  async secret(arg) {
+    const dialog = page.locator('.secret-prompt')
+    await dialog.waitFor({ timeout: 5000 })
+    console.log('prompt:', (await dialog.locator('.secret-title').innerText()).trim())
+    if (!arg) {
+      await dialog.locator('button', { hasText: 'Cancel' }).click()
+      return
+    }
+    const value = arg.startsWith('$') ? process.env[arg.slice(1)] : arg
+    if (!value) throw new Error(`${arg} is empty`)
+    await dialog.locator('input').fill(value)
+    await dialog.locator('button[type=submit]').click()
+  },
+
   async quit() {
     if (app) await app.close().catch(() => undefined)
     app = null
@@ -190,6 +277,8 @@ const rl = readline.createInterface({
 })
 const queue = []
 let busy = false
+// Commands can be piped in; stdin may close while they are still running.
+let inputClosed = false
 async function drain() {
   if (busy) return
   busy = true
@@ -211,7 +300,7 @@ async function drain() {
     }
     if (cmd === 'quit') process.exit(0)
     console.log('ok')
-    rl.prompt()
+    if (!inputClosed) rl.prompt()
   }
   busy = false
 }
@@ -220,6 +309,7 @@ rl.on('line', (line) => {
   void drain()
 })
 rl.on('close', async () => {
+  inputClosed = true
   while (busy || queue.length) await sleep(100)
   await COMMANDS.quit()
   process.exit(0)

@@ -1,8 +1,8 @@
 # Cockpit
 
 A personal macOS app for running Claude Code and Codex side by side: a
-terminal host with (soon) tabs, splits, agent status, and a sandboxed widget
-sidebar. See `INSTRUCTIONS.md` for the build plan and current status.
+terminal host with tabs, splits, presets, and a sidebar of sandboxed widgets.
+See `INSTRUCTIONS.md` for the build plan and current status.
 
 ## Install
 
@@ -50,6 +50,29 @@ to restart it.
 | Cmd+Alt+Arrow       | Move focus between panes    |
 | Cmd+Shift+] / [     | Next / previous tab         |
 | Cmd+1 … Cmd+9       | Go to tab                   |
+| Cmd+B               | Show or hide the sidebar    |
+
+## Widgets
+
+The sidebar on the right holds widgets: small HTML pages, each in its own
+sandboxed iframe, that reach the network, secrets, and storage only through an
+API that checks their manifest. Put a widget folder (or a symlink to one) in
+`~/.cockpit/widgets/`; Cockpit picks it up and reloads it whenever its files
+change. To install the examples:
+
+```sh
+examples/widgets/install.sh          # all of them
+examples/widgets/install.sh hello    # just one
+```
+
+`hello` calls every API and is the place to start a new widget.
+
+Widgets stack by default. Each one collapses from its header, and the line
+between two widgets drags to resize them. The button at the top of the
+sidebar switches to one widget per tab, and the sidebar's left edge drags to
+change its width. All of that is saved in `config.json` under `sidebar`.
+
+Writing a widget, the manifest, and the full API: [docs/widgets.md](docs/widgets.md).
 
 ## Config
 
@@ -67,6 +90,8 @@ to `config.json.broken-<time>` before being replaced.
   ],
   "keybindings": { "newTab": "Cmd+T", "splitRight": "Cmd+D" /* ... */ },
   "terminal": { "fontFamily": "...", "fontSize": 13 },
+  "theme": { "accent": "#ff9e64" },
+  "sidebar": { "visible": true, "width": 320, "mode": "stack", "widgets": [/* ... */] },
   "projectsDir": "~/dev"
 }
 ```
@@ -76,6 +101,9 @@ your login files (`.zprofile`, `.zshenv`), even when Cockpit is started from
 the Dock. Keybindings take `Cmd`, `Ctrl`, `Alt`/`Option`, `Shift` plus a key
 (`A`–`Z`, `0`–`9`, `F1`–`F20`, `Left`/`Right`/`Up`/`Down`, `Enter`, `Tab`,
 `Esc`, `[`, `]`, and other punctuation); an empty string unbinds an action.
+`theme` overrides any of the app's colors and fonts by name (`bg`, `bgRaised`,
+`fg`, `muted`, `border`, `accent`, `red`, `green`, ...; see
+`src/shared/theme.ts`). The chrome, the terminals, and widgets all follow it.
 Set `COCKPIT_HOME` to use a different directory than `~/.cockpit`.
 
 ## Terminal keys
@@ -100,9 +128,12 @@ uses typescript-eslint's `strictTypeChecked` rules with zero warnings allowed.
 ## Driving the app from a script
 
 `scripts/drive.mjs` launches the built app through Playwright and takes
-commands on stdin (`launch`, `relaunch`, `type`, `press`, `click`, `drag`,
-`screen`, `panes`, `layout`, `size`, `ss`, `resize`, `clipboard`, `eval`,
-`quit`). It starts the app with a bare, Dock-like environment
+commands on stdin (`launch`, `relaunch`, `type`, `press`, `nkey`, `click`,
+`drag`, `screen`, `panes`, `layout`, `size`, `ss`, `resize`, `clipboard`,
+`eval`, `widgets`, `weval`, `wclick`, `wtext`, `secret`, `stubopen`, `opened`,
+`quit`). The `w` commands act inside a widget's frame, and `secret` answers
+the host's secret prompt (`secret $VAR` reads the value from the environment
+without printing it). It starts the app with a bare, Dock-like environment
 (`DRIVE_INHERIT_ENV=1` passes yours through). Point `COCKPIT_HOME` at a scratch
 directory to keep your real config out of it:
 

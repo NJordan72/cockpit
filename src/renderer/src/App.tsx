@@ -1,12 +1,19 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
-import type { Action, CockpitConfig } from '@shared/config'
+import type { Action, CockpitConfig, SidebarSettings } from '@shared/config'
+import { resolveTheme, themeVars, type Theme } from '@shared/theme'
+import type { SecretPrompt, WidgetInfo } from '@shared/widgets'
 import { Picker } from './components/Picker'
+import { SecretPromptDialog } from './components/SecretPromptDialog'
 import { TabBar } from './components/TabBar'
 import { Workspace } from './components/Workspace'
 import { actionFor, compileKeymap } from './keybindings'
 import { findPane, makePane } from './layout/model'
 import { activeTab, layoutReducer } from './layout/reducer'
 import { terminals } from './terminal/registry'
+import { xtermTheme } from './terminal/theme'
+import { setWidgetTheme, startWidgetHost } from './widgets/host'
+import { Sidebar } from './widgets/Sidebar'
+import { withPlacements } from './widgets/sidebarModel'
 
 interface PickerState {
   mode: 'tab' | 'row' | 'column'
@@ -29,13 +36,19 @@ export function App(): React.JSX.Element {
   const [config, setConfig] = useState<CockpitConfig | null>(null)
   const [layout, dispatch] = useReducer(layoutReducer, { tabs: [], activeTabId: null })
   const [picker, setPicker] = useState<PickerState | null>(null)
+  const [sidebarState, setSidebar] = useState<SidebarSettings | null>(null)
+  const [widgets, setWidgets] = useState<WidgetInfo[]>([])
+  const [prompts, setPrompts] = useState<SecretPrompt[]>([])
+  const [windowVisible, setWindowVisible] = useState(() => document.visibilityState === 'visible')
   const loaded = useRef(false)
 
   const layoutRef = useRef(layout)
   const pickerRef = useRef(picker)
+  const promptsRef = useRef(prompts)
   useEffect(() => {
     layoutRef.current = layout
     pickerRef.current = picker
+    promptsRef.current = prompts
   })
 
   // Load config and restore the saved layout (or open one shell tab).
@@ -44,16 +57,75 @@ export function App(): React.JSX.Element {
     void api.config.get().then((c) => {
       if (cancelled) return
       setConfig(c)
+      setSidebar(c.sidebar)
       if (c.layout.tabs.length > 0) dispatch({ type: 'replace', layout: c.layout })
       else dispatch({ type: 'newTab', pane: makePane('shell', '~') })
       loaded.current = true
     })
-    const off = api.config.onChange(setConfig)
+    // Only hand edits arrive here; they may rearrange the sidebar.
+    const off = api.config.onChange((c) => {
+      setConfig(c)
+      setSidebar(c.sidebar)
+    })
     return () => {
       cancelled = true
       off()
     }
   }, [api])
+
+  useEffect(() => {
+    startWidgetHost()
+    let cancelled = false
+    void api.widgets.list().then((list) => {
+      if (!cancelled) setWidgets(list)
+    })
+    const offChange = api.widgets.onChange(setWidgets)
+    const offPrompt = api.widgets.onSecretPrompt((p) => {
+      setPrompts((ps) => [...ps, p])
+    })
+    const onVisibility = (): void => {
+      setWindowVisible(document.visibilityState === 'visible')
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => {
+      cancelled = true
+      offChange()
+      offPrompt()
+      document.removeEventListener('visibilitychange', onVisibility)
+    }
+  }, [api])
+
+  // New widgets get a placement, so config.json lists every installed widget.
+  const sidebar = useMemo(
+    () => (sidebarState ? withPlacements(sidebarState, widgets) : null),
+    [sidebarState, widgets]
+  )
+
+  useEffect(() => {
+    if (!sidebar) return
+    const t = setTimeout(() => {
+      api.config.saveSidebar(sidebar)
+    }, SAVE_DELAY_MS)
+    return () => {
+      clearTimeout(t)
+    }
+  }, [api, sidebar])
+
+  // Keyed by value, so unrelated config edits don't restyle every terminal.
+  const themeKey = config
+    ? JSON.stringify(resolveTheme(config.theme, config.terminal.fontFamily))
+    : null
+  const theme = useMemo(() => (themeKey ? (JSON.parse(themeKey) as Theme) : null), [themeKey])
+  const terminalTheme = useMemo(() => (theme ? xtermTheme(theme) : null), [theme])
+
+  useEffect(() => {
+    if (!theme) return
+    const vars = themeVars(theme)
+    for (const [name, value] of Object.entries(vars)) {
+      document.documentElement.style.setProperty(name, value)
+    }
+    setWidgetTheme(vars)
+  }, [theme])
 
   // Persist the layout shortly after it settles (divider drags fire per frame).
   useEffect(() => {
@@ -128,6 +200,9 @@ export function App(): React.JSX.Element {
         case 'prevTab':
           dispatch({ type: 'cycleTab', delta: -1 })
           return
+        case 'toggleSidebar':
+          setSidebar((sb) => sb && { ...sb, visible: !sb.visible })
+          return
         default: {
           const n = /^goToTab(\d)$/.exec(action)?.[1]
           if (n) dispatch({ type: 'selectTabIndex', index: Number(n) - 1 })
@@ -140,7 +215,7 @@ export function App(): React.JSX.Element {
   // App shortcuts run in the capture phase, before xterm sees the key.
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
-      if (pickerRef.current) return
+      if (pickerRef.current || promptsRef.current.length > 0) return
       const action = actionFor(keymap, e)
       if (!action) return
       e.preventDefault()
@@ -148,17 +223,36 @@ export function App(): React.JSX.Element {
       if (!e.repeat || action.startsWith('focus') || action.endsWith('Tab')) runAction(action)
     }
     window.addEventListener('keydown', onKey, true)
+    // Keys pressed while a widget has focus never reach this window; the
+    // main process forwards Cmd chords instead.
+    const offAppKey = api.onAppKey((key) => {
+      if (pickerRef.current || promptsRef.current.length > 0) return
+      const action = actionFor(keymap, key)
+      if (action) runAction(action)
+    })
     return () => {
       window.removeEventListener('keydown', onKey, true)
+      offAppKey()
     }
-  }, [keymap, runAction])
+  }, [api, keymap, runAction])
 
   const closePicker = useCallback(() => {
     setPicker(null)
     requestAnimationFrame(focusActiveTerminal)
   }, [focusActiveTerminal])
 
-  if (!config) return <div className="app" />
+  const answerPrompt = useCallback(
+    (prompt: SecretPrompt, value: string | null) => {
+      api.widgets.answerSecret(prompt.promptId, value)
+      setPrompts((ps) => ps.filter((p) => p.promptId !== prompt.promptId))
+      requestAnimationFrame(focusActiveTerminal)
+    },
+    [api, focusActiveTerminal]
+  )
+
+  if (!config || !terminalTheme) return <div className="app" />
+
+  const prompt = prompts[0]
 
   return (
     <div className="app">
@@ -169,12 +263,23 @@ export function App(): React.JSX.Element {
         onNewTab={() => void openPicker('tab')}
         onCloseTab={(tabId) => dispatch({ type: 'closeTab', tabId })}
       />
-      <Workspace
-        layout={layout}
-        presets={config.presets}
-        settings={config.terminal}
-        dispatch={dispatch}
-      />
+      <div className="main">
+        <Workspace
+          layout={layout}
+          presets={config.presets}
+          settings={config.terminal}
+          theme={terminalTheme}
+          dispatch={dispatch}
+        />
+        {sidebar && widgets.length > 0 && (
+          <Sidebar
+            widgets={widgets}
+            settings={sidebar}
+            windowVisible={windowVisible}
+            onChange={setSidebar}
+          />
+        )}
+      </div>
       {picker && (
         <Picker
           title={PICKER_TITLES[picker.mode]}
@@ -189,6 +294,13 @@ export function App(): React.JSX.Element {
               dispatch({ type: 'split', paneId: picker.paneId, direction: picker.mode, pane })
             setPicker(null)
           }}
+        />
+      )}
+      {prompt && (
+        <SecretPromptDialog
+          key={prompt.promptId}
+          prompt={prompt}
+          onAnswer={(value) => answerPrompt(prompt, value)}
         />
       )}
     </div>

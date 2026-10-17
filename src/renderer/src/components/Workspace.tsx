@@ -1,4 +1,5 @@
 import { useMemo, useRef } from 'react'
+import type { ITheme } from '@xterm/xterm'
 import type { Layout, Preset, TerminalSettings } from '@shared/config'
 import { allPanes, arrange, dragSizes, findSplit, type Divider } from '../layout/model'
 import type { LayoutAction } from '../layout/reducer'
@@ -8,6 +9,7 @@ interface Props {
   layout: Layout
   presets: Preset[]
   settings: TerminalSettings
+  theme: ITheme
   dispatch: (a: LayoutAction) => void
 }
 
@@ -18,7 +20,13 @@ const pct = (n: number): string => `${(n * 100).toFixed(4)}%`
  * from the split tree. Splitting or closing a neighbour only moves a pane; it
  * never remounts it, so its terminal and PTY survive layout changes.
  */
-export function Workspace({ layout, presets, settings, dispatch }: Props): React.JSX.Element {
+export function Workspace({
+  layout,
+  presets,
+  settings,
+  theme,
+  dispatch
+}: Props): React.JSX.Element {
   const ref = useRef<HTMLDivElement>(null)
 
   const placed = useMemo(
@@ -88,6 +96,7 @@ export function Workspace({ layout, presets, settings, dispatch }: Props): React
               pane={pane}
               presetName={presets.find((p) => p.id === pane.presetId)?.name ?? pane.presetId}
               settings={settings}
+              theme={theme}
               focused={tab.activePaneId === pane.id && (multi || visible)}
               visible={visible}
               onFocus={() => dispatch({ type: 'focusPane', paneId: pane.id })}

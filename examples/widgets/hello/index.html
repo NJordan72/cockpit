@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Hello</title>
+    <link rel="stylesheet" href="hello.css" />
+    <!-- A module script, to show they load from the widget's folder. -->
+    <script type="module" src="hello.js"></script>
+  </head>
+  <body>
+    <p class="status">
+      <span id="visible">visible</span> ·
+      <span id="theme-events">theme: 0 changes</span>
+    </p>
+
+    <section>
+      <h2>fetch</h2>
+      <div class="row">
+        <button id="fetch-allowed">example.com</button>
+        <button id="fetch-refused">example.org (not listed)</button>
+      </div>
+      <pre id="fetch-out" class="out">–</pre>
+    </section>
+
+    <section>
+      <h2>storage</h2>
+      <div class="row">
+        <button id="count-up">count +1</button>
+        <span>count = <b id="count">–</b></span>
+      </div>
+      <div class="row">
+        <input id="note" placeholder="a note, saved on Enter" />
+      </div>
+      <pre id="storage-out" class="out">–</pre>
+    </section>
+
+    <section>
+      <h2>secrets</h2>
+      <div class="row">
+        <button id="secret-get">get hello-secret</button>
+        <button id="secret-forget">forget it</button>
+        <button id="secret-undeclared">get undeclared</button>
+      </div>
+      <pre id="secret-out" class="out">–</pre>
+    </section>
+
+    <section>
+      <h2>openExternal</h2>
+      <div class="row">
+        <button id="open-allowed">example.com</button>
+        <button id="open-refused">example.org (not listed)</button>
+      </div>
+      <pre id="open-out" class="out">–</pre>
+    </section>
+
+    <section>
+      <h2>sessions</h2>
+      <ul id="sessions" class="sessions"></ul>
+    </section>
+
+    <section>
+      <h2>theme</h2>
+      <div id="swatches" class="swatches"></div>
+    </section>
+  </body>
+</html>

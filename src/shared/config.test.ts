@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest'
 import {
   DEFAULT_KEYBINDINGS,
   defaultConfig,
+  defaultSidebar,
   migrateConfig,
   normalizeSizes,
-  pushRecentDir
+  pushRecentDir,
+  SIDEBAR_MAX_WIDTH
 } from './config'
 
 describe('migrateConfig', () => {
@@ -140,5 +142,55 @@ describe('pushRecentDir', () => {
     expect(pushRecentDir(['a', 'b', 'c'], 'b')).toEqual(['b', 'a', 'c'])
     const many = Array.from({ length: 30 }, (_, i) => `d${i}`)
     expect(pushRecentDir(many, 'new')).toHaveLength(20)
+  })
+})
+
+describe('migrateConfig: sidebar and theme', () => {
+  it('adds them with defaults to a config from before widgets', () => {
+    const c = migrateConfig({ version: 1, presets: [{ id: 'shell', name: 'Shell' }] })
+    expect(c.sidebar).toEqual(defaultSidebar())
+    expect(c.theme).toEqual({})
+    expect(c.keybindings.toggleSidebar).toBe('Cmd+B')
+  })
+
+  it('keeps valid placement and repairs the rest', () => {
+    const c = migrateConfig({
+      sidebar: {
+        visible: false,
+        width: 99999,
+        mode: 'carousel',
+        activeWidget: 'hello',
+        widgets: [
+          { id: 'hello', collapsed: true, size: 2 },
+          { id: 'hello', collapsed: false },
+          { id: 'shortcut-stories', size: -1 },
+          { size: 1 },
+          'junk'
+        ]
+      }
+    })
+    expect(c.sidebar).toEqual({
+      visible: false,
+      width: SIDEBAR_MAX_WIDTH,
+      mode: 'stack',
+      activeWidget: 'hello',
+      widgets: [
+        { id: 'hello', collapsed: true, size: 2 },
+        { id: 'shortcut-stories', collapsed: false, size: 1 }
+      ]
+    })
+  })
+
+  it('keeps known theme colors and drops values that could break out of CSS', () => {
+    const c = migrateConfig({
+      theme: {
+        accent: '#ff00ff',
+        bg: 'red; } body { display: none',
+        fg: '</style><script>alert(1)</script>',
+        border: 42,
+        sparkle: '#fff'
+      }
+    })
+    expect(c.theme).toEqual({ accent: '#ff00ff' })
   })
 })

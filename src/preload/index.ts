@@ -1,6 +1,13 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
 import type { CockpitConfig } from '@shared/config'
-import { IPC, type CockpitApi, type PtyCreateOptions, type PtyExitInfo } from '@shared/ipc'
+import {
+  IPC,
+  type AppKey,
+  type CockpitApi,
+  type PtyCreateOptions,
+  type PtyExitInfo
+} from '@shared/ipc'
+import type { SecretPrompt, WidgetEventTopic, WidgetInfo } from '@shared/widgets'
 
 // One IPC listener per channel, fanned out by PTY id, so panes don't each add
 // a listener to ipcRenderer.
@@ -18,6 +25,28 @@ const configSubs = new Set<(config: CockpitConfig) => void>()
 ipcRenderer.on(IPC.configChanged, (_e: IpcRendererEvent, config: CockpitConfig) => {
   configSubs.forEach((cb) => cb(config))
 })
+
+type Subscribe<A extends unknown[]> = (cb: (...args: A) => void) => () => void
+
+/**
+ * One IPC listener per channel, fanned out to any number of callbacks. The
+ * payload types are whatever main sends on that channel (see CockpitApi).
+ */
+function channel(name: string): Subscribe<never[]> {
+  const subs = new Set<(...args: never[]) => void>()
+  ipcRenderer.on(name, (_e: IpcRendererEvent, ...args: unknown[]) => {
+    subs.forEach((cb) => cb(...(args as never[])))
+  })
+  return (cb) => {
+    subs.add(cb)
+    return () => subs.delete(cb)
+  }
+}
+
+const onWidgetsChanged: Subscribe<[WidgetInfo[]]> = channel(IPC.widgetsChanged)
+const onWidgetEvent: Subscribe<[string, WidgetEventTopic, unknown]> = channel(IPC.widgetEvent)
+const onSecretPrompt: Subscribe<[SecretPrompt]> = channel(IPC.secretPrompt)
+const onAppKey: Subscribe<[AppKey]> = channel(IPC.appKey)
 
 function subscribe<T>(map: Map<string, Set<T>>, id: string, cb: T): () => void {
   let set = map.get(id)
@@ -49,11 +78,22 @@ const api: CockpitApi = {
       configSubs.add(cb)
       return () => configSubs.delete(cb)
     },
-    saveLayout: (layout) => ipcRenderer.send(IPC.layoutSave, layout)
+    saveLayout: (layout) => ipcRenderer.send(IPC.layoutSave, layout),
+    saveSidebar: (sidebar) => ipcRenderer.send(IPC.sidebarSave, sidebar)
   },
   dirs: {
     list: () => ipcRenderer.invoke(IPC.dirsList)
-  }
+  },
+  widgets: {
+    list: () => ipcRenderer.invoke(IPC.widgetsList),
+    onChange: (cb) => onWidgetsChanged(cb),
+    call: (widgetId, method, params) =>
+      ipcRenderer.invoke(IPC.widgetCall, widgetId, method, params),
+    onEvent: (cb) => onWidgetEvent(cb),
+    onSecretPrompt: (cb) => onSecretPrompt(cb),
+    answerSecret: (promptId, value) => ipcRenderer.send(IPC.secretAnswer, promptId, value)
+  },
+  onAppKey: (cb) => onAppKey(cb)
 }
 
 contextBridge.exposeInMainWorld('cockpit', api)

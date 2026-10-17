@@ -1,6 +1,13 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import { migrateConfig, pushRecentDir, type CockpitConfig, type Layout } from '@shared/config'
+import {
+  migrateConfig,
+  pushRecentDir,
+  readSidebar,
+  type CockpitConfig,
+  type Layout,
+  type SidebarSettings
+} from '@shared/config'
 import { cockpitHome } from './paths'
 
 /**
@@ -30,6 +37,11 @@ export class ConfigStore {
 
   setLayout(layout: Layout): void {
     this.config = migrateConfig({ ...this.config, layout })
+    this.write()
+  }
+
+  setSidebar(sidebar: SidebarSettings): void {
+    this.config = { ...this.config, sidebar: readSidebar(sidebar) }
     this.write()
   }
 
@@ -70,6 +82,7 @@ export class ConfigStore {
       return
     }
     // The renderer owns the live layout; a hand edit can't rearrange open panes.
+    // Sidebar placement does come from the file, so it can be edited by hand.
     this.config = { ...migrateConfig(raw), layout: this.config.layout }
     this.lastWritten = text
     this.onExternalChange(this.config)

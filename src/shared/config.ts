@@ -1,5 +1,6 @@
 // The shape of ~/.cockpit/config.json, its defaults, and migration from older
 // or hand-edited files. Pure so it can be unit tested.
+import { isSafeThemeValue, THEME_KEYS, type ThemeOverrides } from './theme'
 
 export const CONFIG_VERSION = 1
 
@@ -32,6 +33,7 @@ export type Action =
   | 'goToTab7'
   | 'goToTab8'
   | 'goToTab9'
+  | 'toggleSidebar'
 
 export type Keybindings = Record<Action, string>
 
@@ -70,11 +72,33 @@ export interface TerminalSettings {
   fontSize: number
 }
 
+export interface WidgetPlacement {
+  id: string
+  collapsed: boolean
+  /** Share of the free height among expanded fill widgets (stack mode). */
+  size: number
+}
+
+export interface SidebarSettings {
+  visible: boolean
+  /** Width in pixels. */
+  width: number
+  /** stack: all widgets one above the other. tabs: one at a time. */
+  mode: 'stack' | 'tabs'
+  /** The widget shown in tabs mode. */
+  activeWidget: string | null
+  /** Order and state of widgets. Installed widgets missing here are appended. */
+  widgets: WidgetPlacement[]
+}
+
 export interface CockpitConfig {
   version: number
   presets: Preset[]
   keybindings: Keybindings
   terminal: TerminalSettings
+  /** Overrides for the colors and fonts in theme.ts. */
+  theme: ThemeOverrides
+  sidebar: SidebarSettings
   /** Directory the Cmd+T picker lists projects from. */
   projectsDir: string
   /** Most recently used working directories, newest first. */
@@ -107,7 +131,8 @@ export const DEFAULT_KEYBINDINGS: Keybindings = {
   goToTab6: 'Cmd+6',
   goToTab7: 'Cmd+7',
   goToTab8: 'Cmd+8',
-  goToTab9: 'Cmd+9'
+  goToTab9: 'Cmd+9',
+  toggleSidebar: 'Cmd+B'
 }
 
 export const DEFAULT_TERMINAL: TerminalSettings = {
@@ -116,12 +141,21 @@ export const DEFAULT_TERMINAL: TerminalSettings = {
   fontSize: 13
 }
 
+export const SIDEBAR_MIN_WIDTH = 180
+export const SIDEBAR_MAX_WIDTH = 900
+
+export function defaultSidebar(): SidebarSettings {
+  return { visible: true, width: 320, mode: 'stack', activeWidget: null, widgets: [] }
+}
+
 export function defaultConfig(): CockpitConfig {
   return {
     version: CONFIG_VERSION,
     presets: DEFAULT_PRESETS.map((p) => ({ ...p })),
     keybindings: { ...DEFAULT_KEYBINDINGS },
     terminal: { ...DEFAULT_TERMINAL },
+    theme: {},
+    sidebar: defaultSidebar(),
     projectsDir: '~/dev',
     recentDirs: [],
     layout: { tabs: [], activeTabId: null }
@@ -221,6 +255,42 @@ function readLayout(v: unknown, presetIds: Set<string>): Layout {
   return { tabs, activeTabId }
 }
 
+export function readSidebar(v: unknown): SidebarSettings {
+  const def = defaultSidebar()
+  if (!isObj(v)) return def
+  const width =
+    typeof v.width === 'number' && Number.isFinite(v.width)
+      ? Math.round(Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, v.width)))
+      : def.width
+  const seen = new Set<string>()
+  const widgets: WidgetPlacement[] = []
+  if (Array.isArray(v.widgets)) {
+    for (const w of v.widgets) {
+      if (!isObj(w) || !nonEmpty(w.id) || seen.has(w.id)) continue
+      seen.add(w.id)
+      const size = typeof w.size === 'number' && Number.isFinite(w.size) && w.size > 0 ? w.size : 1
+      widgets.push({ id: w.id, collapsed: w.collapsed === true, size })
+    }
+  }
+  return {
+    visible: typeof v.visible === 'boolean' ? v.visible : def.visible,
+    width,
+    mode: v.mode === 'tabs' ? 'tabs' : 'stack',
+    activeWidget: nonEmpty(v.activeWidget) ? v.activeWidget : null,
+    widgets
+  }
+}
+
+function readTheme(v: unknown): ThemeOverrides {
+  const theme: ThemeOverrides = {}
+  if (!isObj(v)) return theme
+  for (const key of THEME_KEYS) {
+    const value = v[key]
+    if (isSafeThemeValue(value)) theme[key] = value
+  }
+  return theme
+}
+
 /**
  * Turn whatever is on disk into a valid config. Unknown keys are dropped,
  * missing or malformed values get defaults.
@@ -270,6 +340,8 @@ export function migrateConfig(raw: unknown): CockpitConfig {
     presets,
     keybindings,
     terminal,
+    theme: readTheme(raw.theme),
+    sidebar: readSidebar(raw.sidebar),
     projectsDir: nonEmpty(raw.projectsDir) ? raw.projectsDir : def.projectsDir,
     recentDirs,
     layout: readLayout(raw.layout, new Set(presets.map((p) => p.id)))

@@ -1,5 +1,12 @@
 // IPC channel names and payload types shared by main, preload, and renderer.
-import type { CockpitConfig, Layout } from './config'
+import type { CockpitConfig, Layout, SidebarSettings } from './config'
+import type {
+  SecretPrompt,
+  WidgetCallResult,
+  WidgetEventTopic,
+  WidgetInfo,
+  WidgetMethod
+} from './widgets'
 
 export const IPC = {
   ptyCreate: 'pty:create',
@@ -14,7 +21,15 @@ export const IPC = {
   configGet: 'config:get',
   configChanged: 'config:changed',
   layoutSave: 'layout:save',
-  dirsList: 'dirs:list'
+  sidebarSave: 'sidebar:save',
+  dirsList: 'dirs:list',
+  widgetsList: 'widgets:list',
+  widgetsChanged: 'widgets:changed',
+  widgetCall: 'widget:call',
+  widgetEvent: 'widget:event',
+  secretPrompt: 'secret:prompt',
+  secretAnswer: 'secret:answer',
+  appKey: 'app:key'
 } as const
 
 export interface PtyCreateOptions {
@@ -50,6 +65,15 @@ export interface DirListing {
   projects: DirEntry[]
 }
 
+/** A key press forwarded from the main process (matches KeyboardEvent's fields). */
+export interface AppKey {
+  code: string
+  metaKey: boolean
+  ctrlKey: boolean
+  altKey: boolean
+  shiftKey: boolean
+}
+
 export interface CockpitApi {
   pty: {
     create(opts: PtyCreateOptions): Promise<PtyCreated>
@@ -69,8 +93,21 @@ export interface CockpitApi {
     get(): Promise<CockpitConfig>
     onChange(cb: (config: CockpitConfig) => void): () => void
     saveLayout(layout: Layout): void
+    saveSidebar(sidebar: SidebarSettings): void
   }
   dirs: {
     list(): Promise<DirListing>
   }
+  widgets: {
+    list(): Promise<WidgetInfo[]>
+    onChange(cb: (widgets: WidgetInfo[]) => void): () => void
+    /** Run a widget's API call. The caller must have identified the widget. */
+    call(widgetId: string, method: WidgetMethod, params: unknown): Promise<WidgetCallResult>
+    onEvent(cb: (widgetId: string, topic: WidgetEventTopic, data: unknown) => void): () => void
+    onSecretPrompt(cb: (prompt: SecretPrompt) => void): () => void
+    /** null when the user cancelled. */
+    answerSecret(promptId: string, value: string | null): void
+  }
+  /** App shortcuts pressed while a widget had keyboard focus. */
+  onAppKey(cb: (key: AppKey) => void): () => void
 }

@@ -5,21 +5,28 @@ import {
   clipboard,
   ipcMain,
   Menu,
+  session,
   shell,
   type IpcMainEvent,
   type IpcMainInvokeEvent
 } from 'electron'
-import { migrateConfig, type Layout, type LayoutNode } from '@shared/config'
+import { migrateConfig, type Layout, type LayoutNode, type SidebarSettings } from '@shared/config'
 import { IPC, type DirListing, type PtyCreateOptions, type PtyCreated } from '@shared/ipc'
+import { resolveTheme } from '@shared/theme'
 import { ConfigStore } from './config'
 import { listProjects, processCwd, processCwdSync, resolveCwd } from './dirs'
 import { buildMenu } from './menu'
-import { abbreviateHome } from './paths'
+import { abbreviateHome, cockpitHome } from './paths'
 import { PtyManager } from './pty'
+import { registerWidgetScheme, WidgetHost } from './widgets/host'
+import { listSessions } from './widgets/sessions'
 
-const ptys = new PtyManager()
+const ptys = new PtyManager(() => widgets.sessionsChanged())
 let config: ConfigStore
+let widgets: WidgetHost
 let mainWindow: BrowserWindow | null = null
+
+registerWidgetScheme()
 
 /** Record where each live pane's process is now, so a relaunch reopens it there. */
 function captureCwds(): void {
@@ -65,15 +72,20 @@ function createWindow(): void {
   win.webContents.on('will-navigate', (e) => e.preventDefault())
 
   const wc = win.webContents
+  widgets.attach(wc)
   // A reload starts the renderer over; its old PTYs have no view any more.
   wc.on('did-start-navigation', (details) => {
-    if (details.isMainFrame && !details.isSameDocument) ptys.killAllFor(wc)
+    if (details.isMainFrame && !details.isSameDocument) {
+      ptys.killAllFor(wc)
+      widgets.detach(wc)
+    }
   })
   win.on('close', () => {
     captureCwds()
   })
   win.on('closed', () => {
     ptys.killAllFor(wc)
+    widgets.detach(wc)
     if (mainWindow === win) mainWindow = null
   })
 
@@ -106,6 +118,7 @@ function registerIpc(): void {
     })
     const display = abbreviateHome(cwd)
     if (display !== '~') config.addRecentDir(display)
+    widgets.sessionsChanged()
     return { pid, cwd: display }
   })
   ipcMain.on(IPC.ptyWrite, (e, id: string, data: string) => {
@@ -132,8 +145,13 @@ function registerIpc(): void {
     return config.get()
   })
   ipcMain.on(IPC.layoutSave, (e, layout: Layout) => {
+    if (!trusted(e)) return
     // Run it through migration so a bad layout can't corrupt the file.
-    if (trusted(e)) config.setLayout(migrateConfig({ ...config.get(), layout }).layout)
+    config.setLayout(migrateConfig({ ...config.get(), layout }).layout)
+    widgets.sessionsChanged()
+  })
+  ipcMain.on(IPC.sidebarSave, (e, sidebar: SidebarSettings) => {
+    if (trusted(e)) config.setSidebar(sidebar)
   })
   ipcMain.handle(IPC.dirsList, async (e): Promise<DirListing> => {
     if (!trusted(e)) throw new Error('untrusted sender')
@@ -148,11 +166,31 @@ void app.whenReady().then(() => {
     contents.session.setPermissionRequestHandler((_wc, _perm, cb) => cb(false))
     contents.on('will-attach-webview', (ev) => ev.preventDefault())
   })
+  // Permission checks (as opposed to requests) keep their default for the
+  // chrome; widget frames are refused everything, devices included.
+  session.defaultSession.setPermissionCheckHandler((_wc, _perm, _origin, details) => {
+    return details.isMainFrame
+  })
+  session.defaultSession.setDevicePermissionHandler(() => false)
 
   config = new ConfigStore((c) => {
     mainWindow?.webContents.send(IPC.configChanged, c)
   })
   config.watch()
+
+  widgets = new WidgetHost({
+    home: cockpitHome(),
+    trusted,
+    theme: () => {
+      const c = config.get()
+      return resolveTheme(c.theme, c.terminal.fontFamily)
+    },
+    sessions: () => {
+      const c = config.get()
+      return listSessions(c.layout, c.presets, new Set(ptys.pids().keys()))
+    }
+  })
+  widgets.start()
 
   Menu.setApplicationMenu(buildMenu())
   registerIpc()
@@ -173,4 +211,7 @@ app.on('before-quit', () => {
   ptys.killAll()
 })
 
-app.on('will-quit', () => config.close())
+app.on('will-quit', () => {
+  config.close()
+  widgets.close()
+})

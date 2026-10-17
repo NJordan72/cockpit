@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { Terminal } from '@xterm/xterm'
+import { Terminal, type ITheme } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebglAddon } from '@xterm/addon-webgl'
 import { Unicode11Addon } from '@xterm/addon-unicode11'
@@ -9,12 +9,12 @@ import type { PaneNode, TerminalSettings } from '@shared/config'
 import type { PtyExitInfo } from '@shared/ipc'
 import { classifyKey } from './keys'
 import { terminals } from './registry'
-import { darkTheme } from './theme'
 
 interface Props {
   pane: PaneNode
   presetName: string
   settings: TerminalSettings
+  theme: ITheme
   focused: boolean
   visible: boolean
   onFocus: () => void
@@ -25,6 +25,7 @@ export function TerminalPane({
   pane,
   presetName,
   settings,
+  theme,
   focused,
   visible,
   onFocus,
@@ -60,7 +61,7 @@ export function TerminalPane({
       macOptionClickForcesSelection: true,
       allowProposedApi: true,
       scrollback: 10_000,
-      theme: darkTheme
+      theme
     })
     termRef.current = term
 
@@ -217,6 +218,11 @@ export function TerminalPane({
     // New cell size means a new grid size; hidden panes refit when shown.
     if (visible) fitRef.current?.fit()
   }, [settings.fontFamily, settings.fontSize, visible])
+
+  useEffect(() => {
+    const term = termRef.current
+    if (term && term.options.theme !== theme) term.options.theme = theme
+  }, [theme])
 
   useEffect(() => {
     if (focused && visible) termRef.current?.focus()
