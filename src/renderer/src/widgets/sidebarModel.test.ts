@@ -6,6 +6,7 @@ import {
   dragPair,
   placeWidgets,
   updatePlacement,
+  visibleWidgets,
   withPlacements
 } from './sidebarModel'
 
@@ -78,5 +79,32 @@ describe('dragPair', () => {
     expect(b / (a + b)).toBeCloseTo(50 / 450)
     const [c] = dragPair([2, 1], [300, 150], -1000, 50)
     expect(c / 3).toBeCloseTo(50 / 450)
+  })
+})
+
+describe('visibleWidgets', () => {
+  const installed = [info('a'), info('b'), info('c')]
+  const s: SidebarSettings = {
+    ...settings(['a', 'b', 'c']),
+    widgets: [
+      { id: 'a', collapsed: false, size: 1 },
+      { id: 'b', collapsed: true, size: 1 },
+      { id: 'c', collapsed: false, size: 1 }
+    ]
+  }
+
+  it('is the expanded widgets in stack mode', () => {
+    expect([...visibleWidgets(s, installed, true)]).toEqual(['a', 'c'])
+  })
+
+  it('is only the selected tab in tabs mode, collapsed or not', () => {
+    expect([...visibleWidgets({ ...s, mode: 'tabs', activeWidget: 'b' }, installed, true)]).toEqual(
+      ['b']
+    )
+  })
+
+  it('is nothing while the sidebar or the window is hidden', () => {
+    expect(visibleWidgets({ ...s, visible: false }, installed, true).size).toBe(0)
+    expect(visibleWidgets(s, installed, false).size).toBe(0)
   })
 })

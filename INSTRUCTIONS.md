@@ -330,5 +330,24 @@ action that removes merged worktrees.
   checks, fetch (allowlist, redirects off the list, size cap, timeout),
   storage, the registry (symlinks, broken links, reload on edit), serving
   helpers, sidebar placement, and config migration (132 total).
+- Hardened after a review of the M2 commit:
+  - WebRTC reached arbitrary hosts. A widget's TURN-over-TCP connection
+    arrived at a test listener, including from a `srcdoc` frame, and CSP
+    `webrtc 'block'` isn't implemented. The renderer session now goes
+    through a proxy that doesn't exist (loopback included, except in dev).
+    UDP was already off through `setWebRTCIPHandlingPolicy`. Both were
+    re-tested against LAN and loopback listeners.
+  - Widget files are served only if their real path stays inside the
+    widget folder.
+  - Widget ids must start with a letter and can't start with `xn--`, since
+    Chromium rewrites numeric and punycode hosts.
+  - Secret prompts appear only while the asking widget is visible, refuse
+    that widget for 10 s after a cancel, and don't focus their input.
+  - Storage reads the file before each write, so it can't overwrite an
+    outside edit or a corrupt file, and it treats keys like `__proto__` as
+    plain keys.
+  - Smaller fixes: unique temp files for secrets, fetch error codes, keyed
+    sidebar sections (a reorder no longer reloads widgets), and a race in
+    the first widget list.
 
 Next: M3.

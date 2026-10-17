@@ -13,7 +13,7 @@ import { terminals } from './terminal/registry'
 import { xtermTheme } from './terminal/theme'
 import { setWidgetTheme, startWidgetHost } from './widgets/host'
 import { Sidebar } from './widgets/Sidebar'
-import { withPlacements } from './widgets/sidebarModel'
+import { visibleWidgets, withPlacements } from './widgets/sidebarModel'
 
 interface PickerState {
   mode: 'tab' | 'row' | 'column'
@@ -42,13 +42,24 @@ export function App(): React.JSX.Element {
   const [windowVisible, setWindowVisible] = useState(() => document.visibilityState === 'visible')
   const loaded = useRef(false)
 
+  // New widgets get a placement, so config.json lists every installed widget.
+  const sidebar = useMemo(
+    () => (sidebarState ? withPlacements(sidebarState, widgets) : null),
+    [sidebarState, widgets]
+  )
+  // A hidden widget's prompt waits until the widget is shown.
+  const prompt = useMemo(() => {
+    const shown = sidebar ? visibleWidgets(sidebar, widgets, windowVisible) : new Set<string>()
+    return prompts.find((p) => shown.has(p.widgetId)) ?? null
+  }, [sidebar, widgets, windowVisible, prompts])
+
   const layoutRef = useRef(layout)
   const pickerRef = useRef(picker)
-  const promptsRef = useRef(prompts)
+  const promptRef = useRef(prompt)
   useEffect(() => {
     layoutRef.current = layout
     pickerRef.current = picker
-    promptsRef.current = prompts
+    promptRef.current = prompt
   })
 
   // Load config and restore the saved layout (or open one shell tab).
@@ -76,10 +87,15 @@ export function App(): React.JSX.Element {
   useEffect(() => {
     startWidgetHost()
     let cancelled = false
-    void api.widgets.list().then((list) => {
-      if (!cancelled) setWidgets(list)
+    let pushed = false
+    const offChange = api.widgets.onChange((list) => {
+      pushed = true
+      setWidgets(list)
     })
-    const offChange = api.widgets.onChange(setWidgets)
+    // A change pushed while this is in flight is newer than its answer.
+    void api.widgets.list().then((list) => {
+      if (!cancelled && !pushed) setWidgets(list)
+    })
     const offPrompt = api.widgets.onSecretPrompt((p) => {
       setPrompts((ps) => [...ps, p])
     })
@@ -94,12 +110,6 @@ export function App(): React.JSX.Element {
       document.removeEventListener('visibilitychange', onVisibility)
     }
   }, [api])
-
-  // New widgets get a placement, so config.json lists every installed widget.
-  const sidebar = useMemo(
-    () => (sidebarState ? withPlacements(sidebarState, widgets) : null),
-    [sidebarState, widgets]
-  )
 
   useEffect(() => {
     if (!sidebar) return
@@ -215,7 +225,7 @@ export function App(): React.JSX.Element {
   // App shortcuts run in the capture phase, before xterm sees the key.
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
-      if (pickerRef.current || promptsRef.current.length > 0) return
+      if (pickerRef.current || promptRef.current) return
       const action = actionFor(keymap, e)
       if (!action) return
       e.preventDefault()
@@ -226,7 +236,7 @@ export function App(): React.JSX.Element {
     // Keys pressed while a widget has focus never reach this window; the
     // main process forwards Cmd chords instead.
     const offAppKey = api.onAppKey((key) => {
-      if (pickerRef.current || promptsRef.current.length > 0) return
+      if (pickerRef.current || promptRef.current) return
       const action = actionFor(keymap, key)
       if (action) runAction(action)
     })
@@ -251,8 +261,6 @@ export function App(): React.JSX.Element {
   )
 
   if (!config || !terminalTheme) return <div className="app" />
-
-  const prompt = prompts[0]
 
   return (
     <div className="app">

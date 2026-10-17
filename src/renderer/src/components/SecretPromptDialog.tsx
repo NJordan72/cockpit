@@ -14,10 +14,12 @@ interface Props {
  */
 export function SecretPromptDialog({ prompt, onAnswer }: Props): React.JSX.Element {
   const [value, setValue] = useState('')
-  const inputRef = useRef<HTMLInputElement>(null)
+  const formRef = useRef<HTMLFormElement>(null)
 
+  // Take focus away from the terminal, but not into the input: keys typed
+  // for a terminal must not end up in the secret, or submit it with Enter.
   useEffect(() => {
-    inputRef.current?.focus()
+    formRef.current?.focus()
   }, [])
 
   const trimmed = value.trim()
@@ -25,6 +27,8 @@ export function SecretPromptDialog({ prompt, onAnswer }: Props): React.JSX.Eleme
   return (
     <div className="picker-backdrop">
       <form
+        ref={formRef}
+        tabIndex={-1}
         className="secret-prompt"
         role="dialog"
         aria-label={`Secret for ${prompt.widgetName}`}
@@ -47,8 +51,8 @@ export function SecretPromptDialog({ prompt, onAnswer }: Props): React.JSX.Eleme
         </label>
         <input
           id="secret-input"
-          ref={inputRef}
           className="picker-input"
+          placeholder="Click here, then paste"
           type="password"
           autoComplete="off"
           spellCheck={false}

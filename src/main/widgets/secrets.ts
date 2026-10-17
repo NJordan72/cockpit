@@ -2,6 +2,7 @@
 // in the macOS Keychain), one file per widget and name under
 // ~/.cockpit/secrets/<widget id>/<name>.bin. Widgets only ever see secrets
 // they declare, and each widget has its own namespace.
+import { randomUUID } from 'node:crypto'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { safeStorage } from 'electron'
@@ -38,7 +39,8 @@ export class SecretStore {
     const dir = path.join(this.dir, widgetId)
     await fs.mkdir(dir, { recursive: true, mode: 0o700 })
     const file = this.file(widgetId, name)
-    const tmp = `${file}.tmp`
+    // Unique, so two writes of the same secret can't rename each other's file away.
+    const tmp = `${file}.${randomUUID()}.tmp`
     await fs.writeFile(tmp, blob, { mode: 0o600 })
     await fs.rename(tmp, file)
   }

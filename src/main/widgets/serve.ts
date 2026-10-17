@@ -34,8 +34,8 @@ export function widgetHeaders(widgetId: string): Record<string, string> {
     'x-dns-prefetch-control': 'off',
     'referrer-policy': 'no-referrer',
     // Widgets have an opaque origin, so module scripts from their own folder
-    // are cross-origin loads. Nothing can read these responses with fetch:
-    // widgets have connect-src 'none' and the chrome can't reach this scheme.
+    // are cross-origin loads. Only the widget itself can load these files
+    // (the chrome's CSP can't reach this scheme), and only its own.
     'access-control-allow-origin': '*'
   }
 }

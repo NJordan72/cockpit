@@ -160,7 +160,23 @@ function registerIpc(): void {
   })
 }
 
-void app.whenReady().then(() => {
+/**
+ * Nothing in a renderer needs the network: cockpit.fetch runs here in main,
+ * and links open in the browser. Sending the session through a proxy that
+ * doesn't exist cuts off what CSP can't, such as WebRTC to a TURN server
+ * (UDP is already off; see WidgetHost.attach). The dev server is on
+ * localhost, so loopback stays direct in dev.
+ */
+async function cutRendererNetwork(): Promise<void> {
+  const dev = !app.isPackaged && !!process.env.ELECTRON_RENDERER_URL
+  await session.defaultSession.setProxy({
+    mode: 'fixed_servers',
+    proxyRules: '127.0.0.1:9',
+    proxyBypassRules: dev ? '' : '<-loopback>'
+  })
+}
+
+void app.whenReady().then(async () => {
   // Chrome needs no browser permissions; widgets get theirs through the broker.
   app.on('web-contents-created', (_e, contents) => {
     contents.session.setPermissionRequestHandler((_wc, _perm, cb) => cb(false))
@@ -172,6 +188,7 @@ void app.whenReady().then(() => {
     return details.isMainFrame
   })
   session.defaultSession.setDevicePermissionHandler(() => false)
+  await cutRendererNetwork()
 
   config = new ConfigStore((c) => {
     mainWindow?.webContents.send(IPC.configChanged, c)

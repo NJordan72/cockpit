@@ -594,6 +594,10 @@ kbd {
   box-shadow: 0 16px 48px rgb(0 0 0 / 0.5);
 }
 
+.secret-prompt:focus {
+  outline: none;
+}
+
 .secret-title {
   margin-bottom: 10px;
 }

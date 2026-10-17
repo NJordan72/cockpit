@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { Fragment, useMemo, useRef, useState } from 'react'
 import { SIDEBAR_MAX_WIDTH, SIDEBAR_MIN_WIDTH, type SidebarSettings } from '@shared/config'
 import type { WidgetInfo } from '@shared/widgets'
 import {
@@ -6,6 +6,7 @@ import {
   dragPair,
   placeWidgets,
   updatePlacement,
+  visibleWidgets,
   type PlacedWidget
 } from './sidebarModel'
 import { WidgetFrame } from './WidgetFrame'
@@ -50,6 +51,10 @@ export function Sidebar({ widgets, settings, windowVisible, onChange }: Props): 
   const bodyRef = useRef<HTMLDivElement>(null)
   const tabs = settings.mode === 'tabs'
   const active = activeWidgetId(settings, placed)
+  const visibleIds = useMemo(
+    () => visibleWidgets(settings, widgets, windowVisible),
+    [settings, widgets, windowVisible]
+  )
 
   const reload = (id: string): void => {
     setReloads((r) => ({ ...r, [id]: (r[id] ?? 0) + 1 }))
@@ -146,7 +151,7 @@ export function Sidebar({ widgets, settings, windowVisible, onChange }: Props): 
           const { manifest } = info
           const collapsed = !tabs && placement.collapsed
           const shown = tabs ? info.id === active : true
-          const visible = windowVisible && settings.visible && shown && !collapsed
+          const visible = visibleIds.has(info.id)
           const content = manifest?.sizing === 'content'
           const style: React.CSSProperties = tabs
             ? { flex: '1 1 0px' }
@@ -154,64 +159,63 @@ export function Sidebar({ widgets, settings, windowVisible, onChange }: Props): 
               ? { flex: 'none' }
               : { flex: `${placement.size} 1 0px`, minHeight: MIN_WIDGET_HEIGHT }
           const next = placed[i + 1]
-          return [
-            <section
-              key={info.id}
-              data-widget={info.id}
-              className={`widget${collapsed ? ' collapsed' : ''}${shown ? '' : ' hidden'}`}
-              style={style}
-            >
-              {!tabs && (
-                <header className="widget-head">
-                  <button
-                    type="button"
-                    className="widget-toggle"
-                    aria-expanded={!collapsed}
-                    title={collapsed ? 'Expand' : 'Collapse'}
-                    onClick={() =>
-                      onChange(updatePlacement(settings, info.id, { collapsed: !collapsed }))
-                    }
-                  >
-                    {collapsed ? '▸' : '▾'}
-                  </button>
-                  <span className="widget-name" title={info.dir}>
-                    {manifest?.name ?? info.id}
-                  </span>
-                  <button
-                    type="button"
-                    className="icon"
-                    title="Reload widget"
-                    onClick={() => reload(info.id)}
-                  >
-                    ↻
-                  </button>
-                </header>
-              )}
-              <div className="widget-body">
-                {manifest ? (
-                  <WidgetFrame
-                    key={`${info.revision}:${reloads[info.id] ?? 0}`}
-                    id={info.id}
-                    manifest={manifest}
-                    visible={visible}
-                  />
-                ) : (
-                  <div className="widget-error">
-                    <strong>{info.id} could not be loaded</strong>
-                    <p>{info.error}</p>
-                    <p className="widget-dir">{info.dir}</p>
-                  </div>
+          // Keyed by widget, so removing or reordering one doesn't remount
+          // (and reload) the widgets after it.
+          return (
+            <Fragment key={info.id}>
+              <section
+                data-widget={info.id}
+                className={`widget${collapsed ? ' collapsed' : ''}${shown ? '' : ' hidden'}`}
+                style={style}
+              >
+                {!tabs && (
+                  <header className="widget-head">
+                    <button
+                      type="button"
+                      className="widget-toggle"
+                      aria-expanded={!collapsed}
+                      title={collapsed ? 'Expand' : 'Collapse'}
+                      onClick={() =>
+                        onChange(updatePlacement(settings, info.id, { collapsed: !collapsed }))
+                      }
+                    >
+                      {collapsed ? '▸' : '▾'}
+                    </button>
+                    <span className="widget-name" title={info.dir}>
+                      {manifest?.name ?? info.id}
+                    </span>
+                    <button
+                      type="button"
+                      className="icon"
+                      title="Reload widget"
+                      onClick={() => reload(info.id)}
+                    >
+                      ↻
+                    </button>
+                  </header>
                 )}
-              </div>
-            </section>,
-            !tabs && fills(p) && fills(next) && (
-              <div
-                key={`${info.id}:divider`}
-                className="widget-divider"
-                onPointerDown={(e) => startPairDrag(e, p, next)}
-              />
-            )
-          ]
+                <div className="widget-body">
+                  {manifest ? (
+                    <WidgetFrame
+                      key={`${info.revision}:${reloads[info.id] ?? 0}`}
+                      id={info.id}
+                      manifest={manifest}
+                      visible={visible}
+                    />
+                  ) : (
+                    <div className="widget-error">
+                      <strong>{info.id} could not be loaded</strong>
+                      <p>{info.error}</p>
+                      <p className="widget-dir">{info.dir}</p>
+                    </div>
+                  )}
+                </div>
+              </section>
+              {!tabs && fills(p) && fills(next) && (
+                <div className="widget-divider" onPointerDown={(e) => startPairDrag(e, p, next)} />
+              )}
+            </Fragment>
+          )
         })}
       </div>
     </aside>

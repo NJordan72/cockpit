@@ -134,7 +134,10 @@ export class WidgetRegistry {
 
     const root = fs.realpathSync(full)
     if (!WIDGET_ID.test(name)) {
-      return fail('folder name must be lowercase letters, digits, and dashes', root)
+      return fail(
+        'folder name must be lowercase letters, digits, and dashes, starting with a letter',
+        root
+      )
     }
     let text: string
     try {

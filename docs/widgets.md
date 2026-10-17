@@ -19,6 +19,9 @@ ln -s ~/dev/my-widget ~/.cockpit/widgets/my-widget
 examples/widgets/install.sh hello    # links an example the same way
 ```
 
+Symlinks inside a widget's folder are followed only when they point somewhere
+inside that folder.
+
 When any file in a widget's folder changes, Cockpit reloads that widget. Files
 whose names start with a dot are ignored. A widget that can't be loaded (bad
 JSON, a missing entry file, an id that doesn't match the folder) still shows up
@@ -55,7 +58,7 @@ Where things live:
 
 | Field         | Required | Meaning                                                                                                                                        |
 | ------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| `id`          | yes      | Lowercase letters, digits, and dashes. Must equal the folder name.                                                                             |
+| `id`          | yes      | Lowercase letters, digits, and dashes, starting with a letter (at most 63). Must equal the folder name.                                        |
 | `name`        | yes      | Shown in the sidebar and in secret prompts.                                                                                                    |
 | `version`     | no       | Shown to the widget as `cockpit.widget.version`. Default `0.0.0`.                                                                              |
 | `description` | no       | For people reading the manifest.                                                                                                               |
@@ -112,6 +115,9 @@ In practice:
   inline. Module scripts (`<script type="module">`) work.
 - Nothing loads from the network. `fetch`, `XMLHttpRequest`, WebSockets,
   remote images, and remote fonts are all blocked. Use `cockpit.fetch`.
+- WebRTC connects nowhere. CSP doesn't cover it, so Cockpit sends the
+  browser side of the app through a proxy that doesn't exist (the main
+  process, where `cockpit.fetch` runs, isn't affected).
 - `localStorage`, `sessionStorage`, IndexedDB, and cookies are unavailable
   because the origin is opaque. Use `cockpit.storage`.
 - Forms can't be submitted, and pressing Enter in an input doesn't fire
@@ -214,6 +220,11 @@ macOS Keychain.
   and resolves with that. If the user cancels, `get` rejects with `cancelled`.
   The widget can trigger the prompt but never draws it, and `get` waits for as
   long as the prompt stays open.
+- The prompt only appears while the widget is visible. A hidden widget's
+  prompt waits until the widget is shown.
+- For 10 seconds after the user cancels a prompt, that widget's `get` calls
+  that would prompt reject with `cancelled` straight away, so a widget can't
+  ask in a loop.
 - `get(name, { prompt: false })` resolves with `null` instead of prompting.
 - `set(name, value)` stores a value the widget got some other way.
 - `delete(name)` removes it, so the next `get` prompts again. Use this when a

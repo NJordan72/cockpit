@@ -46,6 +46,10 @@ describe('parseManifest', () => {
 
   it.each([
     [{ id: 'Bad_Id' }, '"id"'],
+    [{ id: '123' }, '"id"'],
+    [{ id: '0x10' }, '"id"'],
+    [{ id: 'xn--abc' }, '"id"'],
+    [{ id: 'a'.repeat(64) }, '"id"'],
     [{ name: '' }, '"name"'],
     [{ entry: '../outside.html' }, '"entry"'],
     [{ entry: '/abs.html' }, '"entry"'],

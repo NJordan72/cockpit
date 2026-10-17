@@ -31,6 +31,8 @@ import { SecretStore } from './secrets'
 import { contentType, injectIntoHtml, injection, resolveWidgetFile, widgetHeaders } from './serve'
 import { WidgetStorage } from './storage'
 
+const PROMPT_COOLDOWN_MS = 10_000
+
 /** Must run before the app is ready. */
 export function registerWidgetScheme(): void {
   protocol.registerSchemesAsPrivileged([
@@ -58,8 +60,10 @@ export class WidgetHost {
   private readonly broker: WidgetBroker
   /** The chrome that shows the sidebar. One window, so one target. */
   private target: WebContents | null = null
-  private prompts = new Map<string, (value: string | null) => void>()
+  private prompts = new Map<string, { widgetId: string; resolve: (v: string | null) => void }>()
   private openPrompts = new Map<string, Promise<string | null>>()
+  /** When the user last dismissed a prompt from each widget. */
+  private dismissedAt = new Map<string, number>()
   private lastSessions = ''
 
   constructor(private readonly opts: WidgetHostOptions) {
@@ -131,7 +135,7 @@ export class WidgetHost {
   /** The chrome went away or reloaded; nobody is left to answer prompts. */
   detach(wc: WebContents): void {
     if (this.target !== wc) return
-    for (const resolve of this.prompts.values()) resolve(null)
+    for (const { resolve } of this.prompts.values()) resolve(null)
     this.prompts.clear()
     this.lastSessions = ''
   }
@@ -160,10 +164,12 @@ export class WidgetHost {
     })
     ipcMain.on(IPC.secretAnswer, (e, promptId: unknown, value: unknown) => {
       if (!trusted(e) || typeof promptId !== 'string') return
-      const resolve = this.prompts.get(promptId)
-      if (!resolve) return
+      const pending = this.prompts.get(promptId)
+      if (!pending) return
       this.prompts.delete(promptId)
-      resolve(typeof value === 'string' && value !== '' ? value : null)
+      const answer = typeof value === 'string' && value !== '' ? value : null
+      if (answer === null) this.dismissedAt.set(pending.widgetId, Date.now())
+      pending.resolve(answer)
     })
   }
 
@@ -171,6 +177,11 @@ export class WidgetHost {
     const wc = this.target
     const manifest = widget.parsed?.manifest
     if (!wc || wc.isDestroyed() || !manifest) return Promise.resolve(null)
+    // A widget that asks again right after the user said no is refused for a
+    // while, so a widget asking in a loop can't keep the window covered.
+    if (Date.now() - (this.dismissedAt.get(manifest.id) ?? 0) < PROMPT_COOLDOWN_MS) {
+      return Promise.resolve(null)
+    }
     // Several calls waiting for the same secret share one prompt.
     const key = `${manifest.id}/${name}`
     const open = this.openPrompts.get(key)
@@ -182,7 +193,7 @@ export class WidgetHost {
       name
     }
     const answer = new Promise<string | null>((resolve) => {
-      this.prompts.set(prompt.promptId, resolve)
+      this.prompts.set(prompt.promptId, { widgetId: manifest.id, resolve })
     }).finally(() => this.openPrompts.delete(key))
     this.openPrompts.set(key, answer)
     wc.send(IPC.secretPrompt, prompt)
@@ -210,6 +221,8 @@ export class WidgetHost {
     if (!file) return text(404, 'not found')
     let body: Buffer
     try {
+      // A symlink inside the folder must not lead out of it.
+      if (!(await fs.realpath(file)).startsWith(widget.root + path.sep)) throw new Error('outside')
       body = await fs.readFile(file)
     } catch {
       return text(404, `not found: ${pathname}`)

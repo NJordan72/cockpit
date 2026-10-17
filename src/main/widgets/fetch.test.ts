@@ -35,6 +35,10 @@ beforeAll(async () => {
         res.writeHead(302, { location: `http://localhost:${port}/echo` })
         res.end()
         return
+      case '/bad-location':
+        res.writeHead(302, { location: 'http://[bad' })
+        res.end()
+        return
       case '/loop':
         res.writeHead(302, { location: '/loop' })
         res.end()
@@ -104,6 +108,12 @@ describe('brokerFetch', () => {
     })
   })
 
+  it('reports a malformed redirect as a network error', async () => {
+    await expect(brokerFetch(`${base}/bad-location`, undefined, policy())).rejects.toMatchObject({
+      code: 'network_error'
+    })
+  })
+
   it('stops redirect loops', async () => {
     await expect(brokerFetch(`${base}/loop`, undefined, policy())).rejects.toMatchObject({
       code: 'network_error'
@@ -135,6 +145,9 @@ describe('brokerFetch', () => {
     await expect(brokerFetch(`${base}/echo`, { method: 'TRACE' }, policy())).rejects.toMatchObject({
       code: 'invalid_argument'
     })
+    await expect(
+      brokerFetch(`${base}/echo`, { method: 7 as unknown as string }, policy())
+    ).rejects.toMatchObject({ code: 'invalid_argument' })
   })
 
   it('reports connection failures as network errors', async () => {

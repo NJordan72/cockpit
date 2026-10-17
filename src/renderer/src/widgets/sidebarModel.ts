@@ -49,6 +49,24 @@ export function updatePlacement(
   return { ...settings, widgets }
 }
 
+/**
+ * Widgets the user can see: the window and the sidebar are showing, and the
+ * widget is expanded (stack mode) or the selected tab (tabs mode).
+ */
+export function visibleWidgets(
+  settings: SidebarSettings,
+  installed: WidgetInfo[],
+  windowVisible: boolean
+): Set<string> {
+  if (!windowVisible || !settings.visible) return new Set()
+  const placed = placeWidgets(settings, installed)
+  if (settings.mode === 'tabs') {
+    const active = activeWidgetId(settings, placed)
+    return new Set(active ? [active] : [])
+  }
+  return new Set(placed.filter((p) => !p.placement.collapsed).map((p) => p.info.id))
+}
+
 /** The widget shown in tabs mode. */
 export function activeWidgetId(settings: SidebarSettings, placed: PlacedWidget[]): string | null {
   const wanted = settings.activeWidget

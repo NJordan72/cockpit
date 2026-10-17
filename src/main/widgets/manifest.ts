@@ -5,8 +5,12 @@ import { parseHostPattern, parseUrlPattern, type HostPattern, type UrlPattern } 
 
 export const MANIFEST_FILE = 'widget.json'
 
-/** A widget id is a folder name and a URL host, so it's a lowercase DNS label. */
-export const WIDGET_ID = /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/
+/**
+ * A widget id is a folder name and a URL host, so it's a lowercase DNS label.
+ * It starts with a letter because Chromium rewrites hosts that look like
+ * numbers (123, 0x10) as IP addresses, and xn-- labels as punycode.
+ */
+export const WIDGET_ID = /^(?!xn--)[a-z](?:[a-z0-9-]{0,61}[a-z0-9])?$/
 export const SECRET_NAME = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$/
 
 export interface ParsedManifest {
@@ -50,7 +54,7 @@ export function parseManifest(raw: unknown, folder: string): ParsedManifest {
   if (!isObj(raw)) throw new Error(`${MANIFEST_FILE} must contain a JSON object`)
 
   if (typeof raw.id !== 'string' || !WIDGET_ID.test(raw.id)) {
-    throw new Error('"id" must be lowercase letters, digits, and dashes')
+    throw new Error('"id" must be lowercase letters, digits, and dashes, starting with a letter')
   }
   if (raw.id !== folder) {
     throw new Error(`"id" is "${raw.id}" but the folder is named "${folder}"; they must match`)

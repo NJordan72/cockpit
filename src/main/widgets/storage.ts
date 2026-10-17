@@ -23,6 +23,9 @@ const toJson = JSON.stringify as (value: unknown) => string | undefined
 
 const isObj = (v: unknown): v is Data => typeof v === 'object' && v !== null && !Array.isArray(v)
 
+/** Own properties only, so keys like "toString" and "__proto__" are plain keys. */
+const own = (data: Data, key: string): unknown => (Object.hasOwn(data, key) ? data[key] : undefined)
+
 function checkKey(key: unknown): string {
   if (typeof key !== 'string' || key.length === 0 || key.length > MAX_KEY_LENGTH) {
     throw new WidgetCallError(
@@ -34,6 +37,7 @@ function checkKey(key: unknown): string {
 }
 
 export class WidgetStorage {
+  /** What each widget's file held when last read or written. */
   private cache = new Map<string, Entry>()
   private watcher: fs.FSWatcher | null = null
   private timers = new Map<string, NodeJS.Timeout>()
@@ -44,17 +48,18 @@ export class WidgetStorage {
   ) {}
 
   get(widgetId: string, key: unknown): unknown {
-    return this.load(widgetId).data[checkKey(key)]
+    return own(this.current(widgetId, false).data, checkKey(key))
   }
 
   keys(widgetId: string): string[] {
-    return Object.keys(this.load(widgetId).data)
+    return Object.keys(this.current(widgetId, false).data)
   }
 
   /** `undefined` removes the key. Values are stored as JSON. */
   set(widgetId: string, key: unknown, value: unknown): void {
     const k = checkKey(key)
-    const entry = this.load(widgetId)
+    // Read the file first, so an edit made since the last read isn't lost.
+    const entry = this.current(widgetId, true)
     let json: string | undefined
     try {
       json = toJson(value)
@@ -64,9 +69,12 @@ export class WidgetStorage {
         `storage value for "${k}" is not JSON: ${(err as Error).message}`
       )
     }
-    const next: Data = Object.fromEntries(Object.entries(entry.data).filter(([key]) => key !== k))
-    if (json !== undefined) next[k] = JSON.parse(json) as unknown
-    if (JSON.stringify(entry.data[k]) === JSON.stringify(next[k])) return
+    const rest = Object.entries(entry.data).filter(([other]) => other !== k)
+    // fromEntries defines own properties, even for a key named __proto__.
+    const next: Data = Object.fromEntries(
+      json === undefined ? rest : [...rest, [k, JSON.parse(json) as unknown]]
+    )
+    if (JSON.stringify(own(entry.data, k)) === JSON.stringify(own(next, k))) return
     const text = JSON.stringify(next, null, 2) + '\n'
     if (Buffer.byteLength(text) > MAX_STORAGE_BYTES) {
       throw new WidgetCallError(
@@ -76,20 +84,21 @@ export class WidgetStorage {
     }
     this.write(widgetId, text)
     this.cache.set(widgetId, { data: next, text })
-    this.onChange(widgetId, k, next[k])
+    this.onChange(widgetId, k, own(next, k))
   }
 
   watch(): void {
     fs.mkdirSync(this.dir, { recursive: true })
     this.watcher = fs.watch(this.dir, (_event, name) => {
       const id = name?.endsWith('.json') ? name.slice(0, -5) : null
-      if (!id) return
+      // Widgets that haven't used storage yet have nothing to compare against.
+      if (!id || !this.cache.has(id)) return
       clearTimeout(this.timers.get(id))
       this.timers.set(
         id,
         setTimeout(() => {
           this.timers.delete(id)
-          this.reload(id)
+          this.current(id, false)
         }, 100)
       )
     })
@@ -105,57 +114,45 @@ export class WidgetStorage {
     return path.join(this.dir, `${widgetId}.json`)
   }
 
-  private load(widgetId: string): Entry {
-    let entry = this.cache.get(widgetId)
-    if (!entry) {
-      entry = this.read(widgetId) ?? { data: {}, text: '' }
-      this.cache.set(widgetId, entry)
-    }
-    return entry
-  }
-
-  private read(widgetId: string): Entry | null {
-    let text: string
-    try {
-      text = fs.readFileSync(this.file(widgetId), 'utf8')
-    } catch {
-      return null
-    }
-    try {
-      const data: unknown = JSON.parse(text)
-      return { data: isObj(data) ? data : {}, text }
-    } catch {
-      return null
-    }
-  }
-
-  /** Someone else changed the file: report each key that differs. */
-  private reload(widgetId: string): void {
+  /**
+   * The widget's data as the file holds it now. If something else changed
+   * the file since the last read, each key that differs is reported. A file
+   * that isn't a JSON object is refused when `strict` (so a write can't
+   * replace it) and otherwise read as the last good data.
+   */
+  private current(widgetId: string, strict: boolean): Entry {
     const before = this.cache.get(widgetId)
-    if (!before) return // not loaded yet; the first get reads it fresh
     let text = ''
     try {
       text = fs.readFileSync(this.file(widgetId), 'utf8')
     } catch {
-      // deleted: treat as empty
+      // missing: empty
     }
-    if (text === before.text) return
+    if (before?.text === text) return before
     let data: Data = {}
-    if (text) {
-      try {
-        const parsed: unknown = JSON.parse(text)
-        data = isObj(parsed) ? parsed : {}
-      } catch {
-        return // mid-write or a typo; wait for the next save
+    try {
+      const parsed: unknown = text.trim() ? JSON.parse(text) : {}
+      if (!isObj(parsed)) throw new Error('not an object')
+      data = parsed
+    } catch {
+      if (strict) {
+        throw new WidgetCallError(
+          'unavailable',
+          `${this.file(widgetId)} is not a JSON object; fix or delete it`
+        )
+      }
+      return before ?? { data, text: '' }
+    }
+    const entry = { data, text }
+    this.cache.set(widgetId, entry)
+    if (before) {
+      for (const key of new Set([...Object.keys(before.data), ...Object.keys(data)])) {
+        if (JSON.stringify(own(before.data, key)) !== JSON.stringify(own(data, key))) {
+          this.onChange(widgetId, key, own(data, key))
+        }
       }
     }
-    this.cache.set(widgetId, { data, text })
-    const keys = new Set([...Object.keys(before.data), ...Object.keys(data)])
-    for (const key of keys) {
-      if (JSON.stringify(before.data[key]) !== JSON.stringify(data[key])) {
-        this.onChange(widgetId, key, data[key])
-      }
-    }
+    return entry
   }
 
   private write(widgetId: string, text: string): void {

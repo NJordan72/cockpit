@@ -96,7 +96,11 @@ export async function brokerFetch(
     throw new WidgetCallError('invalid_argument', 'fetch: url must be a string')
   let url = checkUrl(rawUrl, policy, 'fetch')
 
-  let method = (init?.method ?? 'GET').toUpperCase()
+  const rawMethod: unknown = init?.method ?? 'GET'
+  if (typeof rawMethod !== 'string') {
+    throw new WidgetCallError('invalid_argument', 'fetch: method must be a string')
+  }
+  let method = rawMethod.toUpperCase()
   if (!/^[A-Z]+$/.test(method) || FORBIDDEN_METHODS.has(method)) {
     throw new WidgetCallError('invalid_argument', `fetch: method ${method} is not allowed`)
   }
@@ -128,7 +132,13 @@ export async function brokerFetch(
       if (hop >= MAX_REDIRECTS) {
         throw new WidgetCallError('network_error', `fetch: more than ${MAX_REDIRECTS} redirects`)
       }
-      url = checkUrl(new URL(location, url).href, policy, 'fetch: redirect')
+      let next: URL
+      try {
+        next = new URL(location, url)
+      } catch {
+        throw new WidgetCallError('network_error', `fetch: ${url.host} redirected to a bad URL`)
+      }
+      url = checkUrl(next.href, policy, 'fetch: redirect')
       if (res.status === 303 || ((res.status === 301 || res.status === 302) && method === 'POST')) {
         if (method !== 'HEAD') method = 'GET'
         body = undefined

@@ -68,11 +68,36 @@ describe('WidgetStorage', () => {
     expect(storage.keys('hello')).toEqual([])
   })
 
-  it('treats a corrupt file as empty', () => {
-    fs.writeFileSync(path.join(dir, 'hello.json'), '{not json')
+  it('reads a corrupt file as empty but refuses to overwrite it', () => {
+    const file = path.join(dir, 'hello.json')
+    fs.writeFileSync(file, '{"a": 1,')
     expect(storage.get('hello', 'a')).toBeUndefined()
+    expect(() => storage.set('hello', 'b', 2)).toThrow('not a JSON object')
+    expect(fs.readFileSync(file, 'utf8')).toBe('{"a": 1,')
+    fs.writeFileSync(file, '{"a": 1}')
+    storage.set('hello', 'b', 2)
+    expect(JSON.parse(fs.readFileSync(file, 'utf8'))).toEqual({ a: 1, b: 2 })
+  })
+
+  it('keeps an edit made just before a set', () => {
     storage.set('hello', 'a', 1)
-    expect(storage.get('hello', 'a')).toBe(1)
+    fs.writeFileSync(path.join(dir, 'hello.json'), JSON.stringify({ a: 1, edited: true }))
+    changes = []
+    storage.set('hello', 'b', 2)
+    expect(storage.get('hello', 'edited')).toBe(true)
+    expect(changes).toEqual([
+      ['hello', 'edited', true],
+      ['hello', 'b', 2]
+    ])
+  })
+
+  it('treats keys like __proto__ and toString as plain keys', () => {
+    expect(storage.get('hello', 'toString')).toBeUndefined()
+    storage.set('hello', '__proto__', { x: 1 })
+    storage.set('hello', 'toString', 'fine')
+    expect(storage.get('hello', '__proto__')).toEqual({ x: 1 })
+    expect(storage.keys('hello').sort()).toEqual(['__proto__', 'toString'])
+    expect(new WidgetStorage(dir, () => undefined).get('hello', '__proto__')).toEqual({ x: 1 })
   })
 
   it('picks up edits made to the file by something else', async () => {
