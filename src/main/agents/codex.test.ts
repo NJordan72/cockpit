@@ -1,0 +1,97 @@
+import { describe, expect, it } from 'vitest'
+import { codexTitleState, CodexWatcher, OscScanner, parseCodexNotification } from './codex'
+
+const title = (t: string): string => `\x1b]0;${t}\x07`
+const notify = (t: string): string => `\x1b]9;${t}\x07`
+
+describe('OscScanner', () => {
+  it('finds sequences ended by BEL or ST among other output', () => {
+    const s = new OscScanner()
+    expect(s.feed(`plain \x1b[1mbold\x1b[0m ${title('Ready')} more \x1b]9;hi\x1b\\ end`)).toEqual([
+      { code: 0, text: 'Ready' },
+      { code: 9, text: 'hi' }
+    ])
+  })
+
+  it('joins a sequence split across chunks, even at the ESC', () => {
+    const s = new OscScanner()
+    expect(s.feed('abc \x1b')).toEqual([])
+    expect(s.feed(']0;Work')).toEqual([])
+    expect(s.feed('ing\x07 tail')).toEqual([{ code: 0, text: 'Working' }])
+  })
+
+  it('drops a sequence that another escape interrupts', () => {
+    const s = new OscScanner()
+    expect(s.feed('\x1b]0;half\x1b[2J' + title('Ready'))).toEqual([{ code: 0, text: 'Ready' }])
+  })
+
+  it('gives up on a sequence that never ends', () => {
+    const s = new OscScanner()
+    s.feed('\x1b]0;' + 'x'.repeat(10_000))
+    expect(s.feed(title('Ready'))).toEqual([{ code: 0, text: 'Ready' }])
+  })
+})
+
+describe('codexTitleState', () => {
+  it('reads the run state', () => {
+    expect(codexTitleState('⠋ Working')).toBe('working')
+    expect(codexTitleState('⠙ Thinking')).toBe('working')
+    expect(codexTitleState('Waiting')).toBe('working')
+    expect(codexTitleState('Ready')).toBe('ready')
+    expect(codexTitleState('Starting')).toBe('ready')
+    expect(codexTitleState('[ ! ] Action Required | Working')).toBe('waiting')
+    expect(codexTitleState('[ . ] Action Required')).toBe('waiting')
+    expect(codexTitleState('')).toBeNull()
+    expect(codexTitleState('~/dev/cockpit')).toBeNull()
+  })
+})
+
+describe('parseCodexNotification', () => {
+  it('tells requests from finished turns', () => {
+    expect(parseCodexNotification('Approval requested: rm -rf build')).toMatchObject({
+      kind: 'waiting',
+      message: 'Approval requested: rm -rf build'
+    })
+    expect(parseCodexNotification('Codex wants to edit src/a.ts')).toMatchObject({
+      kind: 'waiting'
+    })
+    expect(parseCodexNotification('Question: Which branch?')).toMatchObject({ kind: 'waiting' })
+    expect(parseCodexNotification('Done. Tests pass.')).toEqual({
+      kind: 'done',
+      message: 'Done. Tests pass.'
+    })
+    expect(parseCodexNotification('Agent turn complete')).toEqual({ kind: 'done', message: null })
+  })
+})
+
+describe('CodexWatcher', () => {
+  const kinds = (w: CodexWatcher, chunk: string): string[] =>
+    w.feed(chunk).map((r) => r.signal.kind)
+
+  it('reports a change of state once, not every spinner frame', () => {
+    const w = new CodexWatcher()
+    expect(kinds(w, title('Ready'))).toEqual(['idle'])
+    expect(kinds(w, title('⠋ Working'))).toEqual(['working'])
+    expect(kinds(w, title('⠙ Working') + title('⠹ Thinking'))).toEqual([])
+    expect(kinds(w, title('Ready') + notify('All done'))).toEqual(['idle', 'done'])
+  })
+
+  it("doesn't let a stale frame undo an approval request", () => {
+    const w = new CodexWatcher()
+    w.feed(title('⠋ Working'))
+    // The notification can land before the title catches up.
+    const reports = w.feed(notify('Approval requested: make') + title('⠙ Working'))
+    expect(reports.map((r) => r.signal)).toEqual([
+      { kind: 'waiting', key: null, message: 'Approval requested: make' }
+    ])
+    expect(w.feed(title('[ ! ] Action Required')).map((r) => r.signal)).toEqual([
+      { kind: 'waiting', key: null, message: null }
+    ])
+    expect(kinds(w, title('⠋ Working'))).toEqual(['working'])
+  })
+
+  it('ignores progress reports and other OSC codes', () => {
+    const w = new CodexWatcher()
+    expect(kinds(w, '\x1b]9;4;1;50\x07\x1b]8;;https://x\x07link\x1b]8;;\x07')).toEqual([])
+  })
+})

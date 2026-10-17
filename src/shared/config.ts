@@ -87,6 +87,8 @@ export interface SidebarSettings {
   mode: 'stack' | 'tabs'
   /** The widget shown in tabs mode. */
   activeWidget: string | null
+  /** The session list at the top of the sidebar is folded away. */
+  sessionsCollapsed: boolean
   /** Order and state of widgets. Installed widgets missing here are appended. */
   widgets: WidgetPlacement[]
 }
@@ -145,7 +147,14 @@ export const SIDEBAR_MIN_WIDTH = 180
 export const SIDEBAR_MAX_WIDTH = 900
 
 export function defaultSidebar(): SidebarSettings {
-  return { visible: true, width: 320, mode: 'stack', activeWidget: null, widgets: [] }
+  return {
+    visible: true,
+    width: 320,
+    mode: 'stack',
+    activeWidget: null,
+    sessionsCollapsed: false,
+    widgets: []
+  }
 }
 
 export function defaultConfig(): CockpitConfig {
@@ -277,6 +286,7 @@ export function readSidebar(v: unknown): SidebarSettings {
     width,
     mode: v.mode === 'tabs' ? 'tabs' : 'stack',
     activeWidget: nonEmpty(v.activeWidget) ? v.activeWidget : null,
+    sessionsCollapsed: v.sessionsCollapsed === true,
     widgets
   }
 }

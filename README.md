@@ -52,6 +52,52 @@ to restart it.
 | Cmd+1 … Cmd+9       | Go to tab                   |
 | Cmd+B               | Show or hide the sidebar    |
 
+## Agent awareness
+
+Every pane has a status: **idle**, **working**, **needs input**, **done**
+(finished a turn you haven't looked at), or **exited**. A tab shows a dot for
+the most urgent status among its panes (idle gets none), and the **Sessions**
+list at the top of the sidebar shows every pane with its status, Claude Code's
+title for the conversation, and how many tokens its context holds. Click a
+session to jump to it. When a pane goes to needs input or done while
+Cockpit's window isn't focused, macOS shows a notification; clicking it
+focuses that pane. The Dock icon's badge counts the panes that need you.
+
+How each kind of pane is followed:
+
+- **Claude Code** (a preset whose command starts with `claude`): Cockpit adds
+  `--settings ~/.cockpit/agents/claude-settings.json`, which registers hooks
+  (SessionStart, UserPromptSubmit, PreToolUse, PermissionRequest, PostToolUse,
+  Notification, Stop, and a few more) that run `~/.cockpit/agents/cockpit-hook`.
+  The script sends each hook's payload to a Unix socket under
+  `~/.cockpit/run/` and prints nothing, so Claude behaves exactly as before.
+  These hooks add to your own; `~/.claude/settings.json` isn't touched.
+  Claude holds hooks back in a folder you haven't trusted yet.
+- **Codex** (a command starting with `codex`): Cockpit adds `-c` overrides
+  that make Codex put its run state in the terminal title and send OSC 9
+  notifications when a turn ends or it wants approval, and reads both from the
+  pane's output. `~/.codex/config.toml` isn't touched. Any `-c` makes Codex
+  run without its shared background server (it says so in a startup warning),
+  so these sessions don't show up in `codex agents`.
+- **Anything else**: a pane that keeps printing for a second is working, and
+  one that has been quiet for a few seconds is idle. Typing and redraws after
+  a resize don't count.
+
+Agent awareness needs the preset's command to start with `claude` or `codex`
+(optionally after `VAR=value` settings). Running `claude` by hand in a Shell
+pane gets the output heuristic only. Interrupting a turn with Esc sends no
+hook, so an interrupted Claude turn turns idle once its spinner has been still
+for 10 seconds.
+
+Notifications need macOS to allow them for the app. The unsigned development
+build (`bun run dev`, `bun run start`) runs as "Electron", which macOS 27
+refuses ("UNErrorDomain error 1"); Cockpit then bounces the Dock icon instead
+and logs a warning once.
+
+Set `COCKPIT_AGENT_LOG=/path/to/file` to log every agent event and what it
+did to the pane's status (event names and statuses only; no payloads or
+message text).
+
 ## Widgets
 
 The sidebar on the right holds widgets: small HTML pages, each in its own
@@ -132,13 +178,20 @@ uses typescript-eslint's `strictTypeChecked` rules with zero warnings allowed.
 
 `scripts/drive.mjs` launches the built app through Playwright and takes
 commands on stdin (`launch`, `relaunch`, `type`, `press`, `nkey`, `click`,
-`drag`, `screen`, `panes`, `layout`, `size`, `ss`, `resize`, `clipboard`,
-`eval`, `widgets`, `weval`, `wclick`, `wtext`, `secret`, `stubopen`, `opened`,
-`quit`). The `w` commands act inside a widget's frame, and `secret` answers
-the host's secret prompt (`secret $VAR` reads the value from the environment
-without printing it). It starts the app with a bare, Dock-like environment
-(`DRIVE_INHERIT_ENV=1` passes yours through). Point `COCKPIT_HOME` at a scratch
-directory to keep your real config out of it:
+`drag`, `sleep`, `screen`, `panes`, `layout`, `size`, `ss`, `resize`,
+`clipboard`, `eval`, `widgets`, `weval`, `wclick`, `wtext`, `secret`,
+`stubopen`, `opened`, `sessions`, `stubnotify`, `watchnotify`, `notes`,
+`clicknote`, `badge`, `blur`, `focus`, `focused`, `hide`, `unhide`, `quit`).
+The `w` commands act inside a widget's frame, and `secret` answers the host's
+secret prompt (`secret $VAR` reads the value from the environment without
+printing it). `sessions` prints each pane's status. `stubnotify` records
+notifications instead of showing them, `watchnotify` records them and shows
+them for real (noting whether macOS did), `notes` lists them, and
+`clicknote 0` clicks one. `blur` and `hide` take focus away from the window,
+the way switching apps does. It starts the app with a bare, Dock-like environment
+(`DRIVE_INHERIT_ENV=1` passes yours through; `COCKPIT_HOME` and
+`COCKPIT_AGENT_LOG` always pass). Point `COCKPIT_HOME` at a scratch directory
+to keep your real config out of it:
 
 ```sh
 bun run build && COCKPIT_HOME=/tmp/cockpit-test node scripts/drive.mjs

@@ -1,6 +1,8 @@
 import { Fragment, useMemo, useRef, useState } from 'react'
 import { SIDEBAR_MAX_WIDTH, SIDEBAR_MIN_WIDTH, type SidebarSettings } from '@shared/config'
+import type { PaneSession } from '@shared/ipc'
 import type { WidgetInfo } from '@shared/widgets'
+import { SessionList } from '../components/SessionList'
 import {
   activeWidgetId,
   dragPair,
@@ -13,6 +15,8 @@ import { WidgetFrame } from './WidgetFrame'
 
 interface Props {
   widgets: WidgetInfo[]
+  sessions: PaneSession[]
+  onSelectSession: (paneId: string) => void
   settings: SidebarSettings
   /** False while the window is minimized or hidden. */
   windowVisible: boolean
@@ -45,7 +49,14 @@ function dragPointer(
   target.addEventListener('pointercancel', up)
 }
 
-export function Sidebar({ widgets, settings, windowVisible, onChange }: Props): React.JSX.Element {
+export function Sidebar({
+  widgets,
+  sessions,
+  onSelectSession,
+  settings,
+  windowVisible,
+  onChange
+}: Props): React.JSX.Element {
   const placed = useMemo(() => placeWidgets(settings, widgets), [settings, widgets])
   const [reloads, setReloads] = useState<Record<string, number>>({})
   const bodyRef = useRef<HTMLDivElement>(null)
@@ -99,52 +110,56 @@ export function Sidebar({ widgets, settings, windowVisible, onChange }: Props): 
       aria-label="Widgets"
     >
       <div className="sidebar-resize" onPointerDown={startResize} />
-      <div className="sidebar-head">
-        {tabs ? (
-          <div className="sidebar-tabs" role="tablist">
-            {placed.map((p) => (
-              <button
-                type="button"
-                role="tab"
-                key={p.info.id}
-                aria-selected={p.info.id === active}
-                className={p.info.id === active ? 'on' : ''}
-                onClick={() => onChange({ ...settings, activeWidget: p.info.id })}
-              >
-                {p.info.manifest?.name ?? p.info.id}
-              </button>
-            ))}
-          </div>
-        ) : (
-          <span className="sidebar-title">Widgets</span>
-        )}
-        {tabs && active && (
+      <SessionList
+        sessions={sessions}
+        collapsed={settings.sessionsCollapsed}
+        onToggle={() => onChange({ ...settings, sessionsCollapsed: !settings.sessionsCollapsed })}
+        onSelect={onSelectSession}
+        onHideSidebar={() => onChange({ ...settings, visible: false })}
+      />
+      {placed.length > 0 && (
+        <div className="sidebar-head">
+          {tabs ? (
+            <div className="sidebar-tabs" role="tablist">
+              {placed.map((p) => (
+                <button
+                  type="button"
+                  tabIndex={-1}
+                  role="tab"
+                  key={p.info.id}
+                  aria-selected={p.info.id === active}
+                  className={p.info.id === active ? 'on' : ''}
+                  onClick={() => onChange({ ...settings, activeWidget: p.info.id })}
+                >
+                  {p.info.manifest?.name ?? p.info.id}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <span className="sidebar-title">Widgets</span>
+          )}
+          {tabs && active && (
+            <button
+              type="button"
+              tabIndex={-1}
+              className="icon"
+              title="Reload widget"
+              onClick={() => reload(active)}
+            >
+              ↻
+            </button>
+          )}
           <button
             type="button"
+            tabIndex={-1}
             className="icon"
-            title="Reload widget"
-            onClick={() => reload(active)}
+            title={tabs ? 'Show widgets stacked' : 'Show widgets as tabs'}
+            onClick={() => onChange({ ...settings, mode: tabs ? 'stack' : 'tabs' })}
           >
-            ↻
+            {tabs ? '☰' : '⧉'}
           </button>
-        )}
-        <button
-          type="button"
-          className="icon"
-          title={tabs ? 'Show widgets stacked' : 'Show widgets as tabs'}
-          onClick={() => onChange({ ...settings, mode: tabs ? 'stack' : 'tabs' })}
-        >
-          {tabs ? '☰' : '⧉'}
-        </button>
-        <button
-          type="button"
-          className="icon"
-          title="Hide sidebar"
-          onClick={() => onChange({ ...settings, visible: false })}
-        >
-          ⟩
-        </button>
-      </div>
+        </div>
+      )}
       <div className="sidebar-body" ref={bodyRef}>
         {placed.map((p, i) => {
           const { info, placement } = p
@@ -172,6 +187,7 @@ export function Sidebar({ widgets, settings, windowVisible, onChange }: Props): 
                   <header className="widget-head">
                     <button
                       type="button"
+                      tabIndex={-1}
                       className="widget-toggle"
                       aria-expanded={!collapsed}
                       title={collapsed ? 'Expand' : 'Collapse'}
@@ -186,6 +202,7 @@ export function Sidebar({ widgets, settings, windowVisible, onChange }: Props): 
                     </span>
                     <button
                       type="button"
+                      tabIndex={-1}
                       className="icon"
                       title="Reload widget"
                       onClick={() => reload(info.id)}

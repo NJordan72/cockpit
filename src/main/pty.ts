@@ -10,6 +10,19 @@ export interface SpawnOptions {
   command?: string
   /** Absolute, existing directory. */
   cwd: string
+  /** Set on top of the inherited environment. */
+  env?: Record<string, string>
+}
+
+/** Told about everything that passes through a PTY, for status tracking. */
+export interface PtyObserver {
+  output(id: string, data: string): void
+  input(id: string, data: string): void
+  resized(id: string): void
+  /** The process ended on its own. */
+  exited(id: string): void
+  /** Cockpit killed the process (pane closed, restarted, or the app quitting). */
+  killed(id: string): void
 }
 
 /**
@@ -18,8 +31,9 @@ export interface SpawnOptions {
  * session it was started from, and Electron's own. Passing them on makes
  * programs think they run inside that parent. Claude Code warns about tmux
  * focus events when it sees TMUX, and turns off transcript saving when it
- * sees it's a child of another Claude Code session. User settings such as API
- * keys or CLAUDE_CODE_USE_BEDROCK are left alone.
+ * sees it's a child of another Claude Code session. A Cockpit started from a
+ * Cockpit pane gets its own COCKPIT_* values. User settings such as API keys
+ * or CLAUDE_CODE_USE_BEDROCK are left alone.
  */
 const INHERITED_TERMINAL_VARS = new RegExp(
   '^(' +
@@ -45,7 +59,9 @@ const INHERITED_TERMINAL_VARS = new RegExp(
       'CLAUDE_CODE_EXECPATH',
       'CLAUDE_CODE_CHILD_SESSION',
       'CLAUDE_CODE_SESSION_.*',
-      'CLAUDE_CODE_MESSAGING_.*'
+      'CLAUDE_CODE_MESSAGING_.*',
+      'COCKPIT_SESSION_ID',
+      'COCKPIT_SOCKET'
     ].join('|') +
     ')$'
 )
@@ -59,11 +75,11 @@ interface Session {
 export class PtyManager {
   private sessions = new Map<string, Session>()
 
-  /** onExit runs after a PTY's process ends on its own (not when killed). */
-  constructor(private readonly onExit: (id: string) => void = () => undefined) {}
+  constructor(private readonly observer: PtyObserver) {}
 
+  /** Starts a PTY under `id`, replacing any running one without reporting it as killed. */
   create(owner: WebContents, opts: SpawnOptions): { pid: number } {
-    this.kill(opts.id)
+    this.stop(opts.id)
 
     const shell = process.env.SHELL ?? '/bin/zsh'
     // -l gives the user's full login environment (PATH from mise, etc.).
@@ -77,6 +93,7 @@ export class PtyManager {
     env.COLORTERM = 'truecolor'
     env.TERM_PROGRAM = 'Cockpit'
     env.LANG = process.env.LANG ?? 'en_US.UTF-8'
+    Object.assign(env, opts.env)
 
     const proc = pty.spawn(shell, args, {
       name: 'xterm-256color',
@@ -90,14 +107,15 @@ export class PtyManager {
     this.sessions.set(opts.id, session)
 
     proc.onData((data) => {
+      if (this.sessions.get(opts.id) === session) this.observer.output(opts.id, data)
       if (!owner.isDestroyed()) owner.send(IPC.ptyData, opts.id, data)
     })
     proc.onExit(({ exitCode, signal }) => {
       // Only report if this PTY is still the one registered under the id.
       if (this.sessions.get(opts.id) !== session) return
       this.sessions.delete(opts.id)
+      this.observer.exited(opts.id)
       if (!owner.isDestroyed()) owner.send(IPC.ptyExit, opts.id, { exitCode, signal })
-      this.onExit(opts.id)
     })
 
     return { pid: proc.pid }
@@ -113,13 +131,17 @@ export class PtyManager {
   }
 
   write(id: string, data: string): void {
-    this.sessions.get(id)?.proc.write(data)
+    const s = this.sessions.get(id)
+    if (!s) return
+    this.observer.input(id, data)
+    s.proc.write(data)
   }
 
   resize(id: string, cols: number, rows: number): void {
     const s = this.sessions.get(id)
     if (!s || cols < 2 || rows < 1) return
     try {
+      if (cols !== s.proc.cols || rows !== s.proc.rows) this.observer.resized(id)
       s.proc.resize(cols, rows)
     } catch {
       // The process may have exited between the check and the call.
@@ -127,14 +149,19 @@ export class PtyManager {
   }
 
   kill(id: string): void {
+    if (this.stop(id)) this.observer.killed(id)
+  }
+
+  private stop(id: string): boolean {
     const s = this.sessions.get(id)
-    if (!s) return
+    if (!s) return false
     this.sessions.delete(id)
     try {
       s.proc.kill()
     } catch {
       // already gone
     }
+    return true
   }
 
   killAllFor(owner: WebContents): void {

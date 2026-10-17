@@ -77,8 +77,17 @@ export interface FetchResult {
   redirected: boolean
 }
 
-/** Until agent awareness lands, a live pane is 'running'. */
-export type SessionStatus = 'running' | 'idle' | 'working' | 'needs-input' | 'done' | 'exited'
+/**
+ * idle: nothing running, or an agent waiting for the next prompt.
+ * working: an agent is on a turn, or a program keeps printing.
+ * needs-input: an agent is blocked on the user (a permission prompt, a question).
+ * done: an agent finished a turn that nobody has looked at yet.
+ * exited: the pane's process has ended.
+ */
+export type SessionStatus = 'idle' | 'working' | 'needs-input' | 'done' | 'exited'
+
+/** Agents Cockpit can hear from directly; other programs get the output heuristic. */
+export type AgentKind = 'claude' | 'codex'
 
 export interface SessionInfo {
   /** Pane id. */
@@ -90,6 +99,14 @@ export interface SessionInfo {
   /** Working directory with ~ for home. */
   cwd: string
   status: SessionStatus
+  /** When status last changed (ms since the epoch). */
+  since: number
+  /** The agent the preset starts, when Cockpit can hear from it. */
+  agent: AgentKind | null
+  /** The agent's name for the conversation (Claude Code only). */
+  title: string | null
+  /** Tokens in the conversation's context after the last turn (Claude Code only). */
+  tokens: number | null
   /** The focused pane of the active tab. */
   focused: boolean
 }

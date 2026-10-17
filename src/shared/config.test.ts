@@ -160,6 +160,7 @@ describe('migrateConfig: sidebar and theme', () => {
         width: 99999,
         mode: 'carousel',
         activeWidget: 'hello',
+        sessionsCollapsed: 'yes',
         widgets: [
           { id: 'hello', collapsed: true, size: 2 },
           { id: 'hello', collapsed: false },
@@ -174,11 +175,18 @@ describe('migrateConfig: sidebar and theme', () => {
       width: SIDEBAR_MAX_WIDTH,
       mode: 'stack',
       activeWidget: 'hello',
+      sessionsCollapsed: false,
       widgets: [
         { id: 'hello', collapsed: true, size: 2 },
         { id: 'shortcut-stories', collapsed: false, size: 1 }
       ]
     })
+  })
+
+  it('keeps the session list folded', () => {
+    expect(migrateConfig({ sidebar: { sessionsCollapsed: true } }).sidebar.sessionsCollapsed).toBe(
+      true
+    )
   })
 
   it('keeps known theme colors and drops values that could break out of CSS', () => {

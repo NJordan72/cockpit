@@ -242,18 +242,33 @@ Opens the URL in the default browser if it matches a pattern in
 
 ```js
 {
-  id: 'pane-c233f1a8', // pane id
+  id: 'pane-c233f1a8',    // pane id
   tabId: 'tab-609af0a0',
   presetId: 'claude',
-  name: 'Claude Code',  // preset name
+  name: 'Claude Code',    // preset name
   cwd: '~/dev/cockpit',
-  status: 'running',    // 'exited' once the pane's process ends
-  focused: true         // the focused pane of the active tab
+  status: 'needs-input',
+  since: 1760703361000,   // when status last changed (ms since the epoch)
+  agent: 'claude',        // 'claude', 'codex', or null for anything else
+  title: 'Fix the login redirect', // Claude Code's name for the conversation, or null
+  tokens: 48213,          // tokens in Claude Code's context after the last turn, or null
+  focused: true           // the focused pane of the active tab
 }
 ```
 
-`status` is `running` or `exited` for now. Agent-aware statuses (`idle`,
-`working`, `needs-input`, `done`) are planned.
+| `status`      | Means                                                                                 |
+| ------------- | ------------------------------------------------------------------------------------- |
+| `idle`        | Nothing running, or an agent waiting for the next prompt.                             |
+| `working`     | An agent is on a turn, or a program keeps printing.                                   |
+| `needs-input` | An agent is blocked on the user: a permission prompt, an approval, a question.        |
+| `done`        | An agent finished a turn nobody has looked at yet. Focusing the pane makes it `idle`. |
+| `exited`      | The pane's process has ended.                                                         |
+
+Claude Code and Codex panes report through hooks and terminal events, so all
+five statuses apply to them. Any other program only gets `idle`, `working`,
+and `exited`, from how recently it printed. What an agent is waiting for
+isn't shared with widgets, since it can quote the command it wants to run. See "Agent awareness" in the
+README for how each agent is followed.
 
 ### cockpit.theme
 

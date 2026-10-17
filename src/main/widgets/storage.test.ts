@@ -102,6 +102,9 @@ describe('WidgetStorage', () => {
 
   it('picks up edits made to the file by something else', async () => {
     storage.watch()
+    // macOS file watching takes a moment to start; under a busy test run an
+    // edit made at once can be missed. (In the app, edits come much later.)
+    await new Promise((r) => setTimeout(r, 200))
     storage.set('hello', 'a', 1)
     storage.set('hello', 'b', 2)
     changes = []

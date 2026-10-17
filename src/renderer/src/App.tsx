@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import type { Action, CockpitConfig, SidebarSettings } from '@shared/config'
 import { resolveTheme, themeVars, type Theme } from '@shared/theme'
-import type { SecretPrompt, WidgetInfo } from '@shared/widgets'
+import type { PaneSession } from '@shared/ipc'
+import type { SecretPrompt, SessionStatus, WidgetInfo } from '@shared/widgets'
 import { Picker } from './components/Picker'
 import { SecretPromptDialog } from './components/SecretPromptDialog'
 import { TabBar } from './components/TabBar'
@@ -14,6 +15,13 @@ import { xtermTheme } from './terminal/theme'
 import { setWidgetTheme, startWidgetHost } from './widgets/host'
 import { Sidebar } from './widgets/Sidebar'
 import { visibleWidgets, withPlacements } from './widgets/sidebarModel'
+
+declare global {
+  interface Window {
+    /** For the e2e driver. */
+    __cockpitSessions?: () => PaneSession[]
+  }
+}
 
 interface PickerState {
   mode: 'tab' | 'row' | 'column'
@@ -40,7 +48,13 @@ export function App(): React.JSX.Element {
   const [widgets, setWidgets] = useState<WidgetInfo[]>([])
   const [prompts, setPrompts] = useState<SecretPrompt[]>([])
   const [windowVisible, setWindowVisible] = useState(() => document.visibilityState === 'visible')
+  const [sessions, setSessions] = useState<PaneSession[]>([])
   const loaded = useRef(false)
+
+  const statuses = useMemo(
+    () => new Map<string, SessionStatus>(sessions.map((s) => [s.id, s.status])),
+    [sessions]
+  )
 
   // New widgets get a placement, so config.json lists every installed widget.
   const sidebar = useMemo(
@@ -56,11 +70,31 @@ export function App(): React.JSX.Element {
   const layoutRef = useRef(layout)
   const pickerRef = useRef(picker)
   const promptRef = useRef(prompt)
+  const sessionsRef = useRef(sessions)
   useEffect(() => {
     layoutRef.current = layout
     pickerRef.current = picker
     promptRef.current = prompt
+    sessionsRef.current = sessions
   })
+
+  // Pane statuses from the main process, for the tab badges and the session list.
+  useEffect(() => {
+    let cancelled = false
+    let pushed = false
+    const off = api.sessions.onChange((list) => {
+      pushed = true
+      setSessions(list)
+    })
+    void api.sessions.list().then((list) => {
+      if (!cancelled && !pushed) setSessions(list)
+    })
+    window.__cockpitSessions = () => sessionsRef.current
+    return () => {
+      cancelled = true
+      off()
+    }
+  }, [api])
 
   // Load config and restore the saved layout (or open one shell tab).
   useEffect(() => {
@@ -246,6 +280,32 @@ export function App(): React.JSX.Element {
     }
   }, [api, keymap, runAction])
 
+  /** Show a pane and give it the keyboard (a notification or the session list asked). */
+  const revealPane = useCallback((paneId: string) => {
+    setPicker(null)
+    dispatch({ type: 'focusPane', paneId })
+    requestAnimationFrame(() => terminals.get(paneId)?.focus())
+  }, [])
+
+  useEffect(() => api.sessions.onFocusRequest(revealPane), [api, revealPane])
+
+  // When the window comes back, Chromium can hand focus to the first button in
+  // the page, where a stray Enter would close a tab. Give it to the terminal
+  // unless something that takes typing (the picker, a prompt, a widget) has it.
+  useEffect(() => {
+    const onFocus = (): void => {
+      requestAnimationFrame(() => {
+        if (pickerRef.current || promptRef.current) return
+        const el = document.activeElement
+        if (!el || el === document.body || el.tagName === 'BUTTON') focusActiveTerminal()
+      })
+    }
+    window.addEventListener('focus', onFocus)
+    return () => {
+      window.removeEventListener('focus', onFocus)
+    }
+  }, [focusActiveTerminal])
+
   const closePicker = useCallback(() => {
     setPicker(null)
     requestAnimationFrame(focusActiveTerminal)
@@ -267,6 +327,7 @@ export function App(): React.JSX.Element {
       <TabBar
         layout={layout}
         presets={config.presets}
+        statuses={statuses}
         dispatch={dispatch}
         onNewTab={() => void openPicker('tab')}
         onCloseTab={(tabId) => dispatch({ type: 'closeTab', tabId })}
@@ -279,9 +340,11 @@ export function App(): React.JSX.Element {
           theme={terminalTheme}
           dispatch={dispatch}
         />
-        {sidebar && widgets.length > 0 && (
+        {sidebar && (
           <Sidebar
             widgets={widgets}
+            sessions={sessions}
+            onSelectSession={revealPane}
             settings={sidebar}
             windowVisible={windowVisible}
             onChange={setSidebar}

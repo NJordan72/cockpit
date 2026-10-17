@@ -34,7 +34,8 @@ function launchEnv() {
     'TMPDIR',
     'LANG',
     '__CF_USER_TEXT_ENCODING',
-    'COCKPIT_HOME'
+    'COCKPIT_HOME',
+    'COCKPIT_AGENT_LOG'
   ]
   const env = { PATH: '/usr/bin:/bin:/usr/sbin:/sbin' }
   for (const k of keep) if (process.env[k] !== undefined) env[k] = process.env[k]
@@ -240,6 +241,106 @@ const COMMANDS = {
 
   async opened() {
     console.log(JSON.stringify(await app.evaluate(() => globalThis.__opened ?? null)))
+  },
+
+  // Pane statuses as the chrome sees them: id status agent name · cwd, then details.
+  async sessions() {
+    const list = await page.evaluate(() => window.__cockpitSessions?.() ?? [])
+    for (const s of list) {
+      const extra = [s.message, s.title, s.tokens !== null ? `${s.tokens} tokens` : null]
+        .filter(Boolean)
+        .join(' | ')
+      console.log(
+        `${s.focused ? '*' : ' '}${s.id} ${s.status} ${s.agent ?? '-'} ${s.name} · ${s.cwd}` +
+          (extra ? `  [${extra}]` : '')
+      )
+    }
+  },
+
+  // Record notifications instead of showing them (stubnotify), or record them
+  // and show them for real, noting whether macOS showed them (watchnotify).
+  // Then list them (notes) or click one (clicknote 0).
+  async stubnotify() {
+    await COMMANDS.watchnotify('stub')
+  },
+
+  async watchnotify(mode) {
+    await app.evaluate(({ Notification }, stub) => {
+      globalThis.__notes = []
+      globalThis.__realShow ??= Notification.prototype.show
+      Notification.prototype.show = function () {
+        globalThis.__notes.push(this)
+        if (stub) return
+        this.__events = []
+        for (const ev of ['show', 'failed', 'click', 'close']) {
+          this.on(ev, (_e, err) => this.__events.push(err ? `${ev}: ${err}` : ev))
+        }
+        globalThis.__realShow.call(this)
+      }
+    }, mode === 'stub')
+  },
+
+  async notes() {
+    const notes = await app.evaluate(() =>
+      (globalThis.__notes ?? []).map((n) => ({
+        title: n.title,
+        subtitle: n.subtitle,
+        body: n.body,
+        events: n.__events
+      }))
+    )
+    notes.forEach((n, i) =>
+      console.log(
+        `${i}: ${n.title} | ${n.subtitle} | ${n.body}` +
+          (n.events ? `  (${n.events.join(', ')})` : '')
+      )
+    )
+    if (notes.length === 0) console.log('no notifications')
+  },
+
+  async clicknote(i) {
+    await app.evaluate((_e, i) => globalThis.__notes[i].emit('click'), Number(i) || 0)
+  },
+
+  // The Dock icon's badge (how many panes need attention).
+  async badge() {
+    console.log('badge:', JSON.stringify(await app.evaluate(({ app }) => app.dock?.getBadge())))
+  },
+
+  // Take focus away from the window (as switching apps does), or give it back.
+  async blur() {
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].blur())
+    await sleep(200)
+    await COMMANDS.focused()
+  },
+
+  async focus() {
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].focus())
+    await sleep(200)
+    await COMMANDS.focused()
+  },
+
+  // Hide the app (as Cmd+H does) or bring it back.
+  async hide() {
+    await app.evaluate(({ app }) => app.hide())
+    await sleep(300)
+    await COMMANDS.focused()
+  },
+
+  async unhide() {
+    await app.evaluate(({ app, BrowserWindow }) => {
+      app.show()
+      BrowserWindow.getAllWindows()[0].focus()
+    })
+    await sleep(300)
+    await COMMANDS.focused()
+  },
+
+  async focused() {
+    const f = await app.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows()[0].isFocused()
+    )
+    console.log('window focused:', f)
   },
 
   // Answer the host's secret prompt: `secret value`, `secret $ENV_VAR` (the

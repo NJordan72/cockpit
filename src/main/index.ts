@@ -1,8 +1,9 @@
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import {
   app,
   BrowserWindow,
   clipboard,
+  dialog,
   ipcMain,
   Menu,
   session,
@@ -10,23 +11,99 @@ import {
   type IpcMainEvent,
   type IpcMainInvokeEvent
 } from 'electron'
-import { migrateConfig, type Layout, type LayoutNode, type SidebarSettings } from '@shared/config'
-import { IPC, type DirListing, type PtyCreateOptions, type PtyCreated } from '@shared/ipc'
+import {
+  migrateConfig,
+  paneIds,
+  type Layout,
+  type LayoutNode,
+  type PaneNode,
+  type SidebarSettings
+} from '@shared/config'
+import {
+  IPC,
+  type DirListing,
+  type PaneSession,
+  type PtyCreateOptions,
+  type PtyCreated
+} from '@shared/ipc'
 import { resolveTheme } from '@shared/theme'
+import { AgentMonitor } from './agents/monitor'
 import { ConfigStore } from './config'
 import { listProjects, processCwd, processCwdSync, resolveCwd } from './dirs'
 import { buildMenu } from './menu'
 import { abbreviateHome, cockpitHome } from './paths'
 import { PtyManager } from './pty'
 import { registerWidgetScheme, WidgetHost } from './widgets/host'
-import { listSessions } from './widgets/sessions'
+import { listSessions, widgetSession } from './widgets/sessions'
 
-const ptys = new PtyManager(() => widgets.sessionsChanged())
+// PTYs only start once the app is ready, by which time agents exists.
+const ptys = new PtyManager({
+  output: (id, data) => agents.output(id, data),
+  input: (id, data) => agents.input(id, data),
+  resized: (id) => agents.resized(id),
+  exited: (id) => agents.exited(id),
+  killed: (id) => agents.killed(id)
+})
 let config: ConfigStore
 let widgets: WidgetHost
+let agents: AgentMonitor
 let mainWindow: BrowserWindow | null = null
+let lastSessions = ''
+let warnedNotifications = false
 
 registerWidgetScheme()
+
+function sessions(): PaneSession[] {
+  const c = config.get()
+  return listSessions(c.layout, c.presets, (id) => agents.status(id))
+}
+
+/** Push the session list to the chrome and to widgets that read it, if it changed. */
+function sessionsChanged(): void {
+  const list = sessions()
+  const json = JSON.stringify(list)
+  if (json !== lastSessions) {
+    lastSessions = json
+    mainWindow?.webContents.send(IPC.sessionsChanged, list)
+    // The Dock shows how many panes want the user, notifications or not.
+    const waiting = list.filter((s) => s.status === 'needs-input' || s.status === 'done').length
+    app.dock?.setBadge(waiting > 0 ? String(waiting) : '')
+  }
+  widgets.sessionsChanged()
+}
+
+function findPaneNode(id: string): PaneNode | null {
+  const find = (n: LayoutNode): PaneNode | null =>
+    n.type === 'pane' ? (n.id === id ? n : null) : (n.children.map(find).find(Boolean) ?? null)
+  for (const tab of config.get().layout.tabs) {
+    const pane = find(tab.root)
+    if (pane) return pane
+  }
+  return null
+}
+
+/** Tell the monitor which pane the user is looking at, so a finished turn counts as seen. */
+function updateFocus(): void {
+  const win = mainWindow
+  if (!win?.isFocused()) {
+    agents.setFocused(null)
+    return
+  }
+  const { layout } = config.get()
+  const tab = layout.tabs.find((t) => t.id === layout.activeTabId)
+  agents.setFocused(tab && paneIds(tab.root).includes(tab.activePaneId) ? tab.activePaneId : null)
+}
+
+/** A notification was clicked: bring the window forward and focus its pane. */
+function revealPane(paneId: string): void {
+  const win = mainWindow
+  if (!win || win.isDestroyed()) return
+  if (win.isMinimized()) win.restore()
+  win.show()
+  app.focus({ steal: true })
+  win.focus()
+  win.webContents.send(IPC.paneFocus, paneId)
+}
 
 /** Record where each live pane's process is now, so a relaunch reopens it there. */
 function captureCwds(): void {
@@ -62,6 +139,8 @@ function createWindow(): void {
   mainWindow = win
 
   win.once('ready-to-show', () => win.show())
+  win.on('focus', updateFocus)
+  win.on('blur', updateFocus)
 
   // The chrome is a single page. Anything that tries to navigate away or open
   // a window is a link the user clicked; send http(s) ones to the browser.
@@ -78,15 +157,16 @@ function createWindow(): void {
     if (details.isMainFrame && !details.isSameDocument) {
       ptys.killAllFor(wc)
       widgets.detach(wc)
+      lastSessions = ''
     }
   })
   win.on('close', () => {
     captureCwds()
   })
   win.on('closed', () => {
+    if (mainWindow === win) mainWindow = null
     ptys.killAllFor(wc)
     widgets.detach(wc)
-    if (mainWindow === win) mainWindow = null
   })
 
   if (!app.isPackaged && process.env.ELECTRON_RENDERER_URL) {
@@ -109,16 +189,25 @@ function registerIpc(): void {
     const preset = config.get().presets.find((p) => p.id === opts.presetId)
     if (!preset) throw new Error(`unknown preset: ${opts.presetId}`)
     const cwd = await resolveCwd(opts.cwd, preset.cwd)
-    const { pid } = ptys.create(e.sender, {
-      id: opts.id,
-      cols: opts.cols,
-      rows: opts.rows,
-      command: preset.command,
-      cwd
-    })
+    const launch = agents.launch(preset.command)
+    const env = agents.spawn(opts.id, launch.agent)
+    let pid: number
+    try {
+      ;({ pid } = ptys.create(e.sender, {
+        id: opts.id,
+        cols: opts.cols,
+        rows: opts.rows,
+        command: launch.command,
+        cwd,
+        env
+      }))
+    } catch (err) {
+      agents.killed(opts.id)
+      throw err
+    }
     const display = abbreviateHome(cwd)
     if (display !== '~') config.addRecentDir(display)
-    widgets.sessionsChanged()
+    sessionsChanged()
     return { pid, cwd: display }
   })
   ipcMain.on(IPC.ptyWrite, (e, id: string, data: string) => {
@@ -148,7 +237,12 @@ function registerIpc(): void {
     if (!trusted(e)) return
     // Run it through migration so a bad layout can't corrupt the file.
     config.setLayout(migrateConfig({ ...config.get(), layout }).layout)
-    widgets.sessionsChanged()
+    updateFocus()
+    sessionsChanged()
+  })
+  ipcMain.handle(IPC.sessionsList, (e) => {
+    if (!trusted(e)) throw new Error('untrusted sender')
+    return sessions()
   })
   ipcMain.on(IPC.sidebarSave, (e, sidebar: SidebarSettings) => {
     if (trusted(e)) config.setSidebar(sidebar)
@@ -176,7 +270,8 @@ async function cutRendererNetwork(): Promise<void> {
   })
 }
 
-void app.whenReady().then(async () => {
+/** Everything that needs the app to be ready. */
+async function startup(): Promise<void> {
   // Chrome needs no browser permissions; widgets get theirs through the broker.
   app.on('web-contents-created', (_e, contents) => {
     contents.session.setPermissionRequestHandler((_wc, _perm, cb) => cb(false))
@@ -202,12 +297,38 @@ void app.whenReady().then(async () => {
       const c = config.get()
       return resolveTheme(c.theme, c.terminal.fontFamily)
     },
-    sessions: () => {
-      const c = config.get()
-      return listSessions(c.layout, c.presets, new Set(ptys.pids().keys()))
-    }
+    sessions: () => sessions().map(widgetSession)
   })
   widgets.start()
+
+  agents = new AgentMonitor({
+    home: cockpitHome(),
+    onChange: sessionsChanged,
+    windowFocused: () => mainWindow?.isFocused() ?? false,
+    describe: (paneId) => {
+      const pane = findPaneNode(paneId)
+      if (!pane) return null
+      const preset = config.get().presets.find((p) => p.id === pane.presetId)
+      return { name: preset?.name ?? pane.presetId, place: basename(pane.cwd) || pane.cwd }
+    },
+    onClick: revealPane,
+    onFailed: (error) => {
+      // Without notifications, a bounce is the next best way to say so.
+      app.dock?.bounce('informational')
+      if (warnedNotifications) return
+      warnedNotifications = true
+      console.warn(
+        `macOS refused a notification (${error}). Allow notifications for this app in ` +
+          'System Settings > Notifications; an unsigned development build may not be allowed at all.'
+      )
+    }
+  })
+  try {
+    await agents.start()
+  } catch (err) {
+    // Hooks can't report without the socket; the output heuristic still works.
+    console.error('agent event server failed to start:', err)
+  }
 
   Menu.setApplicationMenu(buildMenu())
   registerIpc()
@@ -216,7 +337,17 @@ void app.whenReady().then(async () => {
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
-})
+}
+
+void app
+  .whenReady()
+  .then(startup)
+  .catch((err: unknown) => {
+    // Without config there is nothing to show; say why instead of idling windowless.
+    console.error('Cockpit could not start:', err)
+    dialog.showErrorBox('Cockpit could not start', err instanceof Error ? err.message : String(err))
+    app.exit(1)
+  })
 
 app.on('window-all-closed', () => {
   ptys.killAll()
@@ -229,6 +360,7 @@ app.on('before-quit', () => {
 })
 
 app.on('will-quit', () => {
-  config.close()
-  widgets.close()
+  // A startup that failed partway leaves some of these unset.
+  const parts = [config, widgets, agents] as ({ close: () => void } | undefined)[]
+  for (const part of parts) part?.close()
 })

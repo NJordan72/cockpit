@@ -121,7 +121,8 @@ function renderSessions(list) {
   ul.textContent = ''
   for (const s of list) {
     const li = document.createElement('li')
-    li.textContent = `${s.focused ? '▸ ' : ''}${s.name} · ${s.cwd} · ${s.status}`
+    const detail = s.title
+    li.textContent = `${s.focused ? '▸ ' : ''}${s.name} · ${s.cwd} · ${s.status}${detail ? ` · ${detail}` : ''}`
     if (s.status === 'exited') li.className = 'exited'
     ul.appendChild(li)
   }

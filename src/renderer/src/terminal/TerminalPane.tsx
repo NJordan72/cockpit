@@ -241,7 +241,7 @@ export function TerminalPane({
             {presetName} exited with{' '}
             {exit.signal ? `signal ${exit.signal}` : `code ${exit.exitCode}`}
           </span>
-          <button type="button" onClick={restart}>
+          <button type="button" tabIndex={-1} onClick={restart}>
             Restart <kbd>⏎</kbd>
           </button>
         </div>

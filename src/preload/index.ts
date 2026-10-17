@@ -4,6 +4,7 @@ import {
   IPC,
   type AppKey,
   type CockpitApi,
+  type PaneSession,
   type PtyCreateOptions,
   type PtyExitInfo
 } from '@shared/ipc'
@@ -47,6 +48,8 @@ const onWidgetsChanged: Subscribe<[WidgetInfo[]]> = channel(IPC.widgetsChanged)
 const onWidgetEvent: Subscribe<[string, WidgetEventTopic, unknown]> = channel(IPC.widgetEvent)
 const onSecretPrompt: Subscribe<[SecretPrompt]> = channel(IPC.secretPrompt)
 const onAppKey: Subscribe<[AppKey]> = channel(IPC.appKey)
+const onSessionsChanged: Subscribe<[PaneSession[]]> = channel(IPC.sessionsChanged)
+const onPaneFocus: Subscribe<[string]> = channel(IPC.paneFocus)
 
 function subscribe<T>(map: Map<string, Set<T>>, id: string, cb: T): () => void {
   let set = map.get(id)
@@ -92,6 +95,11 @@ const api: CockpitApi = {
     onEvent: (cb) => onWidgetEvent(cb),
     onSecretPrompt: (cb) => onSecretPrompt(cb),
     answerSecret: (promptId, value) => ipcRenderer.send(IPC.secretAnswer, promptId, value)
+  },
+  sessions: {
+    list: () => ipcRenderer.invoke(IPC.sessionsList),
+    onChange: (cb) => onSessionsChanged(cb),
+    onFocusRequest: (cb) => onPaneFocus(cb)
   },
   onAppKey: (cb) => onAppKey(cb)
 }

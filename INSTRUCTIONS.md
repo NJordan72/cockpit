@@ -179,6 +179,10 @@ shown as a badge on its tab, in a sidebar session list, and through
   `~/.codex/config.toml`, `codex exec --json`, app-server mode) and use the
   lightest option that reports "turn finished" and "needs approval". Verify
   against `codex --help` and the current docs. Don't rely on memory.
+  (codex-cli 0.162.1: `notify` only reports a finished turn and a `-c notify`
+  replaces the user's own; hooks passed with `-c` need a trust entry saved to
+  config.toml. The TUI's terminal title and OSC 9 notifications, pinned with
+  `-c tui.*`, report both events without either problem.)
 - Fallback for both: an output-silence heuristic. A PTY that printed recently
   is `working`, and quiet after output means `idle`.
 - When a pane goes to `needs-input` or `done` and the window isn't focused,
@@ -376,4 +380,81 @@ action that removes merged worktrees.
   and recovering from a rejected token.
 - Not covered: the 429 path (Shortcut never rate limited these runs).
 
-Next: M4.
+### M4: done (2026-10-17), except real notifications from the dev build
+
+- Every pane has a status (idle, working, needs-input, done, exited), shown
+  as a dot on its tab (the most urgent pane's; idle gets none), in a Sessions
+  list at the top of the sidebar (click to focus), as a Dock badge counting
+  panes that need the user, and through `cockpit.sessions`, which gained
+  `since`, `agent`, `title`, and `tokens`. `running` is gone. The chrome also
+  gets `message` (what the agent is waiting for); widgets don't, since it can
+  quote a command waiting for approval.
+- Event server: HTTP over a Unix socket, `~/.cockpit/run/cockpit-<pid>.sock`
+  (one per process, so a dev build doesn't take over the installed app's;
+  stale ones are removed; a home too long for a socket path falls back to
+  `$TMPDIR`). Mode 0600. Each PTY spawn gets a fresh random
+  `COCKPIT_SESSION_ID`, so a restarted pane ignores its old process's events.
+- Claude Code: a preset whose command starts with `claude` gets
+  `--settings ~/.cockpit/agents/claude-settings.json`, which registers 15
+  hooks (names checked against 2.1.302 and the current hooks docs) running
+  `~/.cockpit/agents/cockpit-hook`, a sh + curl script that prints nothing
+  and always exits 0. Hooks are synchronous so they arrive in order.
+  PermissionRequest (fires as the dialog opens) is the needs-input signal; it
+  is keyed by tool name and input, so a parallel tool finishing doesn't clear
+  an open dialog. Esc fires no hook, so a hooked turn that goes 10 s without
+  output turns idle (Claude's spinner keeps printing while the window is
+  blurred; checked with a 15 s tool call).
+- Codex: `-c` overrides for `tui.terminal_title` (activity + run-state),
+  `tui.notifications`, `notification_method="osc9"`, and
+  `notification_condition="always"`; main reads OSC 0 and OSC 9 from the
+  pane's output. Title changes give working/waiting/ready, OSC 9 gives
+  "turn complete" and the approval text. Cost: any `-c` puts the TUI in
+  embedded mode (no shared app-server daemon; Codex shows a startup warning).
+- Everything else: output for 1 s without a gap means working, 2.5 s quiet
+  means idle; output within 250 ms of input or a resize doesn't count.
+- done turns idle when the pane is focused in a focused window or typed into,
+  so a turn that ends while you watch goes straight to idle.
+  Notifications wait 250 ms (so Codex's approval text arrives first), skip a
+  focused window, and close when their pane is focused.
+- Title and tokens come from the tail (1 MB) of the transcript path in each
+  hook payload, read on turn end and at most every 10 s otherwise, and only
+  under `~/.claude` (or `$CLAUDE_CONFIG_DIR`).
+- Verified in the built app with a scratch COCKPIT_HOME: Claude Code (Haiku,
+  `--permission-mode default`) in a background tab with the window blurred
+  went working, needs-input with a notification ("Claude needs permission to
+  use Bash"), and the tab badge matched; clicking the notification focused
+  the window and pane; approving went working through a 15 s command, then
+  done with a second notification ("ok"); focusing made it idle. Codex
+  (`-s read-only`) did the same with its own approval text. The output
+  heuristic, the hook script, a fake hook from a shell, and the Dock badge
+  were checked too. Notifications were recorded by stubbing
+  `Notification.prototype.show` from the driver.
+- Not working: a real macOS notification. macOS 27 refuses them for the
+  ad-hoc-signed development Electron (`UNErrorDomain error 1`, the same when
+  launched through LaunchServices; Electron never appears in System Settings
+  > Notifications). Cockpit bounces the Dock icon instead and logs a warning
+  > once. Real notifications need a signed build, which is out of scope here.
+- Fixed on the way: after the window regained focus, Chromium could put
+  keyboard focus on the first tab's close button, so Enter closed a tab. The
+  chrome's buttons are now out of the tab order and the terminal takes focus
+  back. A startup failure (an unusable COCKPIT_HOME) used to throw again in
+  `will-quit`; it now shows an error and exits.
+- Tests: hook parsing, Codex OSC scanning and title states, the status
+  tracker (heuristic, hooks, dialogs, timeouts), launch flags, the transcript
+  tail, the socket server, the hook script through curl, the monitor over a
+  real socket, and the session list (205 total).
+- A fresh-context review of the diff found no high-severity problem. Fixed
+  from it: curl now skips `~/.curlrc` (`-q`), whose `write-out` would have
+  put text into Claude's context; SessionStart from a compaction no longer
+  ends a turn; a turn that ends while watched no longer stays done; typing
+  ahead during a long tool call no longer times the turn out; the Dock badge
+  drops panes when the window closes; the event log leaves out message text;
+  widgets no longer get `message`; and the window-focus handler leaves an
+  open prompt alone.
+- M2's storage test for outside edits wrote the file the instant the watcher
+  started and failed about one run in seven under the heavier suite; it now
+  waits 200 ms for the watcher first.
+- Left for later: real notifications (needs signing), agent awareness for
+  `claude` typed by hand in a Shell pane, and showing the OSC title in tabs.
+
+Next: M5 (optional).

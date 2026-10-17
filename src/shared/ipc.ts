@@ -2,6 +2,7 @@
 import type { CockpitConfig, Layout, SidebarSettings } from './config'
 import type {
   SecretPrompt,
+  SessionInfo,
   WidgetCallResult,
   WidgetEventTopic,
   WidgetInfo,
@@ -29,8 +30,20 @@ export const IPC = {
   widgetEvent: 'widget:event',
   secretPrompt: 'secret:prompt',
   secretAnswer: 'secret:answer',
+  sessionsList: 'sessions:list',
+  sessionsChanged: 'sessions:changed',
+  paneFocus: 'pane:focus',
   appKey: 'app:key'
 } as const
+
+/**
+ * A session as the chrome sees it. Widgets get SessionInfo without
+ * `message`, which can quote a command waiting for approval.
+ */
+export interface PaneSession extends SessionInfo {
+  /** What the agent is waiting for, while status is needs-input. */
+  message: string | null
+}
 
 export interface PtyCreateOptions {
   id: string
@@ -107,6 +120,13 @@ export interface CockpitApi {
     onSecretPrompt(cb: (prompt: SecretPrompt) => void): () => void
     /** null when the user cancelled. */
     answerSecret(promptId: string, value: string | null): void
+  }
+  sessions: {
+    /** One entry per pane, with its status. */
+    list(): Promise<PaneSession[]>
+    onChange(cb: (sessions: PaneSession[]) => void): () => void
+    /** The user clicked a notification about this pane. */
+    onFocusRequest(cb: (paneId: string) => void): () => void
   }
   /** App shortcuts pressed while a widget had keyboard focus. */
   onAppKey(cb: (key: AppKey) => void): () => void
