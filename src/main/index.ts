@@ -31,8 +31,9 @@ import { resolveTheme } from '@shared/theme'
 import { AgentMonitor } from './agents/monitor'
 import { ConfigStore } from './config'
 import { listDirs, processCwd, processCwdSync, resolveCwd } from './dirs'
+import { gitStatus } from './git'
 import { buildMenu } from './menu'
-import { abbreviateHome, claudeHome, cockpitHome, codexHome } from './paths'
+import { abbreviateHome, claudeHome, cockpitHome, codexHome, expandHome } from './paths'
 import { PtyManager } from './pty'
 import { registerWidgetScheme, WidgetHost } from './widgets/host'
 import { listSessions, widgetSession } from './widgets/sessions'
@@ -259,6 +260,23 @@ function registerIpc(): void {
     if (!trusted(e)) throw new Error('untrusted sender')
     return sessions()
   })
+  ipcMain.handle(IPC.activityGet, (e, paneId: unknown) => {
+    if (!trusted(e) || typeof paneId !== 'string') throw new Error('untrusted sender')
+    return agents.activity.snapshot(paneId)
+  })
+  ipcMain.handle(IPC.activityGit, async (e, paneId: unknown) => {
+    if (!trusted(e) || typeof paneId !== 'string') return null
+    const pane = findPaneNode(paneId)
+    if (!pane) return null
+    // Where Claude's hooks say it runs; otherwise where the process is now
+    // (a shell may have cd'd); otherwise where the pane started.
+    let cwd = agents.activity.cwd(pane.id)
+    if (!cwd) {
+      const pid = ptys.pid(pane.id)
+      cwd = pid === null ? null : await processCwd(pid)
+    }
+    return gitStatus(cwd ?? expandHome(pane.cwd))
+  })
   ipcMain.on(IPC.sidebarSave, (e, sidebar: SidebarSettings) => {
     if (trusted(e)) config.setSidebar(sidebar)
   })
@@ -321,6 +339,7 @@ async function startup(): Promise<void> {
   agents = new AgentMonitor({
     home: cockpitHome(),
     onChange: sessionsChanged,
+    onActivity: (update) => mainWindow?.webContents.send(IPC.activityUpdate, update),
     windowFocused: () => mainWindow?.isFocused() ?? false,
     describe: (paneId) => {
       const pane = findPaneNode(paneId)

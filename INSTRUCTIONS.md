@@ -485,4 +485,57 @@ non-alphanumerics as ->/`, and the newest mtime among the 500 newest Codex
   (also after quitting from the start screen), Restore brought the tab back,
   the selection scrolls into view, and Cmd+T still works.
 
+### Activity panel (added 2026-10-17, not in the original plan)
+
+- The sidebar has an Activity panel between Sessions and the widgets. It
+  follows the focused pane and has four tabs. Log lists hook events, and
+  tool calls with their command or file. Files lists the files Claude read or
+  changed, with lines added and removed from the Edit and Write patches.
+  Agents lists subagents with their description, tool calls, duration, and
+  result. Git shows branch, upstream, changes, and the last five commits.
+  It's chrome-only; widgets get none of it, since the log quotes commands.
+- Main keeps the log in memory (`src/main/agents/activity.ts`): the newest
+  1,000 entries per pane, sent to the chrome in 100 ms batches with the
+  file and agent lists only when they changed. The renderer takes a snapshot
+  when the focused pane changes and appends entries by sequence number.
+- Claude Code now gets 17 hooks, adding SubagentStart and SubagentStop.
+  They feed only the panel, and the status tracker ignores them. Payload fields
+  were checked against 2.1.302 by recording real hook runs. What the
+  recordings showed and the code relies on:
+  - SubagentStart carries only `agent_id` and `agent_type`, so a run is
+    matched to the oldest waiting Agent call of the same type, then corrected
+    from the call's result, whose `tool_response.agentId` names it.
+  - Agents run in the background by default. The Agent call's result says
+    `isAsync: true` and `async_launched` even without `run_in_background` in
+    the input, and it can arrive before SubagentStart.
+  - A finished background task reaches Claude as a `<task-notification>`
+    prompt through UserPromptSubmit. The log shows its summary as a NOTE row,
+    and its `<task-id>` and `<tool-use-id>` complete and name the run.
+  - Claude Code's own helpers (the prompt suggester, for one) send
+    SubagentStop with an empty `agent_type` and no SubagentStart. They're
+    left out.
+  - Answering No to a permission dialog sends no hook, so the log shows the
+    request and nothing after it.
+- Git runs with `--no-optional-locks` (never takes `index.lock` from an agent)
+  and `-c core.fsmonitor=false`, because a repository's config can name an
+  fsmonitor program and Cockpit runs git in whatever directory a pane is in.
+  The working directory comes from the latest main-thread hook payload, then
+  `lsof` on the pane's process, then the layout.
+- Verified in the built app with a scratch COCKPIT_HOME and Claude Code on
+  Haiku in a scratch repo: a turn with a background Explore agent, a Read, an
+  Edit, a Write, and Bash; two parallel agents; a permission prompt for a
+  Write outside the project (ASK row, highlighted); every tab's contents and
+  counts; expanding a row; the divider drag and fold, saved to config.json;
+  the panel filling the sidebar with no widgets and returning to its height
+  when one came back; a Shell split showing the empty-log note and Git from
+  its `cd`'d directory; focus moving between panes switching the panel.
+- Not run against a live Codex session (it would save a trust decision to
+  `~/.codex/config.toml`); Codex entries are covered by unit tests on the
+  signals CodexWatcher already produces.
+- Tests: tool descriptions, path display, patch counts, the hook sequences
+  recorded above, batching, the entry cap, Codex entries, task notifications,
+  git porcelain v2 parsing and a real repository (including the fsmonitor
+  guard), sidebar settings migration, and the renderer's merge and filters
+  (250 total).
+
 Next: M5 (optional).

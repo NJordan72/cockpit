@@ -1,4 +1,5 @@
 // IPC channel names and payload types shared by main, preload, and renderer.
+import type { ActivityUpdate, GitStatus, PaneActivity } from './activity'
 import type { CockpitConfig, LauncherSettings, Layout, SidebarSettings } from './config'
 import type {
   SecretPrompt,
@@ -34,6 +35,9 @@ export const IPC = {
   sessionsList: 'sessions:list',
   sessionsChanged: 'sessions:changed',
   paneFocus: 'pane:focus',
+  activityGet: 'activity:get',
+  activityUpdate: 'activity:update',
+  activityGit: 'activity:git',
   appKey: 'app:key'
 } as const
 
@@ -136,6 +140,14 @@ export interface CockpitApi {
     onChange(cb: (sessions: PaneSession[]) => void): () => void
     /** The user clicked a notification about this pane. */
     onFocusRequest(cb: (paneId: string) => void): () => void
+  }
+  activity: {
+    /** Everything kept about a pane's activity so far. */
+    get(paneId: string): Promise<PaneActivity>
+    /** What changed since; sent for every pane. */
+    onUpdate(cb: (update: ActivityUpdate) => void): () => void
+    /** The pane's repository, or null when its directory isn't in one. */
+    git(paneId: string): Promise<GitStatus | null>
   }
   /** App shortcuts pressed while a widget had keyboard focus. */
   onAppKey(cb: (key: AppKey) => void): () => void

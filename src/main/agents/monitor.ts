@@ -1,10 +1,12 @@
 // Ties agent awareness together: the event socket, the files Claude Code's
-// hooks use, Codex's terminal reports, each pane's status, notifications,
-// and transcript details.
+// hooks use, Codex's terminal reports, each pane's status and activity,
+// notifications, and transcript details.
 import { randomUUID } from 'node:crypto'
 import fs from 'node:fs'
+import type { ActivityUpdate } from '@shared/activity'
 import type { AgentKind } from '@shared/widgets'
 import { claudeHome } from '../paths'
+import { ActivityLog } from './activity'
 import { CodexWatcher } from './codex'
 import { parseClaudeHook, type AgentSignal } from './events'
 import { installAgentFiles, type AgentFiles } from './files'
@@ -39,6 +41,8 @@ export interface AgentMonitorOptions extends Omit<NotifierDeps, 'status'> {
   home: string
   /** A pane's status, title, or token count changed. */
   onChange: (paneId: string) => void
+  /** A pane's activity log, files, or subagents changed. */
+  onActivity: (update: ActivityUpdate) => void
 }
 
 interface Transcript {
@@ -51,6 +55,7 @@ interface Transcript {
 
 export class AgentMonitor {
   readonly files: AgentFiles
+  readonly activity: ActivityLog
   private readonly server: EventServer
   private readonly tracker: StatusTracker
   private readonly notifier: Notifier
@@ -63,6 +68,7 @@ export class AgentMonitor {
   constructor(opts: AgentMonitorOptions) {
     this.onChange = opts.onChange
     this.files = installAgentFiles(opts.home)
+    this.activity = new ActivityLog(opts.onActivity)
     this.notifier = new Notifier({ ...opts, status: (id) => this.tracker.get(id) })
     this.tracker = new StatusTracker((paneId, prev, next) => {
       this.notifier.changed(paneId, prev, next)
@@ -81,6 +87,7 @@ export class AgentMonitor {
     this.server.close()
     this.notifier.close()
     this.tracker.close()
+    this.activity.close()
   }
 
   /** The command to run for a preset, with whatever its agent needs to report here. */
@@ -95,6 +102,7 @@ export class AgentMonitor {
     if (agent === 'codex') this.codex.set(paneId, new CodexWatcher())
     else this.codex.delete(paneId)
     this.tracker.spawn(paneId, token, agent)
+    this.activity.started(paneId, agent)
     return { COCKPIT_SESSION_ID: token, COCKPIT_SOCKET: this.server.path }
   }
 
@@ -109,6 +117,7 @@ export class AgentMonitor {
     for (const r of watcher.feed(data)) {
       logReport(paneId, 'codex', r.signal)
       this.tracker.reportPane(paneId, r)
+      this.activity.codex(paneId, r.signal)
     }
   }
 
@@ -123,6 +132,7 @@ export class AgentMonitor {
   exited(paneId: string): void {
     this.codex.delete(paneId)
     this.tracker.exit(paneId)
+    this.activity.exited(paneId)
   }
 
   killed(paneId: string): void {
@@ -130,6 +140,7 @@ export class AgentMonitor {
     this.transcripts.delete(paneId)
     this.notifier.dismiss(paneId)
     this.tracker.remove(paneId)
+    this.activity.remove(paneId)
     this.onChange(paneId)
   }
 
@@ -148,8 +159,9 @@ export class AgentMonitor {
     const report = parseClaudeHook(e.event, e.payload)
     const paneId = this.tracker.paneFor(e.token)
     logReport(paneId, `claude:${e.event}`, report.signal)
-    if (!this.tracker.report(e.token, report)) return false
-    if (paneId && report.transcriptPath) {
+    if (!paneId || !this.tracker.report(e.token, report)) return false
+    this.activity.claude(paneId, e.event, e.payload)
+    if (report.transcriptPath) {
       const kind = report.signal.kind
       this.readTranscript(paneId, report.transcriptPath, kind === 'done' || kind === 'idle')
     }

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  ACTIVITY_MIN_HEIGHT,
   DEFAULT_KEYBINDINGS,
   defaultConfig,
   defaultSidebar,
@@ -196,6 +197,7 @@ describe('migrateConfig: sidebar and theme', () => {
         mode: 'carousel',
         activeWidget: 'hello',
         sessionsCollapsed: 'yes',
+        activity: { collapsed: true, height: 5, tab: 'diary' },
         widgets: [
           { id: 'hello', collapsed: true, size: 2 },
           { id: 'hello', collapsed: false },
@@ -211,11 +213,20 @@ describe('migrateConfig: sidebar and theme', () => {
       mode: 'stack',
       activeWidget: 'hello',
       sessionsCollapsed: false,
+      activity: { collapsed: true, height: ACTIVITY_MIN_HEIGHT, tab: 'log' },
       widgets: [
         { id: 'hello', collapsed: true, size: 2 },
         { id: 'shortcut-stories', collapsed: false, size: 1 }
       ]
     })
+  })
+
+  it('keeps the Activity panel settings', () => {
+    const activity = { collapsed: false, height: 410, tab: 'git' }
+    expect(migrateConfig({ sidebar: { activity } }).sidebar.activity).toEqual(activity)
+    expect(migrateConfig({ sidebar: { activity: 'big' } }).sidebar.activity).toEqual(
+      defaultSidebar().activity
+    )
   })
 
   it('keeps the session list folded', () => {

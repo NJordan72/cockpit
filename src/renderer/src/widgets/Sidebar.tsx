@@ -1,7 +1,14 @@
 import { Fragment, useMemo, useRef, useState } from 'react'
-import { SIDEBAR_MAX_WIDTH, SIDEBAR_MIN_WIDTH, type SidebarSettings } from '@shared/config'
+import {
+  ACTIVITY_MAX_HEIGHT,
+  ACTIVITY_MIN_HEIGHT,
+  SIDEBAR_MAX_WIDTH,
+  SIDEBAR_MIN_WIDTH,
+  type SidebarSettings
+} from '@shared/config'
 import type { PaneSession } from '@shared/ipc'
 import type { WidgetInfo } from '@shared/widgets'
+import { ActivityPanel } from '../activity/ActivityPanel'
 import { SessionList } from '../components/SessionList'
 import {
   activeWidgetId,
@@ -26,6 +33,8 @@ interface Props {
 /** Room the terminals keep when the sidebar is dragged wider. */
 const MIN_WORKSPACE_WIDTH = 320
 const MIN_WIDGET_HEIGHT = 48
+/** Room the widgets keep when the Activity panel is dragged taller. */
+const MIN_WIDGETS_HEIGHT = 120
 
 function dragPointer(
   e: React.PointerEvent<HTMLElement>,
@@ -60,6 +69,7 @@ export function Sidebar({
   const placed = useMemo(() => placeWidgets(settings, widgets), [settings, widgets])
   const [reloads, setReloads] = useState<Record<string, number>>({})
   const bodyRef = useRef<HTMLDivElement>(null)
+  const activityRef = useRef<HTMLElement>(null)
   const tabs = settings.mode === 'tabs'
   const active = activeWidgetId(settings, placed)
   const visibleIds = useMemo(
@@ -103,6 +113,30 @@ export function Sidebar({
   const fills = (p: PlacedWidget | undefined): p is PlacedWidget =>
     !!p && !p.placement.collapsed && p.info.manifest?.sizing !== 'content'
 
+  // The Activity panel follows the focused pane. It has a height of its own
+  // while widgets share the sidebar, and takes all the room when none would.
+  const focused = sessions.find((s) => s.focused) ?? null
+  const activity = settings.activity
+  const widgetsFill = placed.length > 0 && (tabs || placed.some(fills))
+  const activityOpen = !!focused && !activity.collapsed
+  const activitySized = activityOpen && widgetsFill
+  const activityStyle: React.CSSProperties = !activityOpen
+    ? { flex: 'none' }
+    : activitySized
+      ? { flex: `0 1 ${String(activity.height)}px`, minHeight: ACTIVITY_MIN_HEIGHT }
+      : { flex: '1 1 0px', minHeight: 0 }
+
+  const startActivityResize = (e: React.PointerEvent<HTMLDivElement>): void => {
+    const start = activityRef.current?.offsetHeight ?? activity.height
+    const room = start + (bodyRef.current?.offsetHeight ?? 0) - MIN_WIDGETS_HEIGHT
+    dragPointer(e, (_dx, dy) => {
+      const height = Math.round(
+        Math.max(ACTIVITY_MIN_HEIGHT, Math.min(room, ACTIVITY_MAX_HEIGHT, start + dy))
+      )
+      onChange({ ...settings, activity: { ...activity, height } })
+    })
+  }
+
   return (
     <aside
       className={`sidebar ${tabs ? 'tabs' : 'stack'}${settings.visible ? '' : ' hidden'}`}
@@ -117,6 +151,17 @@ export function Sidebar({
         onSelect={onSelectSession}
         onHideSidebar={() => onChange({ ...settings, visible: false })}
       />
+      {focused && (
+        <ActivityPanel
+          session={focused}
+          settings={activity}
+          onChange={(next) => onChange({ ...settings, activity: next })}
+          visible={windowVisible && settings.visible}
+          style={activityStyle}
+          sectionRef={activityRef}
+        />
+      )}
+      {activitySized && <div className="widget-divider" onPointerDown={startActivityResize} />}
       {placed.length > 0 && (
         <div className="sidebar-head">
           {tabs ? (
@@ -160,7 +205,17 @@ export function Sidebar({
           </button>
         </div>
       )}
-      <div className="sidebar-body" ref={bodyRef}>
+      <div
+        className="sidebar-body"
+        ref={bodyRef}
+        style={
+          activitySized
+            ? { minHeight: MIN_WIDGETS_HEIGHT }
+            : activityOpen
+              ? { flex: 'none' }
+              : undefined
+        }
+      >
         {placed.map((p, i) => {
           const { info, placement } = p
           const { manifest } = info

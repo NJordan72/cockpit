@@ -117,6 +117,42 @@ Set `COCKPIT_AGENT_LOG=/path/to/file` to log every agent event and what it
 did to the pane's status (event names and statuses only; no payloads or
 message text).
 
+## Activity
+
+The **Activity** panel under the Sessions list shows what the focused pane's
+agent has been doing. Click a session to switch to it. The panel has four
+tabs, each with a count:
+
+- **Log**: one line per event, newest at the bottom. It lists sessions
+  starting and ending, your prompts, tool calls with their command or file,
+  permission requests, failures, subagents starting and finishing,
+  notifications, and finished turns. Calls made inside a subagent are marked
+  ↳. Click a line to read all of it, such as a multi-line command or Claude's
+  whole reply. **Events** and **Tools** filter the list.
+- **Files**: the files Claude read or changed, most recent first, with lines
+  added and removed. `A` marks a new file, `M` an edited one, and `R` one that
+  was only read.
+- **Agents**: the subagents Claude started, with the description Claude gave
+  each one, its tool calls, how long it ran, and the first line of its result.
+  `bg` marks a subagent that ran in the background.
+- **Git**: the branch, how far it is ahead of or behind its upstream, changed
+  and untracked files, and the last five commits. Cockpit reads them from the
+  directory the agent works in (a shell's current directory, for Shell panes)
+  a second after the agent does something, every 10 seconds while the sidebar
+  shows, and when the window comes forward.
+
+Claude Code panes fill every tab, from the same hooks that drive their status
+plus SubagentStart and SubagentStop. Codex panes log the start and end of each
+turn and its approval requests, which is all Codex reports through the
+terminal, so their Files and Agents tabs stay empty. Shell panes only have
+Git. The log is kept in memory, never written to disk, and never shown to
+widgets. Each pane keeps its newest 1,000 entries until the pane closes or
+Cockpit quits.
+
+Drag the line under the panel to resize it, or fold it with ▾. Its height,
+tab, and folded state are saved in `config.json` under `sidebar.activity`.
+When no widget takes up height, the panel fills the sidebar.
+
 ## Widgets
 
 The sidebar on the right holds widgets: small HTML pages, each in its own
@@ -159,7 +195,13 @@ to `config.json.broken-<time>` before being replaced.
   "keybindings": { "newTab": "Cmd+T", "splitRight": "Cmd+D" /* ... */ },
   "terminal": { "fontFamily": "...", "fontSize": 13 },
   "theme": { "accent": "#ff9e64" },
-  "sidebar": { "visible": true, "width": 320, "mode": "stack", "widgets": [/* ... */] },
+  "sidebar": {
+    "visible": true,
+    "width": 320,
+    "mode": "stack",
+    "activity": { "collapsed": false, "height": 320, "tab": "log" },
+    "widgets": [/* ... */]
+  },
   "projectsDir": "~/dev",
   "launcher": { "presetId": "claude" }
 }

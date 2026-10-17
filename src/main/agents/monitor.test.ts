@@ -36,6 +36,7 @@ beforeEach(async () => {
   monitor = new AgentMonitor({
     home,
     onChange: (id) => changed.push(id),
+    onActivity: () => undefined,
     windowFocused: () => true,
     describe: () => ({ name: 'Claude Code', place: 'x' }),
     onClick: () => undefined,
@@ -73,6 +74,23 @@ describe('AgentMonitor', () => {
     const old = monitor.spawn('pane-a', 'claude')
     monitor.spawn('pane-a', 'claude')
     expect(await hook(old, 'Stop', {})).toBe(403)
+  })
+
+  it("logs a pane's hooks as activity, and forgets it with the pane", async () => {
+    const env = monitor.spawn('pane-a', 'claude')
+    monitor.setFocused('pane-a')
+    await hook(env, 'PreToolUse', { tool_name: 'Bash', tool_input: { command: 'ls' } })
+    await hook(env, 'SubagentStart', { agent_id: 'x', agent_type: 'Explore' })
+    // Subagent hooks only feed the log; the turn is still running.
+    expect(monitor.status('pane-a')?.status).toBe('working')
+    const { entries, agents } = monitor.activity.snapshot('pane-a')
+    expect(entries.map((e) => [e.kind, e.label, e.text])).toEqual([
+      ['tool', 'Bash', 'ls'],
+      ['agent', '▸ Explore', 'started']
+    ])
+    expect(agents.map((a) => a.status)).toEqual(['running'])
+    monitor.killed('pane-a')
+    expect(monitor.activity.snapshot('pane-a').entries).toEqual([])
   })
 
   it('reports a killed pane so counts can drop it', () => {

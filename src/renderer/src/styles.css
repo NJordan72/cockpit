@@ -830,6 +830,474 @@ kbd {
   font-size: 11px;
 }
 
+/* ---- activity panel ---- */
+
+.activity {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.activity-head {
+  padding-left: 2px;
+}
+
+.activity.collapsed .activity-head {
+  border-bottom: 0;
+}
+
+.activity-tabs {
+  flex: 1;
+  display: flex;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.activity-tabs button {
+  flex: 1 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 27px;
+  border: 0;
+  background: none;
+  padding: 0 6px;
+  color: var(--muted);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.activity-tabs button:hover {
+  color: var(--fg);
+}
+
+.activity-tabs button.on {
+  color: var(--fg);
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
+
+.activity-count {
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: 8px;
+  background: var(--bg-hover);
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 16px;
+  letter-spacing: 0;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.activity-tabs button.on .activity-count {
+  color: var(--fg);
+  background: color-mix(in srgb, var(--accent) 30%, var(--bg-hover));
+}
+
+.activity-count.live {
+  color: var(--bg);
+  background: var(--blue);
+}
+
+.activity-toolbar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+  padding: 0 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.activity-chip {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: none;
+  padding: 1px 7px;
+  color: var(--muted);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.activity-chip:hover {
+  color: var(--fg);
+}
+
+.activity-chip.on {
+  color: var(--fg);
+  border-color: color-mix(in srgb, var(--accent) 70%, transparent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
+.activity-total {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.activity-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.activity-empty {
+  margin: 0;
+  padding: 10px 12px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.activity-list {
+  margin: 0;
+  padding: 2px 0 4px;
+  list-style: none;
+}
+
+.activity-subhead {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 8px 10px 2px;
+  font-size: 10px;
+  font-weight: normal;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.activity-more {
+  padding: 2px 10px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+/* log */
+
+.log {
+  margin: 0;
+  padding: 2px 0 4px;
+  list-style: none;
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.log-row {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  width: 100%;
+  padding: 1px 8px;
+  border: 0;
+  background: none;
+  color: var(--fg);
+  font: inherit;
+  text-align: left;
+  line-height: 17px;
+}
+
+.log-row:hover {
+  background: var(--bg-hover);
+}
+
+.log-time {
+  flex: none;
+  color: var(--muted);
+  opacity: 0.8;
+  font-variant-numeric: tabular-nums;
+}
+
+.log-kind {
+  flex: none;
+  width: 7ch;
+  font-weight: 600;
+}
+
+.log-msg {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: color-mix(in srgb, var(--fg) 82%, var(--muted));
+}
+
+.log-row.open .log-msg {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.log-label {
+  color: var(--fg);
+}
+
+.log-row.sub .log-msg,
+.log-row.sub .log-label {
+  color: var(--muted);
+}
+
+.log-sub {
+  color: var(--magenta);
+}
+
+.log-row.session .log-kind {
+  color: var(--cyan);
+}
+
+.log-row.prompt .log-kind {
+  color: var(--blue);
+}
+
+.log-row.tool .log-kind {
+  color: var(--yellow);
+}
+
+.log-row.fail .log-kind,
+.log-row.fail .log-label {
+  color: var(--red);
+}
+
+.log-row.ask {
+  background: color-mix(in srgb, var(--yellow) 9%, transparent);
+}
+
+.log-row.ask .log-kind {
+  color: var(--yellow);
+}
+
+.log-row.agent .log-kind,
+.log-row.agent .log-label {
+  color: var(--magenta);
+}
+
+.log-row.note .log-kind {
+  color: var(--green);
+}
+
+.log-row.stop .log-kind {
+  color: var(--fg);
+}
+
+.log-row.compact .log-kind {
+  color: var(--muted);
+}
+
+/* files and git */
+
+.file-row,
+.commit-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 2px 10px;
+  font-size: 12px;
+}
+
+.file-row:hover,
+.commit-row:hover,
+.agent-row:hover {
+  background: var(--bg-hover);
+}
+
+.file-change,
+.git-xy,
+.commit-hash {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.file-change.created {
+  color: var(--green);
+}
+
+.file-change.edited {
+  color: var(--yellow);
+}
+
+.file-change.read {
+  color: var(--muted);
+}
+
+.file-path {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  white-space: nowrap;
+}
+
+.file-dir,
+.file-base {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.file-dir {
+  flex: 0 10 auto;
+  min-width: 2ch;
+  color: var(--muted);
+}
+
+.file-base {
+  flex: 0 1 auto;
+}
+
+.file-lines,
+.file-ago {
+  flex: none;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.file-lines .added {
+  color: var(--green);
+}
+
+.file-lines .removed {
+  color: var(--red);
+}
+
+.file-ago {
+  min-width: 3ch;
+  text-align: right;
+  color: var(--muted);
+}
+
+.git-xy {
+  white-space: pre;
+}
+
+.git-xy .staged {
+  color: var(--green);
+}
+
+.git-xy .unstaged,
+.git-xy.untracked .staged {
+  color: var(--red);
+}
+
+.git-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 8px;
+  padding: 8px 10px 2px;
+  font-size: 12px;
+}
+
+.git-branch {
+  font-weight: 600;
+}
+
+.git-upstream {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.git-upstream .ahead {
+  color: var(--green);
+  margin-right: 4px;
+}
+
+.git-upstream .behind {
+  color: var(--yellow);
+  margin-right: 4px;
+}
+
+.git-root {
+  flex-basis: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.commit-hash {
+  color: var(--yellow);
+}
+
+.commit-subject {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* subagents */
+
+.agent-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+.agent-row .status-dot {
+  margin-top: 4px;
+}
+
+.agent-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.agent-name,
+.agent-result {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.agent-name {
+  font-weight: 600;
+}
+
+.agent-desc {
+  font-weight: normal;
+  color: var(--muted);
+}
+
+.agent-tag {
+  margin-left: 5px;
+  padding: 0 4px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: normal;
+  color: var(--muted);
+}
+
+.agent-result {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.agent-meta {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  color: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.agent-row.failed .agent-meta {
+  color: var(--red);
+}
+
 /* ---- secret prompt ---- */
 
 .secret-prompt {

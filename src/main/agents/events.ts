@@ -56,7 +56,7 @@ const WAITING_NOTIFICATIONS = new Set([
   'agent_needs_input'
 ])
 
-/** Every hook Cockpit registers with Claude Code. */
+/** Every hook Cockpit registers with Claude Code. The subagent ones only feed the Activity panel. */
 export const CLAUDE_HOOK_EVENTS = [
   'SessionStart',
   'UserPromptSubmit',
@@ -66,6 +66,8 @@ export const CLAUDE_HOOK_EVENTS = [
   'PostToolUse',
   'PostToolUseFailure',
   'Notification',
+  'SubagentStart',
+  'SubagentStop',
   'Elicitation',
   'ElicitationResult',
   'PreCompact',

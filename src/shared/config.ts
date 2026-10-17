@@ -79,6 +79,21 @@ export interface WidgetPlacement {
   size: number
 }
 
+export type ActivityTab = 'log' | 'files' | 'agents' | 'git'
+
+export const ACTIVITY_TABS: readonly ActivityTab[] = ['log', 'files', 'agents', 'git']
+
+/** The Activity panel: what the focused pane's agent has been doing. */
+export interface ActivitySettings {
+  collapsed: boolean
+  /** Height in pixels while widgets share the sidebar; with none, it fills it. */
+  height: number
+  tab: ActivityTab
+}
+
+export const ACTIVITY_MIN_HEIGHT = 96
+export const ACTIVITY_MAX_HEIGHT = 2000
+
 export interface SidebarSettings {
   visible: boolean
   /** Width in pixels. */
@@ -89,6 +104,7 @@ export interface SidebarSettings {
   activeWidget: string | null
   /** The session list at the top of the sidebar is folded away. */
   sessionsCollapsed: boolean
+  activity: ActivitySettings
   /** Order and state of widgets. Installed widgets missing here are appended. */
   widgets: WidgetPlacement[]
 }
@@ -168,6 +184,7 @@ export function defaultSidebar(): SidebarSettings {
     mode: 'stack',
     activeWidget: null,
     sessionsCollapsed: false,
+    activity: { collapsed: false, height: 320, tab: 'log' },
     widgets: []
   }
 }
@@ -303,8 +320,19 @@ export function readSidebar(v: unknown): SidebarSettings {
     mode: v.mode === 'tabs' ? 'tabs' : 'stack',
     activeWidget: nonEmpty(v.activeWidget) ? v.activeWidget : null,
     sessionsCollapsed: v.sessionsCollapsed === true,
+    activity: readActivity(v.activity, def.activity),
     widgets
   }
+}
+
+function readActivity(v: unknown, def: ActivitySettings): ActivitySettings {
+  if (!isObj(v)) return { ...def }
+  const height =
+    typeof v.height === 'number' && Number.isFinite(v.height)
+      ? Math.round(Math.min(ACTIVITY_MAX_HEIGHT, Math.max(ACTIVITY_MIN_HEIGHT, v.height)))
+      : def.height
+  const tab = ACTIVITY_TABS.find((t) => t === v.tab) ?? def.tab
+  return { collapsed: v.collapsed === true, height, tab }
 }
 
 function readRecentDir(v: unknown): RecentDir | null {

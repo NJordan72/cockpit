@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
+import type { ActivityUpdate } from '@shared/activity'
 import type { CockpitConfig } from '@shared/config'
 import {
   IPC,
@@ -50,6 +51,7 @@ const onSecretPrompt: Subscribe<[SecretPrompt]> = channel(IPC.secretPrompt)
 const onAppKey: Subscribe<[AppKey]> = channel(IPC.appKey)
 const onSessionsChanged: Subscribe<[PaneSession[]]> = channel(IPC.sessionsChanged)
 const onPaneFocus: Subscribe<[string]> = channel(IPC.paneFocus)
+const onActivityUpdate: Subscribe<[ActivityUpdate]> = channel(IPC.activityUpdate)
 
 function subscribe<T>(map: Map<string, Set<T>>, id: string, cb: T): () => void {
   let set = map.get(id)
@@ -101,6 +103,11 @@ const api: CockpitApi = {
     list: () => ipcRenderer.invoke(IPC.sessionsList),
     onChange: (cb) => onSessionsChanged(cb),
     onFocusRequest: (cb) => onPaneFocus(cb)
+  },
+  activity: {
+    get: (paneId) => ipcRenderer.invoke(IPC.activityGet, paneId),
+    onUpdate: (cb) => onActivityUpdate(cb),
+    git: (paneId) => ipcRenderer.invoke(IPC.activityGit, paneId)
   },
   onAppKey: (cb) => onAppKey(cb)
 }
