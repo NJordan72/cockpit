@@ -34,6 +34,7 @@ export type Action =
   | 'goToTab8'
   | 'goToTab9'
   | 'toggleSidebar'
+  | 'kidsMode'
 
 export type Keybindings = Record<Action, string>
 
@@ -123,6 +124,23 @@ export interface LauncherSettings {
   presetId: string
 }
 
+/**
+ * Kids mode: a pretend terminal for a small child, where keys play music and
+ * show big letters and characters. Pictures come from ~/.cockpit/kids/.
+ */
+export interface KidsSettings {
+  /** Shown in the welcome box ("Welcome, Ava!"). Empty for a generic one. */
+  name: string
+  /** Typing this word, in lowercase letters, leaves kids mode. */
+  exitWord: string
+  /** 0 to 1. */
+  volume: number
+  /** songs: every key plays the next note of a nursery rhyme. notes: each key has its own note. */
+  sound: 'songs' | 'notes'
+  /** Say the letter after a pause ("B is for bear"). */
+  speak: boolean
+}
+
 export interface CockpitConfig {
   version: number
   presets: Preset[]
@@ -136,6 +154,7 @@ export interface CockpitConfig {
   /** Most recently used working directories, newest first. */
   recentDirs: RecentDir[]
   launcher: LauncherSettings
+  kids: KidsSettings
   layout: Layout
 }
 
@@ -165,7 +184,8 @@ export const DEFAULT_KEYBINDINGS: Keybindings = {
   goToTab7: 'Cmd+7',
   goToTab8: 'Cmd+8',
   goToTab9: 'Cmd+9',
-  toggleSidebar: 'Cmd+B'
+  toggleSidebar: 'Cmd+B',
+  kidsMode: 'Cmd+Shift+K'
 }
 
 export const DEFAULT_TERMINAL: TerminalSettings = {
@@ -173,6 +193,17 @@ export const DEFAULT_TERMINAL: TerminalSettings = {
     '"0xProto Nerd Font Mono", "JetBrainsMono Nerd Font Mono", ui-monospace, Menlo, monospace',
   fontSize: 13
 }
+
+export const DEFAULT_KIDS: KidsSettings = {
+  name: '',
+  exitWord: 'grownup',
+  volume: 0.6,
+  sound: 'songs',
+  speak: true
+}
+
+/** Long enough that a child mashing keys won't type it by chance. */
+const EXIT_WORD = /^[a-z]{5,32}$/
 
 export const SIDEBAR_MIN_WIDTH = 180
 export const SIDEBAR_MAX_WIDTH = 900
@@ -200,6 +231,7 @@ export function defaultConfig(): CockpitConfig {
     projectsDir: '~/dev',
     recentDirs: [],
     launcher: { presetId: 'claude' },
+    kids: { ...DEFAULT_KIDS },
     layout: { tabs: [], activeTabId: null }
   }
 }
@@ -345,6 +377,23 @@ function readRecentDir(v: unknown): RecentDir | null {
   return dir
 }
 
+export function readKids(v: unknown): KidsSettings {
+  const def = DEFAULT_KIDS
+  if (!isObj(v)) return { ...def }
+  const word = isStr(v.exitWord) ? v.exitWord.trim().toLowerCase() : ''
+  const volume =
+    typeof v.volume === 'number' && Number.isFinite(v.volume)
+      ? Math.min(1, Math.max(0, v.volume))
+      : def.volume
+  return {
+    name: isStr(v.name) ? v.name.trim().slice(0, 40) : def.name,
+    exitWord: EXIT_WORD.test(word) ? word : def.exitWord,
+    volume,
+    sound: v.sound === 'notes' ? 'notes' : 'songs',
+    speak: typeof v.speak === 'boolean' ? v.speak : def.speak
+  }
+}
+
 function readTheme(v: unknown): ThemeOverrides {
   const theme: ThemeOverrides = {}
   if (!isObj(v)) return theme
@@ -420,6 +469,7 @@ export function migrateConfig(raw: unknown): CockpitConfig {
           ? raw.launcher.presetId
           : def.launcher.presetId
     },
+    kids: readKids(raw.kids),
     layout: readLayout(raw.layout, new Set(presets.map((p) => p.id)))
   }
 }

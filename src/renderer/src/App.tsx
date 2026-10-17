@@ -8,6 +8,7 @@ import { Picker } from './components/Picker'
 import { SecretPromptDialog } from './components/SecretPromptDialog'
 import { TabBar } from './components/TabBar'
 import { Workspace } from './components/Workspace'
+import { KidsMode } from './kids/KidsMode'
 import { actionFor, compileKeymap } from './keybindings'
 import { findPane, makePane } from './layout/model'
 import { activeTab, layoutReducer } from './layout/reducer'
@@ -52,6 +53,7 @@ export function App(): React.JSX.Element {
   const [sessions, setSessions] = useState<PaneSession[]>([])
   /** The layout saved last time, until a project is launched or it is restored. */
   const [restorable, setRestorable] = useState<Layout | null>(null)
+  const [kids, setKids] = useState(false)
   const loaded = useRef(false)
   const launcherInput = useRef<HTMLInputElement>(null)
 
@@ -65,21 +67,25 @@ export function App(): React.JSX.Element {
     () => (sidebarState ? withPlacements(sidebarState, widgets) : null),
     [sidebarState, widgets]
   )
+  // Kids mode covers the sidebar, so widgets count as hidden under it.
+  const widgetsVisible = windowVisible && !kids
   // A hidden widget's prompt waits until the widget is shown.
   const prompt = useMemo(() => {
-    const shown = sidebar ? visibleWidgets(sidebar, widgets, windowVisible) : new Set<string>()
+    const shown = sidebar ? visibleWidgets(sidebar, widgets, widgetsVisible) : new Set<string>()
     return prompts.find((p) => shown.has(p.widgetId)) ?? null
-  }, [sidebar, widgets, windowVisible, prompts])
+  }, [sidebar, widgets, widgetsVisible, prompts])
 
   const layoutRef = useRef(layout)
   const pickerRef = useRef(picker)
   const promptRef = useRef(prompt)
   const sessionsRef = useRef(sessions)
+  const kidsRef = useRef(kids)
   useEffect(() => {
     layoutRef.current = layout
     pickerRef.current = picker
     promptRef.current = prompt
     sessionsRef.current = sessions
+    kidsRef.current = kids
   })
 
   // Pane statuses from the main process, for the tab badges and the session list.
@@ -253,19 +259,23 @@ export function App(): React.JSX.Element {
         case 'toggleSidebar':
           setSidebar((sb) => sb && { ...sb, visible: !sb.visible })
           return
+        case 'kidsMode':
+          api.kids.set(true)
+          return
         default: {
           const n = /^goToTab(\d)$/.exec(action)?.[1]
           if (n) dispatch({ type: 'selectTabIndex', index: Number(n) - 1 })
         }
       }
     },
-    [openPicker]
+    [api, openPicker]
   )
 
   // App shortcuts run in the capture phase, before xterm sees the key.
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
-      if (pickerRef.current || promptRef.current) return
+      // Kids mode takes every key itself; no shortcut may close or open anything.
+      if (kidsRef.current || pickerRef.current || promptRef.current) return
       const action = actionFor(keymap, e)
       if (!action) return
       e.preventDefault()
@@ -276,7 +286,7 @@ export function App(): React.JSX.Element {
     // Keys pressed while a widget has focus never reach this window; the
     // main process forwards Cmd chords instead.
     const offAppKey = api.onAppKey((key) => {
-      if (pickerRef.current || promptRef.current) return
+      if (kidsRef.current || pickerRef.current || promptRef.current) return
       const action = actionFor(keymap, key)
       if (action) runAction(action)
     })
@@ -302,7 +312,7 @@ export function App(): React.JSX.Element {
   useEffect(() => {
     const onFocus = (): void => {
       requestAnimationFrame(() => {
-        if (pickerRef.current || promptRef.current) return
+        if (kidsRef.current || pickerRef.current || promptRef.current) return
         const el = document.activeElement
         if (!el || el === document.body || el.tagName === 'BUTTON') focusWorkspace()
       })
@@ -312,6 +322,25 @@ export function App(): React.JSX.Element {
       window.removeEventListener('focus', onFocus)
     }
   }, [focusWorkspace])
+
+  // Main owns kids mode (it also comes from the View menu and survives a reload).
+  useEffect(() => {
+    let cancelled = false
+    let pushed = false
+    const off = api.kids.onChange((active) => {
+      pushed = true
+      setKids(active)
+      if (active) setPicker(null)
+      else requestAnimationFrame(focusWorkspace)
+    })
+    void api.kids.active().then((active) => {
+      if (!cancelled && !pushed) setKids(active)
+    })
+    return () => {
+      cancelled = true
+      off()
+    }
+  }, [api, focusWorkspace])
 
   const closePicker = useCallback(() => {
     setPicker(null)
@@ -381,7 +410,7 @@ export function App(): React.JSX.Element {
             sessions={sessions}
             onSelectSession={revealPane}
             settings={sidebar}
-            windowVisible={windowVisible}
+            windowVisible={widgetsVisible}
             onChange={setSidebar}
           />
         )}
@@ -408,6 +437,15 @@ export function App(): React.JSX.Element {
           key={prompt.promptId}
           prompt={prompt}
           onAnswer={(value) => answerPrompt(prompt, value)}
+        />
+      )}
+      {kids && theme && (
+        <KidsMode
+          settings={config.kids}
+          terminal={config.terminal}
+          theme={theme}
+          xtermTheme={terminalTheme}
+          onExit={() => api.kids.set(false)}
         />
       )}
     </div>

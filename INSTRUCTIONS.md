@@ -538,4 +538,51 @@ non-alphanumerics as ->/`, and the newest mtime among the 500 newest Codex
   guard), sidebar settings migration, and the renderer's merge and filters
   (250 total).
 
+### Kids mode (added 2026-10-17, not in the original plan)
+
+- A pretend terminal for the user's toddler, who wants to work too. Cmd+Shift+K
+  (the `kidsMode` keybinding) or View > Kids Mode turns it on. An overlay
+  covers the whole window with a tab bar and an xterm in the user's font and
+  theme, at twice the font size, and takes every key in the capture phase.
+  Letters show big and bring out a character, digits show that many
+  characters to count, Enter runs a pretend agent turn with Claude's spinner,
+  and every key plays a note. Typing `kids.exitWord` (default `grownup`) leaves.
+- Main owns the on/off state (`setKids` in `src/main/index.ts`), so it survives
+  a chrome reload. While it's on, main ignores `pty:write` and `pty:kill`,
+  puts the window in kiosk mode (Electron's `SetKiosk` disables process
+  switching, force quit, session termination, and hiding), swaps in a menu
+  with only About, and reports the window as unfocused to the status tracker
+  and as focused to the notifier. The first keeps finished turns marked done
+  for later. The second shows no notifications over the child's screen.
+- Sound is Web Audio (a bell from three oscillators through a compressor).
+  `songs` mode plays five public-domain nursery rhymes one note per key, at
+  most one note per 110 ms so a palm on the keyboard still plays the tune.
+  `notes` mode maps keyboard rows to a pentatonic scale. Speech uses
+  `speechSynthesis` 450 ms after the last letter or digit.
+- Characters are emoji by default (one per letter, "B is for bear"). Image
+  files in `~/.cockpit/kids/` replace the emoji for their name's first letter.
+  Main reads them as data: URLs (the chrome's CSP already allows data: images),
+  8 MB per file and 64 MB in total.
+- Verified in the built app with a scratch COCKPIT_HOME and a `cat` preset, so
+  anything reaching a PTY would echo: kiosk on and off, the kids menu holding
+  only About, the welcome box with the configured name, big letters, the cat
+  emoji for C and a test SVG for B, a row of sprites for 3, 12 oscillators for
+  4 keys, speech queued after a pause (180 voices), the cat pane receiving
+  neither the typed keys nor a direct `pty.write`, Cmd+W/T/B doing nothing,
+  the spinner and answer, the tab's working dot, a click spawning a sprite,
+  the exit word restoring the menu and the cat pane taking keys again, the
+  View menu item, kids mode staying on through a chrome reload, a full line
+  submitting itself, quitting while it's on, and no console errors or
+  warnings.
+- Not checked by hand: physical Cmd+Q and Cmd+Tab presses while in kiosk mode
+  (synthesized key events skip the macOS menu, and a scripted Cmd+Q would quit
+  whichever app was in front if the lock failed). They rest on the kids menu
+  having no Quit item and on Electron's kiosk options. Also unchecked:
+  hearing the notes and voice, `notes` mode in the app (unit tested), the
+  notification suppression, and a second display, which kiosk mode doesn't
+  cover.
+- Tests: kids settings migration and exit word validation, the letter table,
+  picking pictures, the exit word watcher, songs, key-to-note mapping, and
+  reading the pictures folder (268 total).
+
 Next: M5 (optional).

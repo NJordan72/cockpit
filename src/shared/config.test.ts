@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   ACTIVITY_MIN_HEIGHT,
   DEFAULT_KEYBINDINGS,
+  DEFAULT_KIDS,
   defaultConfig,
   defaultSidebar,
   migrateConfig,
@@ -246,5 +247,31 @@ describe('migrateConfig: sidebar and theme', () => {
       }
     })
     expect(c.theme).toEqual({ accent: '#ff00ff' })
+  })
+})
+
+describe('migrateConfig: kids mode', () => {
+  it('adds it with defaults to an older config', () => {
+    const c = migrateConfig({ version: 2 })
+    expect(c.kids).toEqual(DEFAULT_KIDS)
+    expect(c.keybindings.kidsMode).toBe('Cmd+Shift+K')
+  })
+
+  it('keeps valid settings and repairs the rest', () => {
+    expect(
+      migrateConfig({
+        kids: { name: ' Ava ', exitWord: 'LetMeOut', volume: 3, sound: 'notes', speak: false }
+      }).kids
+    ).toEqual({ name: 'Ava', exitWord: 'letmeout', volume: 1, sound: 'notes', speak: false })
+    expect(migrateConfig({ kids: { volume: -1, sound: 'kazoo', speak: 'yes' } }).kids).toEqual({
+      ...DEFAULT_KIDS,
+      volume: 0
+    })
+  })
+
+  it('refuses an exit word a child could type by chance', () => {
+    for (const exitWord of ['bye', 'by e', 'cmd+q', '', 7, 'a'.repeat(33)]) {
+      expect(migrateConfig({ kids: { exitWord } }).kids.exitWord).toBe(DEFAULT_KIDS.exitWord)
+    }
   })
 })

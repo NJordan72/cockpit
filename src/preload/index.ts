@@ -52,6 +52,7 @@ const onAppKey: Subscribe<[AppKey]> = channel(IPC.appKey)
 const onSessionsChanged: Subscribe<[PaneSession[]]> = channel(IPC.sessionsChanged)
 const onPaneFocus: Subscribe<[string]> = channel(IPC.paneFocus)
 const onActivityUpdate: Subscribe<[ActivityUpdate]> = channel(IPC.activityUpdate)
+const onKidsChanged: Subscribe<[boolean]> = channel(IPC.kidsChanged)
 
 function subscribe<T>(map: Map<string, Set<T>>, id: string, cb: T): () => void {
   let set = map.get(id)
@@ -109,7 +110,13 @@ const api: CockpitApi = {
     onUpdate: (cb) => onActivityUpdate(cb),
     git: (paneId) => ipcRenderer.invoke(IPC.activityGit, paneId)
   },
-  onAppKey: (cb) => onAppKey(cb)
+  onAppKey: (cb) => onAppKey(cb),
+  kids: {
+    active: () => ipcRenderer.invoke(IPC.kidsGet),
+    set: (active) => ipcRenderer.send(IPC.kidsSet, active),
+    onChange: (cb) => onKidsChanged(cb),
+    characters: () => ipcRenderer.invoke(IPC.kidsCharacters)
+  }
 }
 
 contextBridge.exposeInMainWorld('cockpit', api)

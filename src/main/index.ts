@@ -23,6 +23,7 @@ import {
 import {
   IPC,
   type DirListing,
+  type KidsCharacter,
   type PaneSession,
   type PtyCreateOptions,
   type PtyCreated
@@ -32,7 +33,8 @@ import { AgentMonitor } from './agents/monitor'
 import { ConfigStore } from './config'
 import { listDirs, processCwd, processCwdSync, resolveCwd } from './dirs'
 import { gitStatus } from './git'
-import { buildMenu } from './menu'
+import { listCharacters } from './kids'
+import { buildKidsMenu, buildMenu } from './menu'
 import { abbreviateHome, claudeHome, cockpitHome, codexHome, expandHome } from './paths'
 import { PtyManager } from './pty'
 import { registerWidgetScheme, WidgetHost } from './widgets/host'
@@ -57,6 +59,11 @@ let warnedNotifications = false
  * offered for restoring. Its panes are live once the chrome sends a layout.
  */
 let layoutShown = false
+/**
+ * Kids mode is on: the window is in kiosk mode, the menu has no shortcuts, and
+ * nothing typed reaches a PTY. Main owns this, so it survives a chrome reload.
+ */
+let kidsActive = false
 
 registerWidgetScheme()
 
@@ -98,7 +105,8 @@ function findPaneNode(id: string): PaneNode | null {
 /** Tell the monitor which pane the user is looking at, so a finished turn counts as seen. */
 function updateFocus(): void {
   const win = mainWindow
-  if (!win?.isFocused()) {
+  // Kids mode covers the panes; a turn that ends meanwhile is still news later.
+  if (!win?.isFocused() || kidsActive) {
     agents.setFocused(null)
     return
   }
@@ -116,6 +124,17 @@ function revealPane(paneId: string): void {
   app.focus({ steal: true })
   win.focus()
   win.webContents.send(IPC.paneFocus, paneId)
+}
+
+function setKids(active: boolean): void {
+  if (active === kidsActive) return
+  kidsActive = active
+  const win = mainWindow
+  // Kiosk mode on macOS also turns off Cmd+Tab, force quit, and hiding.
+  if (win && !win.isDestroyed()) win.setKiosk(active)
+  Menu.setApplicationMenu(active ? buildKidsMenu() : buildMenu(() => setKids(true)))
+  updateFocus()
+  win?.webContents.send(IPC.kidsChanged, active)
 }
 
 /** Record where each live pane's process is now, so a relaunch reopens it there. */
@@ -176,6 +195,8 @@ function createWindow(): void {
   })
   win.on('close', () => {
     captureCwds()
+    // While the window still exists, so kiosk mode is turned off on it.
+    setKids(false)
   })
   win.on('closed', () => {
     if (mainWindow === win) mainWindow = null
@@ -225,14 +246,15 @@ function registerIpc(): void {
     sessionsChanged()
     return { pid, cwd: display }
   })
+  // Kids mode covers the panes. If a key gets past it anyway, it stops here.
   ipcMain.on(IPC.ptyWrite, (e, id: string, data: string) => {
-    if (trusted(e)) ptys.write(id, data)
+    if (trusted(e) && !kidsActive) ptys.write(id, data)
   })
   ipcMain.on(IPC.ptyResize, (e, id: string, cols: number, rows: number) => {
     if (trusted(e)) ptys.resize(id, cols, rows)
   })
   ipcMain.on(IPC.ptyKill, (e, id: string) => {
-    if (trusted(e)) ptys.kill(id)
+    if (trusted(e) && !kidsActive) ptys.kill(id)
   })
   ipcMain.handle(IPC.ptyCwd, async (e, id: string) => {
     if (!trusted(e)) return null
@@ -282,6 +304,14 @@ function registerIpc(): void {
   })
   ipcMain.on(IPC.launcherSave, (e, launcher: LauncherSettings) => {
     if (trusted(e)) config.setLauncher(launcher)
+  })
+  ipcMain.handle(IPC.kidsGet, (e) => trusted(e) && kidsActive)
+  ipcMain.on(IPC.kidsSet, (e, active: unknown) => {
+    if (trusted(e) && typeof active === 'boolean') setKids(active)
+  })
+  ipcMain.handle(IPC.kidsCharacters, async (e): Promise<KidsCharacter[]> => {
+    if (!trusted(e)) throw new Error('untrusted sender')
+    return listCharacters(join(cockpitHome(), 'kids'))
   })
   ipcMain.handle(IPC.dirsList, async (e): Promise<DirListing> => {
     if (!trusted(e)) throw new Error('untrusted sender')
@@ -340,7 +370,8 @@ async function startup(): Promise<void> {
     home: cockpitHome(),
     onChange: sessionsChanged,
     onActivity: (update) => mainWindow?.webContents.send(IPC.activityUpdate, update),
-    windowFocused: () => mainWindow?.isFocused() ?? false,
+    // No notifications over kids mode; the tab badges have them afterwards.
+    windowFocused: () => kidsActive || (mainWindow?.isFocused() ?? false),
     describe: (paneId) => {
       const pane = findPaneNode(paneId)
       if (!pane) return null
@@ -366,7 +397,7 @@ async function startup(): Promise<void> {
     console.error('agent event server failed to start:', err)
   }
 
-  Menu.setApplicationMenu(buildMenu())
+  Menu.setApplicationMenu(buildMenu(() => setKids(true)))
   registerIpc()
   createWindow()
 

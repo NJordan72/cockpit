@@ -178,6 +178,77 @@ change its width. All of that is saved in `config.json` under `sidebar`.
 
 Writing a widget, the manifest, and the full API: [docs/widgets.md](docs/widgets.md).
 
+## Kids mode
+
+Kids mode turns the window into a pretend terminal for a small child who wants
+to work like you. Press Cmd+Shift+K or choose View > Kids Mode. The window goes
+full screen in macOS kiosk mode, and a terminal in your font and colors covers
+everything, with a welcome box and a `>` prompt.
+
+What the keys do:
+
+- A letter shows big in the middle of the screen, appears at the prompt in a
+  random color, and brings out a character for that letter (B is a bear 🐻).
+  The character walks, jumps, spins, dances, floats up, or zooms. After a
+  pause in typing, a voice says "B is for bear".
+- A digit shows that many of one character in a row, so 3 shows three of them
+  to count. 0 shows ten.
+- Enter submits the line. A spinner like Claude Code's runs for a second or two
+  (`✻ Giggling…`), then the answer lists what was typed and those characters
+  parade across the screen. A full line submits by itself.
+- Space sends a character walking across, Backspace deletes, and other keys
+  make sparkles. A click brings out a character where the pointer is.
+
+Every key also plays a note. With `"sound": "songs"` (the default), each key
+plays the next note of a nursery rhyme, so mashing keys plays Twinkle Twinkle,
+then Mary Had a Little Lamb, Old MacDonald, Row Row Row Your Boat, and Itsy
+Bitsy Spider. With `"notes"`, each key has its own note on a pentatonic scale,
+rising from left to right like a xylophone.
+
+To leave, type the exit word, `grownup` unless you change it. It's printed
+small in the top right corner.
+
+### Favorite characters
+
+Put image files (PNG, JPEG, GIF, WebP, AVIF, or SVG) in `~/.cockpit/kids/`.
+The file name is the character's name, and its first letter is the key that
+brings it out. With `bluey.png` there, B brings out Bluey instead of the bear,
+the voice says "B is for Bluey", and the answer line names Bluey. Animated GIFs
+play. Space, digits, clicks, and empty-line parades pick from your pictures
+most of the time. The folder is read each time kids mode starts, and files over
+8 MB are skipped.
+
+### What stays safe
+
+Your panes keep running underneath. While kids mode is on:
+
+- The main process drops all input to PTYs, so nothing typed reaches Claude
+  Code, Codex, or a shell, even if a key got past the overlay.
+- Kiosk mode turns off Cmd+Tab, force quit, hiding, and the Dock. The menu is
+  replaced by one with no shortcuts, so Cmd+Q, Cmd+H, and Cmd+M do nothing, and
+  Cockpit ignores its own shortcuts such as Cmd+W and Cmd+T.
+- Notifications aren't shown, and widgets are treated as hidden. A pane that
+  finished or asked for permission meanwhile still has its badge when you
+  leave.
+
+Keys that macOS handles itself still work in kiosk mode, such as the volume
+and brightness keys, Spotlight, and the power button. Kiosk mode covers only
+the display the window is on.
+
+### Settings
+
+Under `kids` in `config.json`, read each time kids mode starts:
+
+- `name`: shown in the welcome box ("Welcome, Ava!") and on the tab.
+- `exitWord`: 5 to 32 lowercase letters. Anything shorter or invalid falls
+  back to `grownup`, since a child mashing keys could type a short word by
+  chance.
+- `volume`: 0 to 1, for both the notes and the voice.
+- `sound`: `songs` or `notes`.
+- `speak`: `false` turns the voice off.
+
+The `kidsMode` keybinding changes the shortcut.
+
 ## Config
 
 `~/.cockpit/config.json` is created on first launch with every option filled
@@ -203,7 +274,8 @@ to `config.json.broken-<time>` before being replaced.
     "widgets": [/* ... */]
   },
   "projectsDir": "~/dev",
-  "launcher": { "presetId": "claude" }
+  "launcher": { "presetId": "claude" },
+  "kids": { "name": "", "exitWord": "grownup", "volume": 0.6, "sound": "songs", "speak": true }
 }
 ```
 

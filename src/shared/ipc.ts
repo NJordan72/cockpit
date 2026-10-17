@@ -38,7 +38,11 @@ export const IPC = {
   activityGet: 'activity:get',
   activityUpdate: 'activity:update',
   activityGit: 'activity:git',
-  appKey: 'app:key'
+  appKey: 'app:key',
+  kidsGet: 'kids:get',
+  kidsSet: 'kids:set',
+  kidsChanged: 'kids:changed',
+  kidsCharacters: 'kids:characters'
 } as const
 
 /**
@@ -99,6 +103,16 @@ export interface AppKey {
   shiftKey: boolean
 }
 
+/** A picture from ~/.cockpit/kids/, for kids mode. */
+export interface KidsCharacter {
+  /** From the file name: "Peppa Pig.png" is "Peppa Pig". */
+  name: string
+  /** The letter key that shows it (the name's first letter), or null. */
+  letter: string | null
+  /** A data: URL. */
+  src: string
+}
+
 export interface CockpitApi {
   pty: {
     create(opts: PtyCreateOptions): Promise<PtyCreated>
@@ -151,4 +165,12 @@ export interface CockpitApi {
   }
   /** App shortcuts pressed while a widget had keyboard focus. */
   onAppKey(cb: (key: AppKey) => void): () => void
+  kids: {
+    /** Whether kids mode is on. It stays on if the chrome reloads. */
+    active(): Promise<boolean>
+    set(active: boolean): void
+    onChange(cb: (active: boolean) => void): () => void
+    /** The pictures in ~/.cockpit/kids/, read again on each call. */
+    characters(): Promise<KidsCharacter[]>
+  }
 }

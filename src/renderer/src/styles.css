@@ -1360,3 +1360,87 @@ kbd {
 .secret-actions button:disabled {
   opacity: 0.5;
 }
+
+/* ---- kids mode ---- */
+
+/* Above everything, including dialogs, and no drag regions: nothing under it can be reached. */
+.kids {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  outline: none;
+  overflow: hidden;
+  user-select: none;
+  -webkit-app-region: no-drag;
+}
+
+.kids-titlebar,
+.kids-titlebar .tab {
+  padding-left: 12px;
+  -webkit-app-region: no-drag;
+}
+
+.kids-hint {
+  margin-left: auto;
+  align-self: center;
+  padding: 0 14px;
+  font-size: 11px;
+  color: var(--muted);
+  opacity: 0.6;
+}
+
+.kids-terminal {
+  flex: 1;
+  min-height: 0;
+  padding: 16px 20px;
+  pointer-events: none;
+}
+
+.kids-terminal .xterm {
+  height: 100%;
+}
+
+.kids-terminal .xterm .xterm-viewport {
+  background-color: var(--bg) !important;
+}
+
+.kids-fx {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.kids-fx > * {
+  position: absolute;
+  left: 0;
+  top: 0;
+  line-height: 1;
+  white-space: nowrap;
+  will-change: transform, opacity;
+}
+
+.kids-letter {
+  font-family: var(--font-mono);
+  font-size: min(55vh, 42vw);
+  font-weight: 800;
+  text-shadow: 0 0.04em 0 rgb(0 0 0 / 35%);
+}
+
+.kids-sprite {
+  font-size: var(--size, 22vh);
+}
+
+img.kids-sprite {
+  width: auto;
+  height: var(--size, 28vh);
+  max-width: 45vw;
+  object-fit: contain;
+}
+
+.kids-sparkle {
+  font-size: 4vh;
+}
