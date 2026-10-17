@@ -15,6 +15,7 @@ import {
 import {
   migrateConfig,
   paneIds,
+  type AppearanceSettings,
   type LauncherSettings,
   type Layout,
   type LayoutNode,
@@ -23,14 +24,16 @@ import {
 } from '@shared/config'
 import {
   IPC,
+  type AppearanceCommand,
   type DirListing,
   type KidsCharacter,
   type PaneSession,
   type PtyCreateOptions,
   type PtyCreated
 } from '@shared/ipc'
-import { resolveTheme } from '@shared/theme'
+import { resolveTheme, type ResolvedTheme } from '@shared/theme'
 import { AgentMonitor } from './agents/monitor'
+import { serveAssets } from './assets'
 import { ConfigStore } from './config'
 import { listDirs, processCwd, processCwdSync, resolveCwd } from './dirs'
 import { gitStatus } from './git'
@@ -38,7 +41,9 @@ import { listCharacters } from './kids'
 import { buildKidsMenu, buildMenu } from './menu'
 import { abbreviateHome, claudeHome, cockpitHome, codexHome, expandHome } from './paths'
 import { PtyManager } from './pty'
-import { registerWidgetScheme, WidgetHost } from './widgets/host'
+import { registerSchemes } from './schemes'
+import { ThemeStore } from './themes'
+import { WidgetHost } from './widgets/host'
 import iconPath from '../../resources/icon.png?asset'
 import { listSessions, widgetSession } from './widgets/sessions'
 
@@ -51,6 +56,7 @@ const ptys = new PtyManager({
   killed: (id) => agents.killed(id)
 })
 let config: ConfigStore
+let themes: ThemeStore
 let widgets: WidgetHost
 let agents: AgentMonitor
 let mainWindow: BrowserWindow | null = null
@@ -67,7 +73,7 @@ let layoutShown = false
  */
 let kidsActive = false
 
-registerWidgetScheme()
+registerSchemes()
 
 const NO_LAYOUT: Layout = { tabs: [], activeTabId: null }
 
@@ -128,13 +134,50 @@ function revealPane(paneId: string): void {
   win.webContents.send(IPC.paneFocus, paneId)
 }
 
+function currentTheme(): ResolvedTheme {
+  const c = config.get()
+  return resolveTheme(
+    themes.list(),
+    c.appearance.theme,
+    c.appearance.overrides,
+    c.terminal.fontFamily
+  )
+}
+
+/** The window's own background shows while the chrome loads and around resizes. */
+function windowBackground(): string {
+  const bg = currentTheme().tokens.bg
+  return /^#[0-9a-f]{3,8}$/i.test(bg) ? bg : '#1e1f24'
+}
+
+/** The chrome owns the appearance; menu choices go to it to apply and save. */
+function sendAppearance(command: AppearanceCommand): void {
+  const win = mainWindow
+  if (!win || win.isDestroyed()) return
+  win.webContents.send(IPC.appearanceCommand, command)
+}
+
 /** Kids mode gets a menu with nothing in it to quit, hide, or close with. */
 function applyMenu(): void {
   Menu.setApplicationMenu(
     kidsActive
       ? buildKidsMenu({ onAbout: showAbout })
-      : buildMenu({ onAbout: showAbout, onKidsMode: () => setKids(true) })
+      : buildMenu({
+          onAbout: showAbout,
+          onKidsMode: () => setKids(true),
+          themes: themes.list(),
+          theme: currentTheme().id,
+          onTheme: (id) => sendAppearance({ type: 'theme', id }),
+          onOpenFolder: () => void shell.openPath(cockpitHome())
+        })
   )
+}
+
+/** The appearance or the theme files changed: follow them outside the chrome. */
+function appearanceChanged(): void {
+  applyMenu()
+  const win = mainWindow
+  if (win && !win.isDestroyed()) win.setBackgroundColor(windowBackground())
 }
 
 /**
@@ -186,7 +229,7 @@ function createWindow(): void {
     minWidth: 480,
     minHeight: 300,
     show: false,
-    backgroundColor: '#1e1f24',
+    backgroundColor: windowBackground(),
     titleBarStyle: 'hiddenInset',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
@@ -306,6 +349,15 @@ function registerIpc(): void {
     updateFocus()
     sessionsChanged()
   })
+  ipcMain.on(IPC.appearanceSave, (e, appearance: AppearanceSettings) => {
+    if (!trusted(e)) return
+    config.setAppearance(appearance)
+    appearanceChanged()
+  })
+  ipcMain.handle(IPC.themesList, (e) => {
+    if (!trusted(e)) throw new Error('untrusted sender')
+    return themes.list()
+  })
   ipcMain.handle(IPC.sessionsList, (e) => {
     if (!trusted(e)) throw new Error('untrusted sender')
     return sessions()
@@ -382,16 +434,24 @@ async function startup(): Promise<void> {
 
   config = new ConfigStore((c) => {
     mainWindow?.webContents.send(IPC.configChanged, c)
+    appearanceChanged()
   })
   config.watch()
+
+  themes = new ThemeStore(join(cockpitHome(), 'themes'), (list) => {
+    mainWindow?.webContents.send(IPC.themesChanged, list)
+    appearanceChanged()
+  })
+  themes.start()
+  serveAssets({
+    theme: (id) => themes.root(id),
+    images: () => null
+  })
 
   widgets = new WidgetHost({
     home: cockpitHome(),
     trusted,
-    theme: () => {
-      const c = config.get()
-      return resolveTheme(c.theme, c.terminal.fontFamily)
-    },
+    theme: () => currentTheme().tokens,
     sessions: () => sessions().map(widgetSession)
   })
   widgets.start()
@@ -458,6 +518,6 @@ app.on('before-quit', () => {
 
 app.on('will-quit', () => {
   // A startup that failed partway leaves some of these unset.
-  const parts = [config, widgets, agents] as ({ close: () => void } | undefined)[]
+  const parts = [config, themes, widgets, agents] as ({ close: () => void } | undefined)[]
   for (const part of parts) part?.close()
 })

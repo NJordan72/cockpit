@@ -3,12 +3,14 @@ import type { ActivityUpdate } from '@shared/activity'
 import type { CockpitConfig } from '@shared/config'
 import {
   IPC,
+  type AppearanceCommand,
   type AppKey,
   type CockpitApi,
   type PaneSession,
   type PtyCreateOptions,
   type PtyExitInfo
 } from '@shared/ipc'
+import type { ThemeDefinition } from '@shared/theme'
 import type { SecretPrompt, WidgetEventTopic, WidgetInfo } from '@shared/widgets'
 
 // One IPC listener per channel, fanned out by PTY id, so panes don't each add
@@ -53,6 +55,8 @@ const onSessionsChanged: Subscribe<[PaneSession[]]> = channel(IPC.sessionsChange
 const onPaneFocus: Subscribe<[string]> = channel(IPC.paneFocus)
 const onActivityUpdate: Subscribe<[ActivityUpdate]> = channel(IPC.activityUpdate)
 const onKidsChanged: Subscribe<[boolean]> = channel(IPC.kidsChanged)
+const onAppearanceCommand: Subscribe<[AppearanceCommand]> = channel(IPC.appearanceCommand)
+const onThemesChanged: Subscribe<[ThemeDefinition[]]> = channel(IPC.themesChanged)
 
 function subscribe<T>(map: Map<string, Set<T>>, id: string, cb: T): () => void {
   let set = map.get(id)
@@ -86,7 +90,13 @@ const api: CockpitApi = {
     },
     saveLayout: (layout) => ipcRenderer.send(IPC.layoutSave, layout),
     saveSidebar: (sidebar) => ipcRenderer.send(IPC.sidebarSave, sidebar),
-    saveLauncher: (launcher) => ipcRenderer.send(IPC.launcherSave, launcher)
+    saveLauncher: (launcher) => ipcRenderer.send(IPC.launcherSave, launcher),
+    saveAppearance: (appearance) => ipcRenderer.send(IPC.appearanceSave, appearance),
+    onAppearanceCommand
+  },
+  themes: {
+    list: () => ipcRenderer.invoke(IPC.themesList),
+    onChange: onThemesChanged
   },
   dirs: {
     list: () => ipcRenderer.invoke(IPC.dirsList)

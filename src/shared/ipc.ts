@@ -1,6 +1,13 @@
 // IPC channel names and payload types shared by main, preload, and renderer.
 import type { ActivityUpdate, GitStatus, PaneActivity } from './activity'
-import type { CockpitConfig, LauncherSettings, Layout, SidebarSettings } from './config'
+import type {
+  AppearanceSettings,
+  CockpitConfig,
+  LauncherSettings,
+  Layout,
+  SidebarSettings
+} from './config'
+import type { ThemeDefinition } from './theme'
 import type {
   SecretPrompt,
   SessionInfo,
@@ -25,6 +32,10 @@ export const IPC = {
   layoutSave: 'layout:save',
   sidebarSave: 'sidebar:save',
   launcherSave: 'launcher:save',
+  appearanceSave: 'appearance:save',
+  appearanceCommand: 'appearance:command',
+  themesList: 'themes:list',
+  themesChanged: 'themes:changed',
   dirsList: 'dirs:list',
   widgetsList: 'widgets:list',
   widgetsChanged: 'widgets:changed',
@@ -113,6 +124,12 @@ export interface KidsCharacter {
   src: string
 }
 
+/** A View menu choice, carried out by the chrome, which owns the appearance. */
+export interface AppearanceCommand {
+  type: 'theme'
+  id: string
+}
+
 export interface CockpitApi {
   pty: {
     create(opts: PtyCreateOptions): Promise<PtyCreated>
@@ -134,6 +151,14 @@ export interface CockpitApi {
     saveLayout(layout: Layout): void
     saveSidebar(sidebar: SidebarSettings): void
     saveLauncher(launcher: LauncherSettings): void
+    saveAppearance(appearance: AppearanceSettings): void
+    /** The View menu asks for a change. */
+    onAppearanceCommand(cb: (command: AppearanceCommand) => void): () => void
+  }
+  themes: {
+    /** Built-in themes, then the ones in ~/.cockpit/themes/. */
+    list(): Promise<ThemeDefinition[]>
+    onChange(cb: (themes: ThemeDefinition[]) => void): () => void
   }
   dirs: {
     list(): Promise<DirListing>

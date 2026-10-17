@@ -1,9 +1,12 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import {
+  CONFIG_VERSION,
   migrateConfig,
   pushRecentDir,
+  readAppearance,
   readSidebar,
+  type AppearanceSettings,
   type CockpitConfig,
   type LauncherSettings,
   type Layout,
@@ -43,6 +46,11 @@ export class ConfigStore {
 
   setSidebar(sidebar: SidebarSettings): void {
     this.config = { ...this.config, sidebar: readSidebar(sidebar) }
+    this.write()
+  }
+
+  setAppearance(appearance: AppearanceSettings): void {
+    this.config = { ...this.config, appearance: readAppearance({ appearance }) }
     this.write()
   }
 
@@ -97,7 +105,9 @@ export class ConfigStore {
 
   private read(): CockpitConfig {
     try {
-      return migrateConfig(JSON.parse(fs.readFileSync(this.file, 'utf8')))
+      const raw: unknown = JSON.parse(fs.readFileSync(this.file, 'utf8'))
+      this.backUpOlder(raw)
+      return migrateConfig(raw)
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
         // Keep the broken file for the user instead of overwriting it silently.
@@ -110,6 +120,22 @@ export class ConfigStore {
         }
       }
       return migrateConfig(undefined)
+    }
+  }
+
+  /**
+   * Keep a copy of a file from an older version before it's rewritten, so
+   * going back to an older build doesn't lose what this one moved. Once only.
+   */
+  private backUpOlder(raw: unknown): void {
+    const version =
+      typeof raw === 'object' && raw !== null && 'version' in raw ? raw.version : undefined
+    if (typeof version !== 'number' || version >= CONFIG_VERSION) return
+    const backup = path.join(path.dirname(this.file), `config.v${String(version)}.json`)
+    try {
+      fs.copyFileSync(this.file, backup, fs.constants.COPYFILE_EXCL)
+    } catch {
+      // already there
     }
   }
 

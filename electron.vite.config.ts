@@ -10,10 +10,11 @@ function cspPlugin(): Plugin {
   const strict = [
     "default-src 'none'",
     "script-src 'self'",
-    // xterm.js injects <style> elements at runtime.
-    "style-src 'self' 'unsafe-inline'",
-    "img-src 'self' data:",
-    "font-src 'self' data:",
+    // xterm.js injects <style> elements at runtime. Themes add stylesheets,
+    // fonts, and images from ~/.cockpit over cockpit-asset:.
+    "style-src 'self' 'unsafe-inline' cockpit-asset:",
+    "img-src 'self' data: cockpit-asset:",
+    "font-src 'self' data: cockpit-asset:",
     "connect-src 'self'",
     'frame-src cockpit-widget:',
     "base-uri 'none'",

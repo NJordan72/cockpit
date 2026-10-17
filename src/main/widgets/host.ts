@@ -33,18 +33,6 @@ import { WidgetStorage } from './storage'
 
 const PROMPT_COOLDOWN_MS = 10_000
 
-/** Must run before the app is ready. */
-export function registerWidgetScheme(): void {
-  protocol.registerSchemesAsPrivileged([
-    {
-      scheme: WIDGET_SCHEME,
-      // standard: host is the widget id and relative URLs resolve. secure:
-      // widgets get a secure context. corsEnabled: module scripts load.
-      privileges: { standard: true, secure: true, corsEnabled: true }
-    }
-  ])
-}
-
 export interface WidgetHostOptions {
   home: string
   theme: () => Theme

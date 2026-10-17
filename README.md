@@ -265,7 +265,7 @@ to `config.json.broken-<time>` before being replaced.
   ],
   "keybindings": { "newTab": "Cmd+T", "splitRight": "Cmd+D" /* ... */ },
   "terminal": { "fontFamily": "...", "fontSize": 13 },
-  "theme": { "accent": "#ff9e64" },
+  "appearance": { "theme": "midnight", "overrides": { "accent": "#ff9e64" } },
   "sidebar": {
     "visible": true,
     "width": 320,
@@ -284,9 +284,10 @@ your login files (`.zprofile`, `.zshenv`), even when Cockpit is started from
 the Dock. Keybindings take `Cmd`, `Ctrl`, `Alt`/`Option`, `Shift` plus a key
 (`A`–`Z`, `0`–`9`, `F1`–`F20`, `Left`/`Right`/`Up`/`Down`, `Enter`, `Tab`,
 `Esc`, `[`, `]`, and other punctuation); an empty string unbinds an action.
-`theme` overrides any of the app's colors and fonts by name (`bg`, `bgRaised`,
-`fg`, `muted`, `border`, `accent`, `red`, `green`, ...; see
-`src/shared/theme.ts`). The chrome, the terminals, and widgets all follow it.
+`appearance.theme` picks a theme (also in View > Theme), and
+`appearance.overrides` changes single tokens of it (`bg`, `fg`, `accent`,
+`radius`, ...). [docs/themes.md](docs/themes.md) lists the tokens and explains
+how to make a theme of your own.
 Set `COCKPIT_HOME` to use a different directory than `~/.cockpit`.
 
 ## Terminal keys

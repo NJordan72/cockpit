@@ -89,11 +89,11 @@ export function resolveWidgetFile(root: string, pathname: string): string | null
 }
 
 /**
- * Page defaults that match the sidebar. :where() has no specificity, so any
+ * Page defaults that match the chrome. :where() has no specificity, so any
  * rule in the widget's own CSS wins.
  */
 const BASE_CSS =
-  ':where(html) { color-scheme: dark; background: var(--bg); color: var(--fg); font-family: var(--font-ui); }'
+  ':where(html) { color-scheme: var(--color-scheme); background: var(--bg); color: var(--fg); font-family: var(--font-ui); }'
 
 /** The theme and the SDK go first, ahead of any widget script. */
 export function injection(themeVars: Record<string, string>): string {

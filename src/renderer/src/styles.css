@@ -8,10 +8,17 @@
   --accent: #7aa2f7;
   --danger: #f7768e;
   --font-ui: -apple-system, BlinkMacSystemFont, sans-serif;
+  --color-scheme: dark;
+  --font-size: 13px;
+  --radius: 4px;
+  --header-case: uppercase;
+  --header-tracking: 0.08em;
+  --header-weight: normal;
+  --header-height: 28px;
   --titlebar-h: 34px;
   /* Room for the inset traffic lights. */
   --traffic-lights-w: 78px;
-  color-scheme: dark;
+  color-scheme: var(--color-scheme);
 }
 
 * {
@@ -27,7 +34,7 @@ body,
   background: var(--bg);
   color: var(--fg);
   font-family: var(--font-ui);
-  font-size: 13px;
+  font-size: var(--font-size);
 }
 
 button {
@@ -36,13 +43,10 @@ button {
 }
 
 kbd {
-  font:
-    11px ui-monospace,
-    Menlo,
-    monospace;
+  font: 11px var(--font-mono);
   padding: 1px 4px;
   border: 1px solid var(--border);
-  border-radius: 3px;
+  border-radius: var(--radius);
   color: var(--muted);
 }
 
@@ -112,7 +116,7 @@ kbd {
   -webkit-app-region: no-drag;
   border: 0;
   background: none;
-  border-radius: 4px;
+  border-radius: var(--radius);
   line-height: 1;
   cursor: default;
 }
@@ -265,7 +269,7 @@ kbd {
 .exit-bar button {
   border: 1px solid var(--border);
   background: var(--bg-hover);
-  border-radius: 4px;
+  border-radius: var(--radius);
   padding: 3px 8px;
 }
 
@@ -345,13 +349,13 @@ kbd {
   display: flex;
   padding: 2px;
   border: 1px solid var(--border);
-  border-radius: 7px;
+  border-radius: calc(var(--radius) * 2);
   background: var(--bg-raised);
 }
 
 .launcher-agents button {
   border: 0;
-  border-radius: 5px;
+  border-radius: var(--radius);
   background: none;
   padding: 5px 14px;
   color: var(--muted);
@@ -373,7 +377,7 @@ kbd {
 
 .launcher-restore {
   border: 1px solid var(--border);
-  border-radius: 5px;
+  border-radius: var(--radius);
   background: none;
   padding: 4px 10px;
   color: var(--muted);
@@ -431,7 +435,7 @@ kbd {
   flex-direction: column;
   background: var(--bg-raised);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: calc(var(--radius) * 2);
   box-shadow: 0 16px 48px rgb(0 0 0 / 0.5);
   overflow: hidden;
 }
@@ -456,7 +460,7 @@ kbd {
 .picker-presets button {
   border: 1px solid var(--border);
   background: none;
-  border-radius: 4px;
+  border-radius: var(--radius);
   padding: 2px 8px;
   color: var(--muted);
 }
@@ -464,7 +468,7 @@ kbd {
 .picker-presets button.on {
   border-color: var(--accent);
   color: var(--fg);
-  background: rgb(122 162 247 / 0.15);
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
 }
 
 .picker-hint {
@@ -476,7 +480,7 @@ kbd {
   margin: 4px 12px 8px;
   padding: 7px 9px;
   border: 1px solid var(--border);
-  border-radius: 5px;
+  border-radius: var(--radius);
   background: var(--bg);
   color: var(--fg);
   font: inherit;
@@ -499,7 +503,7 @@ kbd {
   align-items: baseline;
   gap: 10px;
   padding: 5px 8px;
-  border-radius: 4px;
+  border-radius: var(--radius);
 }
 
 .picker-list li.selected {
@@ -667,7 +671,7 @@ kbd {
   display: flex;
   align-items: center;
   gap: 2px;
-  height: 28px;
+  height: var(--header-height);
   padding: 0 4px 0 10px;
   border-bottom: 1px solid var(--border);
   user-select: none;
@@ -676,8 +680,9 @@ kbd {
 .sidebar-title {
   flex: 1;
   font-size: 11px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-weight: var(--header-weight);
+  letter-spacing: var(--header-tracking);
+  text-transform: var(--header-case);
   color: var(--muted);
 }
 
@@ -697,7 +702,7 @@ kbd {
   white-space: nowrap;
   text-overflow: ellipsis;
   border: 0;
-  border-radius: 4px;
+  border-radius: var(--radius);
   background: none;
   padding: 2px 8px;
   color: var(--muted);
@@ -714,7 +719,7 @@ kbd {
   width: 22px;
   height: 22px;
   border: 0;
-  border-radius: 4px;
+  border-radius: var(--radius);
   background: none;
   color: var(--muted);
   line-height: 1;
@@ -755,7 +760,7 @@ kbd {
   display: flex;
   align-items: center;
   gap: 2px;
-  height: 26px;
+  height: calc(var(--header-height) - 2px);
   padding: 0 4px 0 2px;
   user-select: none;
 }
@@ -788,7 +793,7 @@ kbd {
   min-height: 0;
   border: 0;
   background: var(--bg);
-  color-scheme: dark;
+  color-scheme: var(--color-scheme);
 }
 
 .widget-frame[style*='height'] {
@@ -826,7 +831,7 @@ kbd {
 }
 
 .widget-dir {
-  font-family: ui-monospace, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
 }
 
@@ -861,14 +866,15 @@ kbd {
   align-items: center;
   justify-content: center;
   gap: 5px;
-  height: 27px;
+  height: calc(var(--header-height) - 1px);
   border: 0;
   background: none;
   padding: 0 6px;
   color: var(--muted);
   font-size: 11px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-weight: var(--header-weight);
+  letter-spacing: var(--header-tracking);
+  text-transform: var(--header-case);
 }
 
 .activity-tabs button:hover {
@@ -883,7 +889,7 @@ kbd {
 .activity-count {
   min-width: 18px;
   padding: 0 5px;
-  border-radius: 8px;
+  border-radius: calc(var(--radius) * 2);
   background: var(--bg-hover);
   color: var(--muted);
   font-size: 10px;
@@ -915,13 +921,13 @@ kbd {
 
 .activity-chip {
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: var(--radius);
   background: none;
   padding: 1px 7px;
   color: var(--muted);
   font-size: 10px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  letter-spacing: var(--header-tracking);
+  text-transform: var(--header-case);
 }
 
 .activity-chip:hover {
@@ -968,8 +974,8 @@ kbd {
   padding: 8px 10px 2px;
   font-size: 10px;
   font-weight: normal;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  letter-spacing: var(--header-tracking);
+  text-transform: var(--header-case);
   color: var(--muted);
 }
 
@@ -1273,7 +1279,7 @@ kbd {
   margin-left: 5px;
   padding: 0 4px;
   border: 1px solid var(--border);
-  border-radius: 3px;
+  border-radius: var(--radius);
   font-size: 10px;
   font-weight: normal;
   color: var(--muted);
@@ -1307,7 +1313,7 @@ kbd {
   padding: 14px 14px 12px;
   background: var(--bg-raised);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: calc(var(--radius) * 2);
   box-shadow: 0 16px 48px rgb(0 0 0 / 0.5);
 }
 
@@ -1321,7 +1327,7 @@ kbd {
 
 .secret-label code,
 .secret-hint code {
-  font-family: ui-monospace, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
 }
 
@@ -1348,13 +1354,13 @@ kbd {
 .secret-actions button {
   border: 1px solid var(--border);
   background: var(--bg-hover);
-  border-radius: 5px;
+  border-radius: var(--radius);
   padding: 4px 12px;
 }
 
 .secret-actions button.primary {
   border-color: var(--accent);
-  background: rgb(122 162 247 / 0.2);
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
 }
 
 .secret-actions button:disabled {
@@ -1443,4 +1449,69 @@ img.kids-sprite {
 
 .kids-sparkle {
   font-size: 4vh;
+}
+
+/* ---- theme effects ---- */
+
+/* CRT scanlines and a darkened rim over everything, widgets included. They
+   take no input. Each applies only while its token is above 0. */
+:root[data-effects~='scanlines'] body::before,
+:root[data-effects~='vignette'] body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  pointer-events: none;
+}
+
+:root[data-effects~='scanlines'] body::before {
+  opacity: var(--scanlines);
+  background: repeating-linear-gradient(to bottom, rgb(0 0 0 / 0.3) 0 1px, transparent 1px 3px);
+}
+
+:root[data-effects~='vignette'] body::after {
+  opacity: var(--vignette);
+  background: radial-gradient(ellipse at center, transparent 60%, rgb(0 0 0 / 0.6) 100%);
+}
+
+/* Glow stays on text and on the terminal's canvas. A filter on anything that
+   contains the picker or a dialog would trap their position: fixed. */
+:root[data-effects~='glow'] body {
+  text-shadow: 0 0 calc(var(--glow) * 6px)
+    color-mix(in srgb, currentColor calc(var(--glow) * 55%), transparent);
+}
+
+:root[data-effects~='glow'] .xterm-screen canvas {
+  filter: drop-shadow(
+    0 0 calc(var(--glow) * 2.5px)
+      color-mix(in srgb, var(--accent) calc(var(--glow) * 40%), transparent)
+  );
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  :root[data-effects] body::before,
+  :root[data-effects] body::after {
+    display: none;
+  }
+}
+
+/* ---- Amber: selections are filled, like a lit segment ---- */
+
+:root[data-theme~='amber'] .tab.active,
+:root[data-theme~='amber'] .activity-tabs button.on,
+:root[data-theme~='amber'] .sidebar-tabs button.on,
+:root[data-theme~='amber'] .launcher-agents button.on {
+  background: var(--accent);
+  color: var(--accent-fg);
+  box-shadow: none;
+  text-shadow: none;
+}
+
+:root[data-theme~='amber'] .tab.active .tab-close {
+  color: var(--accent-fg);
+}
+
+:root[data-theme~='amber'] .sidebar-title,
+:root[data-theme~='amber'] .launcher-title {
+  color: var(--accent);
 }

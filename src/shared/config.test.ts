@@ -186,7 +186,7 @@ describe('migrateConfig: sidebar and theme', () => {
   it('adds them with defaults to a config from before widgets', () => {
     const c = migrateConfig({ version: 1, presets: [{ id: 'shell', name: 'Shell' }] })
     expect(c.sidebar).toEqual(defaultSidebar())
-    expect(c.theme).toEqual({})
+    expect(c.appearance).toEqual({ theme: 'midnight', overrides: {} })
     expect(c.keybindings.toggleSidebar).toBe('Cmd+B')
   })
 
@@ -246,7 +246,27 @@ describe('migrateConfig: sidebar and theme', () => {
         sparkle: '#fff'
       }
     })
-    expect(c.theme).toEqual({ accent: '#ff00ff' })
+    expect(c.appearance.overrides).toEqual({ accent: '#ff00ff' })
+  })
+
+  it("moves version 2's theme into appearance.overrides", () => {
+    const c = migrateConfig({ version: 2, theme: { accent: '#ff00ff' } })
+    expect(c.appearance).toEqual({ theme: 'midnight', overrides: { accent: '#ff00ff' } })
+    expect(c).not.toHaveProperty('theme')
+  })
+
+  it('prefers appearance over a leftover top-level theme', () => {
+    const c = migrateConfig({
+      theme: { accent: '#ff00ff' },
+      appearance: { theme: 'amber', overrides: { fg: '#fff' } }
+    })
+    expect(c.appearance).toEqual({ theme: 'amber', overrides: { fg: '#fff' } })
+  })
+
+  it('falls back to the default theme for a name that could not be a folder', () => {
+    for (const theme of ['', 'Amber', '../x', 'a/b', 7]) {
+      expect(migrateConfig({ appearance: { theme } }).appearance.theme).toBe('midnight')
+    }
   })
 })
 

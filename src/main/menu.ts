@@ -1,4 +1,15 @@
 import { app, Menu, type MenuItemConstructorOptions } from 'electron'
+import type { ThemeDefinition } from '@shared/theme'
+
+export interface MenuHandlers {
+  onAbout: () => void
+  onKidsMode: () => void
+  themes: ThemeDefinition[]
+  /** The theme in use. */
+  theme: string
+  onTheme: (id: string) => void
+  onOpenFolder: () => void
+}
 
 /**
  * A minimal macOS menu. Copy and paste are handled by the terminal itself so
@@ -6,7 +17,16 @@ import { app, Menu, type MenuItemConstructorOptions } from 'electron'
  * the chrome. Terminal shortcuts (Cmd+K, Cmd+T, ...) are deliberately absent
  * so the renderer receives them.
  */
-export function buildMenu(handlers: { onAbout: () => void; onKidsMode: () => void }): Menu {
+export function buildMenu(handlers: MenuHandlers): Menu {
+  const themeItems: MenuItemConstructorOptions[] = handlers.themes.map((t) => ({
+    id: `theme:${t.id}`,
+    label: t.error ? `${t.name} (can't be read)` : t.name,
+    toolTip: t.error,
+    type: 'radio',
+    checked: t.id === handlers.theme,
+    enabled: !t.error,
+    click: () => handlers.onTheme(t.id)
+  }))
   const template: MenuItemConstructorOptions[] = [
     {
       label: app.name,
@@ -35,11 +55,15 @@ export function buildMenu(handlers: { onAbout: () => void; onKidsMode: () => voi
     {
       label: 'View',
       submenu: [
+        { label: 'Theme', submenu: themeItems },
+        { type: 'separator' },
         { label: 'Kids Mode', click: handlers.onKidsMode },
         { type: 'separator' },
         { role: 'toggleDevTools' },
         { type: 'separator' },
-        { role: 'togglefullscreen' }
+        { role: 'togglefullscreen' },
+        { type: 'separator' },
+        { label: 'Open Cockpit Folder', click: handlers.onOpenFolder }
       ]
     },
     {

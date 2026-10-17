@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
-import type { Action, CockpitConfig, Layout, SidebarSettings } from '@shared/config'
-import { resolveTheme, themeVars, type Theme } from '@shared/theme'
+import type {
+  Action,
+  AppearanceSettings,
+  CockpitConfig,
+  Layout,
+  SidebarSettings
+} from '@shared/config'
+import { resolveTheme, themeVars, type ResolvedTheme, type ThemeDefinition } from '@shared/theme'
 import type { PaneSession } from '@shared/ipc'
 import type { SecretPrompt, SessionStatus, WidgetInfo } from '@shared/widgets'
 import { Launcher } from './components/Launcher'
@@ -13,7 +19,7 @@ import { actionFor, compileKeymap } from './keybindings'
 import { findPane, makePane } from './layout/model'
 import { activeTab, layoutReducer } from './layout/reducer'
 import { terminals } from './terminal/registry'
-import { xtermTheme } from './terminal/theme'
+import { applyTheme } from './theme'
 import { setWidgetTheme, startWidgetHost } from './widgets/host'
 import { Sidebar } from './widgets/Sidebar'
 import { visibleWidgets, withPlacements } from './widgets/sidebarModel'
@@ -44,6 +50,7 @@ const SAVE_DELAY_MS = 150
 export function App(): React.JSX.Element {
   const api = window.cockpit
   const [config, setConfig] = useState<CockpitConfig | null>(null)
+  const [themes, setThemes] = useState<ThemeDefinition[] | null>(null)
   const [layout, dispatch] = useReducer(layoutReducer, { tabs: [], activeTabId: null })
   const [picker, setPicker] = useState<PickerState | null>(null)
   const [sidebarState, setSidebar] = useState<SidebarSettings | null>(null)
@@ -75,12 +82,14 @@ export function App(): React.JSX.Element {
     return prompts.find((p) => shown.has(p.widgetId)) ?? null
   }, [sidebar, widgets, widgetsVisible, prompts])
 
+  const configRef = useRef(config)
   const layoutRef = useRef(layout)
   const pickerRef = useRef(picker)
   const promptRef = useRef(prompt)
   const sessionsRef = useRef(sessions)
   const kidsRef = useRef(kids)
   useEffect(() => {
+    configRef.current = config
     layoutRef.current = layout
     pickerRef.current = picker
     promptRef.current = prompt
@@ -129,6 +138,40 @@ export function App(): React.JSX.Element {
   }, [api])
 
   useEffect(() => {
+    let cancelled = false
+    let pushed = false
+    const off = api.themes.onChange((list) => {
+      pushed = true
+      setThemes(list)
+    })
+    void api.themes.list().then((list) => {
+      if (!cancelled && !pushed) setThemes(list)
+    })
+    return () => {
+      cancelled = true
+      off()
+    }
+  }, [api])
+
+  const setAppearance = useCallback(
+    (next: AppearanceSettings) => {
+      setConfig((c) => c && { ...c, appearance: next })
+      api.config.saveAppearance(next)
+    },
+    [api]
+  )
+
+  // The View menu asks; the chrome owns the appearance and saves it.
+  useEffect(
+    () =>
+      api.config.onAppearanceCommand((command) => {
+        const current = configRef.current?.appearance
+        if (current) setAppearance({ ...current, theme: command.id })
+      }),
+    [api, setAppearance]
+  )
+
+  useEffect(() => {
     startWidgetHost()
     let cancelled = false
     let pushed = false
@@ -166,20 +209,29 @@ export function App(): React.JSX.Element {
   }, [api, sidebar])
 
   // Keyed by value, so unrelated config edits don't restyle every terminal.
-  const themeKey = config
-    ? JSON.stringify(resolveTheme(config.theme, config.terminal.fontFamily))
-    : null
-  const theme = useMemo(() => (themeKey ? (JSON.parse(themeKey) as Theme) : null), [themeKey])
-  const terminalTheme = useMemo(() => (theme ? xtermTheme(theme) : null), [theme])
+  const themeKey =
+    config && themes
+      ? JSON.stringify(
+          resolveTheme(
+            themes,
+            config.appearance.theme,
+            config.appearance.overrides,
+            config.terminal.fontFamily
+          )
+        )
+      : null
+  const resolved = useMemo(
+    () => (themeKey ? (JSON.parse(themeKey) as ResolvedTheme) : null),
+    [themeKey]
+  )
+  const theme = resolved?.tokens ?? null
+  const terminalTheme = resolved?.terminal ?? null
 
   useEffect(() => {
-    if (!theme) return
-    const vars = themeVars(theme)
-    for (const [name, value] of Object.entries(vars)) {
-      document.documentElement.style.setProperty(name, value)
-    }
-    setWidgetTheme(vars)
-  }, [theme])
+    if (!resolved || !themes) return
+    applyTheme(resolved, themes)
+    setWidgetTheme(themeVars(resolved.tokens))
+  }, [resolved, themes])
 
   // Persist the layout shortly after it settles (divider drags fire per frame).
   useEffect(() => {

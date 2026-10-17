@@ -275,22 +275,26 @@ README for how each agent is followed.
 The theme is a set of CSS variables, already set on the widget's `:root` before
 its first paint:
 
-| Variable                                                        | Use                   |
-| --------------------------------------------------------------- | --------------------- |
-| `--bg`, `--bg-raised`, `--bg-hover`                             | Backgrounds           |
-| `--fg`, `--muted`                                               | Text                  |
-| `--border`, `--accent`, `--danger`                              | Lines and highlights  |
-| `--red`, `--green`, `--yellow`, `--blue`, `--magenta`, `--cyan` | The terminal's colors |
-| `--font-ui`, `--font-mono`                                      | Font stacks           |
+| Variable                                                        | Use                                      |
+| --------------------------------------------------------------- | ---------------------------------------- |
+| `--bg`, `--bg-raised`, `--bg-hover`                             | Backgrounds                              |
+| `--fg`, `--muted`                                               | Text                                     |
+| `--border`, `--accent`, `--accent-fg`, `--danger`               | Lines and highlights; text on the accent |
+| `--red`, `--green`, `--yellow`, `--blue`, `--magenta`, `--cyan` | The terminal's colors                    |
+| `--font-ui`, `--font-mono`, `--font-size`                       | Font stacks and the base UI size         |
+| `--header-case`, `--header-tracking`, `--header-weight`         | How the chrome styles section titles     |
+| `--radius`, `--color-scheme`                                    | Corner radius; `dark` or `light`         |
+| `--scanlines`, `--glow`, `--vignette`                           | The theme's effects, 0 to 1              |
 
-The page also starts with the sidebar's background, text color, and UI font
-(and `color-scheme: dark`). Those defaults have no specificity, so any rule in
-the widget's own CSS replaces them.
+The page also starts with the chrome's background, text color, UI font, and
+color scheme. Those defaults have no specificity, so any rule in the widget's
+own CSS replaces them. The chrome draws scanlines and vignettes over widgets
+itself; a widget that wants to glow can use `--glow`.
 
 `cockpit.theme.vars` holds the current values, and
-`cockpit.theme.subscribe(cb)` runs when they change. The values come from the
-`theme` section of `config.json`, which overrides any of them by name
-(`"theme": { "accent": "#ff9e64" }`); edits apply while Cockpit runs.
+`cockpit.theme.subscribe(cb)` runs when they change: when the user picks
+another theme, edits one, or changes `appearance.overrides` in `config.json`.
+See [themes.md](themes.md).
 
 ### cockpit.visibility
 
