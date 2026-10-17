@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Shortcut Stories</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div class="sc">
+      <header class="sc-head">
+        <span class="sc-title">SHORTCUT</span>
+        <span class="sc-count" id="count">--</span>
+        <span class="sc-spacer"></span>
+        <span class="sc-age" id="age" title="Sync now">...</span>
+        <span class="sc-dot" id="dot"></span>
+        <button class="sc-gear" id="gear" title="Search query">&#9881;</button>
+      </header>
+
+      <div class="sc-query" id="queryForm" hidden>
+        <input id="queryInput" spellcheck="false" autocomplete="off" />
+        <div class="sc-query-row">
+          <span class="sc-hint">{me} = you. Enter saves.</span>
+          <button type="button" id="queryReset">reset</button>
+          <button type="button" id="querySave">save</button>
+        </div>
+      </div>
+
+      <nav class="sc-tabs" id="tabs"></nav>
+      <div class="sc-error" id="error" hidden></div>
+      <div class="sc-list" id="list"><div class="sc-empty">...</div></div>
+    </div>
+    <script src="shortcut.js"></script>
+  </body>
+</html>

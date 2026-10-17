@@ -61,11 +61,14 @@ API that checks their manifest. Put a widget folder (or a symlink to one) in
 change. To install the examples:
 
 ```sh
-examples/widgets/install.sh          # all of them
-examples/widgets/install.sh hello    # just one
+examples/widgets/install.sh                    # all of them
+examples/widgets/install.sh shortcut-stories   # just one
 ```
 
 `hello` calls every API and is the place to start a new widget.
+`shortcut-stories` lists your Shortcut stories. The first time it runs,
+Cockpit asks for a Shortcut API token and keeps it encrypted; see
+[its README](examples/widgets/shortcut-stories/README.md).
 
 Widgets stack by default. Each one collapses from its header, and the line
 between two widgets drags to resize them. The button at the top of the

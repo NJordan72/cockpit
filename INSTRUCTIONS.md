@@ -350,4 +350,30 @@ action that removes merged worktrees.
     sidebar sections (a reorder no longer reloads widgets), and a race in
     the first widget list.
 
-Next: M3.
+### M3: done (2026-10-17)
+
+- `examples/widgets/shortcut-stories/` ports the old widget, installed
+  with `examples/widgets/install.sh shortcut-stories` (a symlink, no launchd,
+  no Keychain step). The sync script's logic now lives in the widget: the
+  search with `{me}` expansion, the `FEEDS` tabs, the 50/250 limits, paging,
+  and the state ordering, all through `cockpit.fetch` with the token from
+  `cockpit.secrets`.
+- Same UI as before (Doing / Next / All, FE Defined, the search gear, the
+  freshness dot). Clicking a story opens it through `cockpit.openExternal`;
+  the details the click used to show moved to a ▸ button on the row. Changes
+  to the query apply at once, and clicking the age syncs now.
+- Polling: every 60 s while visible, every 15 min while hidden, and an
+  immediate sync when shown if the last one is over a minute old. Failures
+  back off exponentially up to 15 min and honor `Retry-After`. A 401 stops
+  polling and offers a button to enter a new token through the host prompt.
+- Verified with the real Shortcut API in a fresh COCKPIT_HOME, where the
+  only setup was pasting the token into the host prompt once (the driver read
+  it from SHORTCUT_API_TOKEN without printing it): 50 of 52 stories in
+  Awaiting Deployment, QA, In Development order, FE Defined with 194 stories
+  paged in full, opening a story, the ▸ details, editing and resetting the
+  query, the tab surviving a relaunch with no second prompt, the 15 min
+  interval while collapsed and an immediate sync when shown after a minute,
+  and recovering from a rejected token.
+- Not covered: the 429 path (Shortcut never rate limited these runs).
+
+Next: M4.

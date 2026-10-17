@@ -1,0 +1,14 @@
+{
+  "id": "shortcut-stories",
+  "name": "Shortcut Stories",
+  "version": "2.0.0",
+  "description": "Your open Shortcut stories, grouped by workflow state. It fetches from Shortcut directly.",
+  "entry": "index.html",
+  "sizing": "fill",
+  "permissions": {
+    "network": ["api.app.shortcut.com"],
+    "openExternal": ["https://app.shortcut.com/*"],
+    "secrets": ["shortcut-token"],
+    "storage": true
+  }
+}
