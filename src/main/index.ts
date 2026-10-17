@@ -6,6 +6,7 @@ import {
   dialog,
   ipcMain,
   Menu,
+  nativeImage,
   session,
   shell,
   type IpcMainEvent,
@@ -38,6 +39,7 @@ import { buildKidsMenu, buildMenu } from './menu'
 import { abbreviateHome, claudeHome, cockpitHome, codexHome, expandHome } from './paths'
 import { PtyManager } from './pty'
 import { registerWidgetScheme, WidgetHost } from './widgets/host'
+import iconPath from '../../resources/icon.png?asset'
 import { listSessions, widgetSession } from './widgets/sessions'
 
 // PTYs only start once the app is ready, by which time agents exists.
@@ -126,13 +128,39 @@ function revealPane(paneId: string): void {
   win.webContents.send(IPC.paneFocus, paneId)
 }
 
+/** Kids mode gets a menu with nothing in it to quit, hide, or close with. */
+function applyMenu(): void {
+  Menu.setApplicationMenu(
+    kidsActive
+      ? buildKidsMenu({ onAbout: showAbout })
+      : buildMenu({ onAbout: showAbout, onKidsMode: () => setKids(true) })
+  )
+}
+
+/**
+ * macOS's standard About panel shows the app bundle's icon, which is
+ * Electron's while Cockpit runs unpackaged.
+ */
+function showAbout(): void {
+  const options = {
+    icon: nativeImage.createFromPath(iconPath),
+    message: 'Cockpit',
+    detail: `Version ${app.getVersion()}\nElectron ${process.versions.electron}`,
+    buttons: ['OK']
+  }
+  const win = mainWindow
+  void (win && !win.isDestroyed()
+    ? dialog.showMessageBox(win, options)
+    : dialog.showMessageBox(options))
+}
+
 function setKids(active: boolean): void {
   if (active === kidsActive) return
   kidsActive = active
   const win = mainWindow
   // Kiosk mode on macOS also turns off Cmd+Tab, force quit, and hiding.
   if (win && !win.isDestroyed()) win.setKiosk(active)
-  Menu.setApplicationMenu(active ? buildKidsMenu() : buildMenu(() => setKids(true)))
+  applyMenu()
   updateFocus()
   win?.webContents.send(IPC.kidsChanged, active)
 }
@@ -337,6 +365,8 @@ async function cutRendererNetwork(): Promise<void> {
 
 /** Everything that needs the app to be ready. */
 async function startup(): Promise<void> {
+  // Unpackaged, the Dock shows Electron's icon until this runs.
+  app.dock?.setIcon(iconPath)
   // Chrome needs no browser permissions; widgets get theirs through the broker.
   app.on('web-contents-created', (_e, contents) => {
     contents.session.setPermissionRequestHandler((_wc, _perm, cb) => cb(false))
@@ -397,7 +427,7 @@ async function startup(): Promise<void> {
     console.error('agent event server failed to start:', err)
   }
 
-  Menu.setApplicationMenu(buildMenu(() => setKids(true)))
+  applyMenu()
   registerIpc()
   createWindow()
 

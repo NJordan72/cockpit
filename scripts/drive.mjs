@@ -220,6 +220,16 @@ const COMMANDS = {
     console.log(JSON.stringify(await page.evaluate(expr)))
   },
 
+  // An expression in the main process, with electron's exports in scope:
+  //   meval Menu.getApplicationMenu().getMenuItemById('theme:amber').checked
+  async meval(expr) {
+    const result = await app.evaluate(async (electron, expr) => {
+      const fn = new Function(...Object.keys(electron), `return (async () => (${expr}))()`)
+      return await fn(...Object.values(electron))
+    }, expr)
+    console.log(JSON.stringify(result))
+  },
+
   // Widget frames: list them, or run an expression inside one.
   //   widgets
   //   weval hello document.querySelector('#count').textContent

@@ -6,12 +6,12 @@ import { app, Menu, type MenuItemConstructorOptions } from 'electron'
  * the chrome. Terminal shortcuts (Cmd+K, Cmd+T, ...) are deliberately absent
  * so the renderer receives them.
  */
-export function buildMenu(onKidsMode: () => void): Menu {
+export function buildMenu(handlers: { onAbout: () => void; onKidsMode: () => void }): Menu {
   const template: MenuItemConstructorOptions[] = [
     {
       label: app.name,
       submenu: [
-        { role: 'about' },
+        { label: 'About Cockpit', click: handlers.onAbout },
         { type: 'separator' },
         { role: 'hide' },
         { role: 'hideOthers' },
@@ -35,7 +35,7 @@ export function buildMenu(onKidsMode: () => void): Menu {
     {
       label: 'View',
       submenu: [
-        { label: 'Kids Mode', click: onKidsMode },
+        { label: 'Kids Mode', click: handlers.onKidsMode },
         { type: 'separator' },
         { role: 'toggleDevTools' },
         { type: 'separator' },
@@ -56,6 +56,8 @@ export function buildMenu(onKidsMode: () => void): Menu {
  * shortcuts would still fire, so there is nothing here to quit, hide, close,
  * minimize, or reload with.
  */
-export function buildKidsMenu(): Menu {
-  return Menu.buildFromTemplate([{ label: app.name, submenu: [{ role: 'about' }] }])
+export function buildKidsMenu(handlers: { onAbout: () => void }): Menu {
+  return Menu.buildFromTemplate([
+    { label: app.name, submenu: [{ label: 'About Cockpit', click: handlers.onAbout }] }
+  ])
 }
