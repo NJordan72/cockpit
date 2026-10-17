@@ -31,11 +31,18 @@ export interface AssetRoots {
   images: () => string | null
 }
 
-/** The file a URL names and its type, or null if it isn't one we serve. */
+/** Tried in order for a name without an extension: images/banner finds banner.gif. */
+export const IMAGE_EXTENSIONS = ['.gif', '.png', '.webp', '.jpg', '.jpeg', '.avif', '.apng', '.svg']
+
+/**
+ * The file a URL names and its type, or null if it isn't one we serve. A
+ * name without an extension has no type yet; the server tries
+ * IMAGE_EXTENSIONS on it.
+ */
 export function assetFile(
   url: string,
   roots: AssetRoots
-): { file: string; root: string; type: string } | null {
+): { file: string; root: string; type: string | null } | null {
   let u: URL
   try {
     u = new URL(url)
@@ -61,8 +68,23 @@ export function assetFile(
   }
   if (!root) return null
   const file = resolveWidgetFile(root, rest)
-  const type = file ? TYPES[path.extname(file).toLowerCase()] : undefined
-  return file && type ? { file, root, type } : null
+  if (!file) return null
+  const ext = path.extname(file).toLowerCase()
+  if (!ext) return { file, root, type: null }
+  const type = TYPES[ext]
+  return type ? { file, root, type } : null
+}
+
+async function firstExisting(file: string): Promise<{ file: string; type: string } | null> {
+  for (const ext of IMAGE_EXTENSIONS) {
+    try {
+      await fs.access(file + ext)
+      return { file: file + ext, type: TYPES[ext] ?? '' }
+    } catch {
+      // try the next one
+    }
+  }
+  return null
 }
 
 function notFound(): Response {
@@ -72,12 +94,16 @@ function notFound(): Response {
 /** Call once the app is ready. The scheme is registered in schemes.ts. */
 export function serveAssets(roots: AssetRoots): void {
   protocol.handle(ASSET_SCHEME, async (req) => {
-    const found = assetFile(req.url, roots)
+    const asked = assetFile(req.url, roots)
+    if (!asked) return notFound()
+    const found = asked.type
+      ? { file: asked.file, type: asked.type }
+      : await firstExisting(asked.file)
     if (!found) return notFound()
     try {
       // Links inside the folder may point anywhere; the real file must stay inside.
       const real = await fs.realpath(found.file)
-      if (!real.startsWith(found.root + path.sep)) return notFound()
+      if (!real.startsWith(asked.root + path.sep)) return notFound()
       const body = await fs.readFile(real)
       return new Response(body, {
         headers: {

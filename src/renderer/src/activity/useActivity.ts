@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { GitStatus, PaneActivity } from '@shared/activity'
 import { applyUpdate } from './model'
 
-/** How often git is read while the sidebar is showing. */
+/** How often git is read while the Activity panel is on screen. */
 const GIT_POLL_MS = 10_000
 /** How long after the agent did something git is read again (it may have edited or committed). */
 const GIT_SETTLE_MS = 1200

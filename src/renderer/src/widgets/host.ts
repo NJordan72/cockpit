@@ -12,7 +12,11 @@ import {
 } from '@shared/widgets'
 
 export interface FrameHandle {
-  readonly win: Window
+  /**
+   * The iframe. Its window is looked up on each message: an iframe that
+   * React moves in the DOM reloads into a new window.
+   */
+  readonly el: HTMLIFrameElement
   manifest: WidgetManifest
   visible: boolean
   /** sizing "content": the widget reported its document height. */
@@ -22,10 +26,10 @@ export interface FrameHandle {
 const frames = new Map<string, FrameHandle>()
 let theme: Record<string, string> = {}
 
-function post(win: Window, msg: HostToWidget): void {
+function post(f: FrameHandle, msg: HostToWidget): void {
   // Widgets have opaque origins, so there is no origin to target. The window
   // can only hold this widget's document: main refuses navigations away.
-  win.postMessage(msg, '*')
+  f.el.contentWindow?.postMessage(msg, '*')
 }
 
 function initFor(id: string, f: FrameHandle): WidgetInit {
@@ -39,7 +43,8 @@ function initFor(id: string, f: FrameHandle): WidgetInit {
 }
 
 function entryFor(source: MessageEventSource | null): [string, FrameHandle] | null {
-  for (const entry of frames) if (entry[1].win === source) return entry
+  if (!source) return null
+  for (const entry of frames) if (entry[1].el.contentWindow === source) return entry
   return null
 }
 
@@ -54,14 +59,13 @@ function onMessage(e: MessageEvent): void {
   if (!isObj(msg) || msg.cockpit !== 1) return
   switch (msg.type) {
     case 'hello':
-      post(frame.win, { cockpit: 1, type: 'init', init: initFor(id, frame) })
+      post(frame, { cockpit: 1, type: 'init', init: initFor(id, frame) })
       return
     case 'call': {
       const callId = msg.id
       if (typeof callId !== 'number') return
-      const win = frame.win
       if (typeof msg.method !== 'string' || !WIDGET_METHODS.includes(msg.method as WidgetMethod)) {
-        post(win, {
+        post(frame, {
           cockpit: 1,
           type: 'result',
           id: callId,
@@ -79,7 +83,7 @@ function onMessage(e: MessageEvent): void {
           error: { code: 'internal' as const, message: String(err) }
         }))
         .then((result) => {
-          post(win, { cockpit: 1, type: 'result', id: callId, result })
+          post(frame, { cockpit: 1, type: 'result', id: callId, result })
         })
       return
     }
@@ -100,7 +104,7 @@ export function startWidgetHost(): void {
   window.addEventListener('message', onMessage)
   window.cockpit.widgets.onEvent((id, topic, data) => {
     const f = frames.get(id)
-    if (f) post(f.win, { cockpit: 1, type: 'event', topic, data })
+    if (f) post(f, { cockpit: 1, type: 'event', topic, data })
   })
 }
 
@@ -115,14 +119,14 @@ export function registerFrame(id: string, handle: FrameHandle): () => void {
 export function setFrameVisible(handle: FrameHandle, visible: boolean): void {
   if (handle.visible === visible) return
   handle.visible = visible
-  post(handle.win, { cockpit: 1, type: 'event', topic: 'visibility', data: { visible } })
+  post(handle, { cockpit: 1, type: 'event', topic: 'visibility', data: { visible } })
 }
 
 export function setWidgetTheme(vars: Record<string, string>): void {
   if (JSON.stringify(vars) === JSON.stringify(theme)) return
   theme = vars
   for (const f of frames.values())
-    post(f.win, { cockpit: 1, type: 'event', topic: 'theme', data: vars })
+    post(f, { cockpit: 1, type: 'event', topic: 'theme', data: vars })
 }
 
 declare global {

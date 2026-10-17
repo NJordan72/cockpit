@@ -1,7 +1,8 @@
 # Widgets
 
 A widget is a folder of HTML, JavaScript, and CSS with a `widget.json` manifest.
-Cockpit shows each widget in the sidebar, inside a sandboxed iframe. A widget
+Cockpit shows each widget in a panel of the window's layout, inside a
+sandboxed iframe. A widget
 reaches the network, secrets, and storage only through the `cockpit` object,
 and only as far as its manifest allows.
 
@@ -25,16 +26,16 @@ inside that folder.
 When any file in a widget's folder changes, Cockpit reloads that widget. Files
 whose names start with a dot are ignored. A widget that can't be loaded (bad
 JSON, a missing entry file, an id that doesn't match the folder) still shows up
-in the sidebar, with the reason in place of the widget.
+in its panel, with the reason in place of the widget.
 
 Where things live:
 
-| Path                                 | Holds                                         |
-| ------------------------------------ | --------------------------------------------- |
-| `~/.cockpit/widgets/<id>/`           | The widget's files                            |
-| `~/.cockpit/data/<id>.json`          | `cockpit.storage`, one JSON object per widget |
-| `~/.cockpit/secrets/<id>/<name>.bin` | `cockpit.secrets`, encrypted                  |
-| `~/.cockpit/config.json` → `sidebar` | Order, collapsed state, sizes, stack or tabs  |
+| Path                                    | Holds                                                                          |
+| --------------------------------------- | ------------------------------------------------------------------------------ |
+| `~/.cockpit/widgets/<id>/`              | The widget's files                                                             |
+| `~/.cockpit/data/<id>.json`             | `cockpit.storage`, one JSON object per widget                                  |
+| `~/.cockpit/secrets/<id>/<name>.bin`    | `cockpit.secrets`, encrypted                                                   |
+| `~/.cockpit/config.json` → `appearance` | Where each widget sits, folded or not, its size (see [layouts.md](layouts.md)) |
 
 ## widget.json
 
@@ -56,15 +57,15 @@ Where things live:
 }
 ```
 
-| Field         | Required | Meaning                                                                                                                                        |
-| ------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| `id`          | yes      | Lowercase letters, digits, and dashes, starting with a letter (at most 63). Must equal the folder name.                                        |
-| `name`        | yes      | Shown in the sidebar and in secret prompts.                                                                                                    |
-| `version`     | no       | Shown to the widget as `cockpit.widget.version`. Default `0.0.0`.                                                                              |
-| `description` | no       | For people reading the manifest.                                                                                                               |
-| `entry`       | no       | HTML file to load, relative to the folder. Default `index.html`.                                                                               |
-| `sizing`      | no       | `fill` (default) shares the sidebar's height with other `fill` widgets and scrolls inside. `content` makes the widget as tall as its document. |
-| `permissions` | no       | What the widget may do. Anything left out is refused.                                                                                          |
+| Field         | Required | Meaning                                                                                                                |
+| ------------- | -------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `id`          | yes      | Lowercase letters, digits, and dashes, starting with a letter (at most 63). Must equal the folder name.                |
+| `name`        | yes      | Shown in the widget's panel title and in secret prompts.                                                               |
+| `version`     | no       | Shown to the widget as `cockpit.widget.version`. Default `0.0.0`.                                                      |
+| `description` | no       | For people reading the manifest.                                                                                       |
+| `entry`       | no       | HTML file to load, relative to the folder. Default `index.html`.                                                       |
+| `sizing`      | no       | `fill` (default) takes the room its panel gets and scrolls inside. `content` makes the widget as tall as its document. |
+| `permissions` | no       | What the widget may do. Anything left out is refused.                                                                  |
 
 Unknown permission names are an error, so a typo like `netwrok` fails loudly
 instead of silently granting nothing.
@@ -299,7 +300,7 @@ See [themes.md](themes.md).
 ### cockpit.visibility
 
 `cockpit.visibility.visible` is `false` while the widget is collapsed, in a
-background sidebar tab, or hidden with the rest of the sidebar, and while the
+background tab, or hidden with the other panels (Cmd+B), and while the
 window is minimized. `subscribe(cb)` calls `cb({ visible })` when it changes.
 Use it to stop polling while nobody can see the widget.
 

@@ -53,21 +53,21 @@ reason as its tooltip.
 Each token becomes a CSS variable in the chrome and in every widget:
 `bgRaised` is `--bg-raised`.
 
-| Token                                               | What it sets                                                               |
-| --------------------------------------------------- | -------------------------------------------------------------------------- |
-| `bg`, `bgRaised`, `bgHover`                         | Backgrounds: panels, raised controls, hovered rows                         |
-| `fg`, `muted`                                       | Text, and secondary text                                                   |
-| `border`                                            | Lines between and around panels                                            |
-| `accent`, `accentFg`                                | Highlights, and text drawn on an accent background                         |
-| `danger`                                            | Errors                                                                     |
-| `red`, `green`, `yellow`, `blue`, `magenta`, `cyan` | Status colors, and the terminal's base colors                              |
-| `colorScheme`                                       | `dark` or `light`, for native controls and scrollbars                      |
-| `fontUi`, `fontMono`, `fontSize`                    | Font stacks and the base UI size. `fontMono` defaults to the terminal font |
-| `headerCase`, `headerTracking`, `headerWeight`      | Panel titles: `text-transform`, `letter-spacing`, `font-weight`            |
-| `headerHeight`                                      | Height of panel title rows                                                 |
-| `radius`                                            | Corner radius of buttons, inputs, and dialogs (`0px` for square)           |
-| `gap`                                               | Space between panels                                                       |
-| `scanlines`, `glow`, `vignette`                     | Effects, from `0` (off) to `1`                                             |
+| Token                                               | What it sets                                                                                                                         |
+| --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `bg`, `bgRaised`, `bgHover`                         | Backgrounds: panels, raised controls, hovered rows                                                                                   |
+| `fg`, `muted`                                       | Text, and secondary text                                                                                                             |
+| `border`                                            | Lines between and around panels                                                                                                      |
+| `accent`, `accentFg`                                | Highlights, and text drawn on an accent background                                                                                   |
+| `danger`                                            | Errors                                                                                                                               |
+| `red`, `green`, `yellow`, `blue`, `magenta`, `cyan` | Status colors, and the terminal's base colors                                                                                        |
+| `colorScheme`                                       | `dark` or `light`, for native controls and scrollbars                                                                                |
+| `fontUi`, `fontMono`, `fontSize`                    | Font stacks and the base UI size. `fontMono` defaults to the terminal font                                                           |
+| `headerCase`, `headerTracking`, `headerWeight`      | Panel titles: `text-transform`, `letter-spacing`, `font-weight`                                                                      |
+| `headerHeight`                                      | Height of panel title rows                                                                                                           |
+| `radius`                                            | Corner radius of buttons, inputs, and dialogs (`0px` for square)                                                                     |
+| `gap`                                               | Space between panels                                                                                                                 |
+| `scanlines`, `glow`, `vignette`                     | Effects, from `0` (off) to `1`. Scanlines and the vignette cover the whole window; glow lights the chrome's text, not the terminal's |
 
 A token can refer to another one: Amber sets `fontUi` to `var(--font-mono)`.
 

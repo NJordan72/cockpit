@@ -585,4 +585,91 @@ non-alphanumerics as ->/`, and the newest mtime among the 500 newest Codex
   picking pictures, the exit word watcher, songs, key-to-note mapping, and
   reading the pictures folder (268 total).
 
+### Icon, themes, layouts (added 2026-10-17, not in the original plan)
+
+The user asked for a more distinct look, panels they can arrange, and their
+own artwork as the app icon. The intro's "skins are out of scope" predates
+that request.
+
+- Icon: `resources/icon.png`, set as the Dock icon at startup (the app is
+  unpackaged, so the Dock shows it only while Cockpit runs).
+  `resources/icon.icns` is there for a future packaged build. macOS's
+  standard About panel always shows the bundle's icon (Electron's here), and
+  `setAboutPanelOptions({ iconPath })` only works on Linux and Windows, so
+  About Cockpit is a dialog of its own.
+- Themes (`src/shared/theme.ts`, `themes.ts`, `src/main/themes.ts`, documented
+  in `docs/themes.md`):
+  - A theme is a set of flat tokens (colors, fonts, header style, radius,
+    panel gap, CRT effects), each a CSS variable in the chrome and in widgets,
+    plus an xterm palette. Themes can extend another, up to four deep.
+  - Built in: Midnight (the old colors, still the default), Amber (from the
+    icon), and Paper (light).
+  - User themes are folders in `~/.cockpit/themes/` with an optional
+    stylesheet, images, and fonts, watched for edits. They're served over
+    `cockpit-asset://`. That scheme is registered in the same
+    `registerSchemesAsPrivileged` call as `cockpit-widget://`, since Electron
+    keeps only the last call's list. It serves only stylesheets, images, and
+    fonts whose real path is inside the folder. The widget CSP doesn't allow
+    it.
+  - Glow is a text shadow on the chrome's text only. xterm's WebGL canvas is
+    opaque, so a `drop-shadow` on it outlined the whole canvas.
+- Config version 3 moves the old `theme` overrides and `sidebar` into
+  `appearance` (theme, overrides, layout, saved layouts, panelsHidden).
+  - Fields are read one by one, so an older file's sidebar becomes the user's
+    copy of the Classic layout.
+  - The first rewrite of an older file keeps it as `config.v2.json`.
+  - The chrome is the only writer of `appearance`. View menu choices go to the
+    chrome over IPC; main follows the saved value for the menu checkmarks,
+    widget injection, and the window background.
+- Layouts (`src/shared/frame.ts`, `layouts.ts`, `src/renderer/src/frame/`,
+  documented in `docs/layouts.md`):
+  - The window is a tree of splits, tabs, and panels, drawn as nested
+    flexboxes. Built in: Classic (the old window) and Cockpit (banner and
+    clock on top, Activity left, sessions, System, and widgets right).
+  - Dragging, folding, and switching a group between stacked and tabs save a
+    copy of the layout; Reset Layout drops it. `readFrame` repairs hand-written
+    trees and always keeps one workspace, one tab bar, and a group for
+    unplaced widgets. Cmd+B (still the `toggleSidebar` action) hides every
+    panel but those two.
+  - The terminals and every widget iframe render once, in a fixed order, in a
+    layer placed over empty slots in the tree with CSS anchor positioning
+    (Chromium has it; no JS sync needed). A layout change, a hand reorder of
+    widgets, or switching stacked and tabs therefore remounts no terminal and
+    reloads no widget. React moves reordered keyed siblings with
+    `insertBefore`, which reloads an iframe; the old sidebar did that when
+    widgets were reordered in config.json. The widget host now looks up each
+    iframe's window per message instead of keeping it from registration.
+- New panels: Clock, Image (a file in `~/.cockpit/images/`, with
+  extensionless names tried as .gif, .png, and so on; reloads on edit), and
+  System. System shows CPU from `os.cpus()` deltas, memory used counted like
+  Activity Monitor (anonymous minus purgeable, plus wired and compressed, from
+  `vm_stat`), load, and uptime, sampled every 2 s only while a System panel is
+  visible.
+- Verified in the built app with scratch COCKPIT_HOMEs:
+  - All three themes. A user theme extending Amber, with a stylesheet whose
+    relative `url()` loads an SVG, and live edits reaching the chrome and the
+    widgets.
+  - Asset requests refused for a symlink out of the folder, a `.json`, `%2e%2e`
+    traversal, an unknown theme, and from inside a widget.
+  - Both layouts. The banner GIF, the clock, and System numbers that match
+    `vm_stat`.
+  - A shell's screen and a marker inside a widget's frame surviving layout
+    switches, stacked ↔ tabs, and a hand reorder in config.json. Widgets still
+    answered calls afterwards.
+  - Divider drags (including the banner against the tab bar) saved and
+    restored after relaunch.
+  - A content-sized widget's slot following its reported height. Visibility
+    events on fold.
+  - A secret prompt waiting while its widget was folded.
+  - Cmd+B hiding panels and giving the terminal the keyboard.
+  - A hand edit switching the layout live. Kids mode keeping its menu through
+    an appearance change.
+  - A v2 config with sidebar settings opening as the same Classic window.
+  - Dev mode with no CSP errors.
+- Not done: dragging panels between places (layouts are rearranged in
+  config.json), and dropping the traffic-light inset in full screen.
+- Tests: theme resolution and folders, asset paths, the frame tree (repairs,
+  idempotence, widget placement, visibility, edges, drags, mode switching),
+  migration of the v2 sidebar, cell sizing, and vm_stat parsing (328 total).
+
 Next: M5 (optional).

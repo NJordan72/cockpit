@@ -1,4 +1,4 @@
-// Main-process side of the widget sidebar: serves widget files over
+// Main-process side of widgets: serves widget files over
 // cockpit-widget://, answers widget API calls from the chrome, asks the user
 // for secrets, and pushes storage and session changes to the chrome, which
 // forwards them into the right iframe.
@@ -46,7 +46,7 @@ export class WidgetHost {
   private readonly storage: WidgetStorage
   private readonly secrets: SecretStore
   private readonly broker: WidgetBroker
-  /** The chrome that shows the sidebar. One window, so one target. */
+  /** The chrome that shows the widgets. One window, so one target. */
   private target: WebContents | null = null
   private prompts = new Map<string, { widgetId: string; resolve: (v: string | null) => void }>()
   private openPrompts = new Map<string, Promise<string | null>>()

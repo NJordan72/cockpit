@@ -1,12 +1,6 @@
 // IPC channel names and payload types shared by main, preload, and renderer.
 import type { ActivityUpdate, GitStatus, PaneActivity } from './activity'
-import type {
-  AppearanceSettings,
-  CockpitConfig,
-  LauncherSettings,
-  Layout,
-  SidebarSettings
-} from './config'
+import type { AppearanceSettings, CockpitConfig, LauncherSettings, Layout } from './config'
 import type { ThemeDefinition } from './theme'
 import type {
   SecretPrompt,
@@ -30,12 +24,14 @@ export const IPC = {
   configGet: 'config:get',
   configChanged: 'config:changed',
   layoutSave: 'layout:save',
-  sidebarSave: 'sidebar:save',
   launcherSave: 'launcher:save',
   appearanceSave: 'appearance:save',
   appearanceCommand: 'appearance:command',
   themesList: 'themes:list',
   themesChanged: 'themes:changed',
+  imagesChanged: 'images:changed',
+  systemWatch: 'system:watch',
+  systemSample: 'system:sample',
   dirsList: 'dirs:list',
   widgetsList: 'widgets:list',
   widgetsChanged: 'widgets:changed',
@@ -125,9 +121,24 @@ export interface KidsCharacter {
 }
 
 /** A View menu choice, carried out by the chrome, which owns the appearance. */
-export interface AppearanceCommand {
-  type: 'theme'
-  id: string
+export type AppearanceCommand =
+  | { type: 'theme'; id: string }
+  | { type: 'layout'; id: string }
+  | { type: 'resetLayout' }
+  | { type: 'togglePanels' }
+
+/** A reading for the System panel. */
+export interface SystemSample {
+  /** Share of all cores' time spent busy since the last reading, 0 to 1. */
+  cpu: number
+  cores: number
+  /** 1, 5, and 15 minute load averages. */
+  load: [number, number, number]
+  /** Bytes, counted as Activity Monitor's "Memory Used". */
+  memUsed: number
+  memTotal: number
+  /** Seconds since boot. */
+  uptime: number
 }
 
 export interface CockpitApi {
@@ -149,7 +160,6 @@ export interface CockpitApi {
     get(): Promise<CockpitConfig>
     onChange(cb: (config: CockpitConfig) => void): () => void
     saveLayout(layout: Layout): void
-    saveSidebar(sidebar: SidebarSettings): void
     saveLauncher(launcher: LauncherSettings): void
     saveAppearance(appearance: AppearanceSettings): void
     /** The View menu asks for a change. */
@@ -159,6 +169,15 @@ export interface CockpitApi {
     /** Built-in themes, then the ones in ~/.cockpit/themes/. */
     list(): Promise<ThemeDefinition[]>
     onChange(cb: (themes: ThemeDefinition[]) => void): () => void
+  }
+  images: {
+    /** Something in ~/.cockpit/images/ changed; the number goes up each time. */
+    onChange(cb: (revision: number) => void): () => void
+  }
+  system: {
+    /** Take readings while a System panel is visible. */
+    watch(on: boolean): void
+    onSample(cb: (sample: SystemSample) => void): () => void
   }
   dirs: {
     list(): Promise<DirListing>

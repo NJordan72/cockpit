@@ -1,5 +1,5 @@
 // Reads widget.json. Anything malformed is an error with a message that says
-// which field is wrong, shown in the sidebar instead of the widget.
+// which field is wrong, shown in the widget's panel instead of the widget.
 import type { WidgetManifest, WidgetPermissions } from '@shared/widgets'
 import { parseHostPattern, parseUrlPattern, type HostPattern, type UrlPattern } from './permissions'
 

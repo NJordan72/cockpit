@@ -23,7 +23,7 @@ export interface WidgetManifest {
   description: string | null
   /** HTML file to load, relative to the widget folder. */
   entry: string
-  /** fill: share the sidebar's height. content: as tall as the widget's document. */
+  /** fill: take the room its panel gets. content: as tall as the widget's document. */
   sizing: 'fill' | 'content'
   permissions: WidgetPermissions
 }

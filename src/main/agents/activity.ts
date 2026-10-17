@@ -1,4 +1,4 @@
-// Each pane's activity for the sidebar's Activity panel: a log of what Claude
+// Each pane's activity for the Activity panel: a log of what Claude
 // Code's hooks and Codex's notifications report, the files Claude's tools
 // touched, and the subagents it started. It's kept in memory only and goes
 // to the chrome, never to widgets, since the log quotes commands and prompts.

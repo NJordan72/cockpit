@@ -24,6 +24,9 @@ export function applyTheme(theme: ResolvedTheme, themes: readonly ThemeDefinitio
   }
   root.dataset.theme = lineage(themes, theme.id).join(' ')
   root.dataset.effects = EFFECTS.filter((k) => Number.parseFloat(theme.tokens[k]) > 0).join(' ')
+  // A gap between panels draws each as a box; without one, neighbours share a line.
+  if (Number.parseFloat(theme.tokens.gap) > 0) root.dataset.boxed = ''
+  else delete root.dataset.boxed
 
   // Theme stylesheets come last, so they win over the app's own rules.
   const current = [...document.head.querySelectorAll<HTMLLinkElement>('link[data-theme-css]')]

@@ -4,36 +4,39 @@ import { formatTokens, STATUS_LABEL } from '../sessions'
 interface Props {
   sessions: PaneSession[]
   collapsed: boolean
-  onToggle: () => void
+  /** Missing where the panel can't fold (outside a column). */
+  onToggle?: () => void
   onSelect: (paneId: string) => void
-  onHideSidebar: () => void
+  onHidePanels: () => void
 }
 
 const basename = (p: string): string =>
   p === '~' ? '~' : (p.split('/').filter(Boolean).pop() ?? p)
 
-/** Every pane with its status, at the top of the sidebar. Clicking one focuses it. */
+/** Every pane with its status. Clicking one focuses it. */
 export function SessionList({
   sessions,
   collapsed,
   onToggle,
   onSelect,
-  onHideSidebar
+  onHidePanels
 }: Props): React.JSX.Element {
   const waiting = sessions.filter((s) => s.status === 'needs-input').length
   return (
     <section className={`sessions${collapsed ? ' collapsed' : ''}`} aria-label="Sessions">
-      <header className="sidebar-head">
-        <button
-          type="button"
-          tabIndex={-1}
-          className="widget-toggle"
-          aria-expanded={!collapsed}
-          title={collapsed ? 'Show sessions' : 'Hide sessions'}
-          onClick={onToggle}
-        >
-          {collapsed ? '▸' : '▾'}
-        </button>
+      <header className="sidebar-head frame-head">
+        {onToggle && (
+          <button
+            type="button"
+            tabIndex={-1}
+            className="widget-toggle"
+            aria-expanded={!collapsed}
+            title={collapsed ? 'Show sessions' : 'Hide sessions'}
+            onClick={onToggle}
+          >
+            {collapsed ? '▸' : '▾'}
+          </button>
+        )}
         <span className="sidebar-title">
           Sessions
           {waiting > 0 && <span className="sessions-waiting"> · {waiting} waiting</span>}
@@ -42,8 +45,8 @@ export function SessionList({
           type="button"
           tabIndex={-1}
           className="icon"
-          title="Hide sidebar"
-          onClick={onHideSidebar}
+          title="Hide panels"
+          onClick={onHidePanels}
         >
           ⟩
         </button>

@@ -1,6 +1,11 @@
 // The shape of ~/.cockpit/config.json, its defaults, and migration from older
 // or hand-edited files. Pure so it can be unit tested.
+import { ACTIVITY_TABS, type ActivityTab } from './activity'
+import { readFrame, type FrameNode } from './frame'
+import { builtInLayout, classicFromSidebar, DEFAULT_LAYOUT_ID } from './layouts'
 import { DEFAULT_THEME_ID, readTokens, type ThemeOverrides } from './theme'
+
+export { ACTIVITY_TABS, type ActivityTab }
 
 export const CONFIG_VERSION = 3
 
@@ -80,11 +85,7 @@ export interface WidgetPlacement {
   size: number
 }
 
-export type ActivityTab = 'log' | 'files' | 'agents' | 'git'
-
-export const ACTIVITY_TABS: readonly ActivityTab[] = ['log', 'files', 'agents', 'git']
-
-/** The Activity panel: what the focused pane's agent has been doing. */
+/** Version 2's Activity panel settings, read only to migrate them. */
 export interface ActivitySettings {
   collapsed: boolean
   /** Height in pixels while widgets share the sidebar; with none, it fills it. */
@@ -95,6 +96,10 @@ export interface ActivitySettings {
 export const ACTIVITY_MIN_HEIGHT = 96
 export const ACTIVITY_MAX_HEIGHT = 2000
 
+/**
+ * Version 2's sidebar. Version 3 reads it once to build the classic layout
+ * (layouts.ts) and doesn't write it back.
+ */
 export interface SidebarSettings {
   visible: boolean
   /** Width in pixels. */
@@ -147,6 +152,12 @@ export interface AppearanceSettings {
   theme: string
   /** Tokens that win over the theme's (see theme.ts). */
   overrides: ThemeOverrides
+  /** The layout in use: a built-in one's id (layouts.ts) or a key of `layouts`. */
+  layout: string
+  /** Layouts changed from their built-in version, and layouts written by hand. */
+  layouts: Record<string, FrameNode>
+  /** Cmd+B: only the terminals and the tab bar show. */
+  panelsHidden: boolean
 }
 
 export interface CockpitConfig {
@@ -155,7 +166,6 @@ export interface CockpitConfig {
   keybindings: Keybindings
   terminal: TerminalSettings
   appearance: AppearanceSettings
-  sidebar: SidebarSettings
   /** Directory the Cmd+T picker lists projects from. */
   projectsDir: string
   /** Most recently used working directories, newest first. */
@@ -227,14 +237,23 @@ export function defaultSidebar(): SidebarSettings {
   }
 }
 
+export function defaultAppearance(): AppearanceSettings {
+  return {
+    theme: DEFAULT_THEME_ID,
+    overrides: {},
+    layout: DEFAULT_LAYOUT_ID,
+    layouts: {},
+    panelsHidden: false
+  }
+}
+
 export function defaultConfig(): CockpitConfig {
   return {
     version: CONFIG_VERSION,
     presets: DEFAULT_PRESETS.map((p) => ({ ...p })),
     keybindings: { ...DEFAULT_KEYBINDINGS },
     terminal: { ...DEFAULT_TERMINAL },
-    appearance: { theme: DEFAULT_THEME_ID, overrides: {} },
-    sidebar: defaultSidebar(),
+    appearance: defaultAppearance(),
     projectsDir: '~/dev',
     recentDirs: [],
     launcher: { presetId: 'claude' },
@@ -401,18 +420,50 @@ export function readKids(v: unknown): KidsSettings {
   }
 }
 
-const THEME_NAME = /^[a-z0-9][a-z0-9_-]{0,63}$/
+/** Theme and layout names: folder names and config.json keys. */
+const NAME = /^[a-z0-9][a-z0-9_-]{0,63}$/
+const MAX_LAYOUTS = 20
 
 /**
- * Version 2 had a top-level `theme` of overrides; it becomes
- * appearance.overrides when appearance has none.
+ * Version 2 had a top-level `theme` of overrides and a `sidebar`. When
+ * appearance lacks them, the overrides move into it and the sidebar becomes
+ * the classic layout, so an upgrade looks the same.
  */
 export function readAppearance(raw: Obj): AppearanceSettings {
   const a = isObj(raw.appearance) ? raw.appearance : {}
-  return {
-    theme: isStr(a.theme) && THEME_NAME.test(a.theme) ? a.theme : DEFAULT_THEME_ID,
-    overrides: readTokens(isObj(a.overrides) ? a.overrides : raw.theme)
+  const layouts: Record<string, FrameNode> = {}
+  if (isObj(a.layouts)) {
+    for (const [name, tree] of Object.entries(a.layouts).slice(0, MAX_LAYOUTS)) {
+      if (NAME.test(name)) layouts[name] = readFrame(tree)
+    }
   }
+  const sidebar = isObj(raw.sidebar) ? readSidebar(raw.sidebar) : null
+  if (sidebar && !layouts[DEFAULT_LAYOUT_ID]) {
+    layouts[DEFAULT_LAYOUT_ID] = classicFromSidebar(sidebar)
+  }
+  const layout =
+    isStr(a.layout) && NAME.test(a.layout) && (layouts[a.layout] ?? builtInLayout(a.layout))
+      ? a.layout
+      : DEFAULT_LAYOUT_ID
+  return {
+    theme: isStr(a.theme) && NAME.test(a.theme) ? a.theme : DEFAULT_THEME_ID,
+    overrides: readTokens(isObj(a.overrides) ? a.overrides : raw.theme),
+    layout,
+    layouts,
+    panelsHidden:
+      typeof a.panelsHidden === 'boolean' ? a.panelsHidden : sidebar ? !sidebar.visible : false
+  }
+}
+
+/** The tree of the layout in use, or the classic one if it doesn't exist. */
+export function activeLayout(a: AppearanceSettings): FrameNode {
+  return (
+    a.layouts[a.layout] ??
+    builtInLayout(a.layout) ??
+    a.layouts[DEFAULT_LAYOUT_ID] ??
+    builtInLayout(DEFAULT_LAYOUT_ID) ??
+    readFrame(null)
+  )
 }
 
 /**
@@ -426,7 +477,7 @@ export function migrateConfig(raw: unknown): CockpitConfig {
 
   // Fields are read one by one, so older shapes are upgraded where they're
   // read. Version 2 added times and presets to recentDirs (readRecentDir).
-  // Version 3 moved theme into appearance (readAppearance).
+  // Version 3 moved theme and sidebar into appearance (readAppearance).
   const rawPresets: unknown = raw.presets
 
   let presets = def.presets
@@ -472,7 +523,6 @@ export function migrateConfig(raw: unknown): CockpitConfig {
     keybindings,
     terminal,
     appearance: readAppearance(raw),
-    sidebar: readSidebar(raw.sidebar),
     projectsDir: nonEmpty(raw.projectsDir) ? raw.projectsDir : def.projectsDir,
     recentDirs: recentDirs.slice(0, MAX_RECENT_DIRS),
     launcher: {

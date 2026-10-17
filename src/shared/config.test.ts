@@ -1,16 +1,20 @@
 import { describe, expect, it } from 'vitest'
 import {
   ACTIVITY_MIN_HEIGHT,
+  activeLayout,
   DEFAULT_KEYBINDINGS,
   DEFAULT_KIDS,
+  defaultAppearance,
   defaultConfig,
   defaultSidebar,
   migrateConfig,
   normalizeSizes,
   pushRecentDir,
+  readSidebar,
   SIDEBAR_MAX_WIDTH,
   type RecentDir
 } from './config'
+import { findNode } from './frame'
 
 describe('migrateConfig', () => {
   it('returns defaults for missing or garbage input', () => {
@@ -182,33 +186,92 @@ describe('migrateConfig: recent dirs and launcher', () => {
   })
 })
 
-describe('migrateConfig: sidebar and theme', () => {
-  it('adds them with defaults to a config from before widgets', () => {
+describe('migrateConfig: appearance', () => {
+  it('adds it with defaults to a config from before widgets', () => {
     const c = migrateConfig({ version: 1, presets: [{ id: 'shell', name: 'Shell' }] })
-    expect(c.sidebar).toEqual(defaultSidebar())
-    expect(c.appearance).toEqual({ theme: 'midnight', overrides: {} })
+    expect(c.appearance).toEqual(defaultAppearance())
     expect(c.keybindings.toggleSidebar).toBe('Cmd+B')
   })
 
-  it('keeps valid placement and repairs the rest', () => {
+  it("turns version 2's sidebar into the classic layout", () => {
     const c = migrateConfig({
+      version: 2,
       sidebar: {
         visible: false,
-        width: 99999,
-        mode: 'carousel',
-        activeWidget: 'hello',
-        sessionsCollapsed: 'yes',
-        activity: { collapsed: true, height: 5, tab: 'diary' },
+        width: 400,
+        mode: 'tabs',
+        activeWidget: 'shortcut-stories',
+        sessionsCollapsed: true,
+        activity: { collapsed: true, height: 250, tab: 'git' },
         widgets: [
           { id: 'hello', collapsed: true, size: 2 },
-          { id: 'hello', collapsed: false },
-          { id: 'shortcut-stories', size: -1 },
-          { size: 1 },
-          'junk'
+          { id: 'shortcut-stories', collapsed: false, size: 1 }
         ]
       }
     })
-    expect(c.sidebar).toEqual({
+    expect(c).not.toHaveProperty('sidebar')
+    expect(c.appearance.layout).toBe('classic')
+    expect(c.appearance.panelsHidden).toBe(true)
+    const tree = activeLayout(c.appearance)
+    const sidebar = findNode(tree, 'sidebar')
+    expect(sidebar?.size).toBe(400)
+    expect(findNode(tree, 'sessions')?.collapsed).toBe(true)
+    expect(findNode(tree, 'activity')).toMatchObject({ size: 250, tab: 'git', collapsed: true })
+    expect(findNode(tree, 'widgets')).toMatchObject({
+      type: 'tabs',
+      widgets: 'rest',
+      active: 'widget:shortcut-stories'
+    })
+    // A tab can't be folded, so the fold from stack mode is dropped.
+    expect(findNode(tree, 'widget:hello')).toMatchObject({ flex: 2 })
+    expect(findNode(tree, 'widget:hello')?.collapsed).toBeUndefined()
+  })
+
+  it('keeps a saved classic layout over a leftover sidebar', () => {
+    const saved = { type: 'panel', panel: 'workspace' }
+    const c = migrateConfig({
+      sidebar: { width: 500 },
+      appearance: { layouts: { classic: saved }, panelsHidden: false }
+    })
+    expect(findNode(activeLayout(c.appearance), 'sidebar')).toBeNull()
+    expect(c.appearance.panelsHidden).toBe(false)
+  })
+
+  it('falls back to the classic layout for one that does not exist', () => {
+    expect(migrateConfig({ appearance: { layout: 'nope' } }).appearance.layout).toBe('classic')
+    expect(migrateConfig({ appearance: { layout: 'cockpit' } }).appearance.layout).toBe('cockpit')
+    const mine = migrateConfig({
+      appearance: { layout: 'mine', layouts: { mine: { type: 'panel', panel: 'workspace' } } }
+    })
+    expect(mine.appearance.layout).toBe('mine')
+  })
+
+  it('drops layouts whose names could not be config keys', () => {
+    const c = migrateConfig({
+      appearance: { layouts: { Mine: {}, '../x': {}, ok: {} } }
+    })
+    expect(Object.keys(c.appearance.layouts)).toEqual(['ok'])
+  })
+})
+
+describe('readSidebar (version 2)', () => {
+  it('keeps valid placement and repairs the rest', () => {
+    const sb = readSidebar({
+      visible: false,
+      width: 99999,
+      mode: 'carousel',
+      activeWidget: 'hello',
+      sessionsCollapsed: 'yes',
+      activity: { collapsed: true, height: 5, tab: 'diary' },
+      widgets: [
+        { id: 'hello', collapsed: true, size: 2 },
+        { id: 'hello', collapsed: false },
+        { id: 'shortcut-stories', size: -1 },
+        { size: 1 },
+        'junk'
+      ]
+    })
+    expect(sb).toEqual({
       visible: false,
       width: SIDEBAR_MAX_WIDTH,
       mode: 'stack',
@@ -224,18 +287,12 @@ describe('migrateConfig: sidebar and theme', () => {
 
   it('keeps the Activity panel settings', () => {
     const activity = { collapsed: false, height: 410, tab: 'git' }
-    expect(migrateConfig({ sidebar: { activity } }).sidebar.activity).toEqual(activity)
-    expect(migrateConfig({ sidebar: { activity: 'big' } }).sidebar.activity).toEqual(
-      defaultSidebar().activity
-    )
+    expect(readSidebar({ activity }).activity).toEqual(activity)
+    expect(readSidebar({ activity: 'big' }).activity).toEqual(defaultSidebar().activity)
   })
+})
 
-  it('keeps the session list folded', () => {
-    expect(migrateConfig({ sidebar: { sessionsCollapsed: true } }).sidebar.sessionsCollapsed).toBe(
-      true
-    )
-  })
-
+describe('migrateConfig: theme', () => {
   it('keeps known theme colors and drops values that could break out of CSS', () => {
     const c = migrateConfig({
       theme: {
@@ -251,7 +308,8 @@ describe('migrateConfig: sidebar and theme', () => {
 
   it("moves version 2's theme into appearance.overrides", () => {
     const c = migrateConfig({ version: 2, theme: { accent: '#ff00ff' } })
-    expect(c.appearance).toEqual({ theme: 'midnight', overrides: { accent: '#ff00ff' } })
+    expect(c.appearance.overrides).toEqual({ accent: '#ff00ff' })
+    expect(c.appearance.theme).toBe('midnight')
     expect(c).not.toHaveProperty('theme')
   })
 
@@ -260,7 +318,8 @@ describe('migrateConfig: sidebar and theme', () => {
       theme: { accent: '#ff00ff' },
       appearance: { theme: 'amber', overrides: { fg: '#fff' } }
     })
-    expect(c.appearance).toEqual({ theme: 'amber', overrides: { fg: '#fff' } })
+    expect(c.appearance.theme).toBe('amber')
+    expect(c.appearance.overrides).toEqual({ fg: '#fff' })
   })
 
   it('falls back to the default theme for a name that could not be a folder', () => {

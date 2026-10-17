@@ -1,7 +1,11 @@
-// What the sidebar's Activity panel shows about a pane: a log of what its
+// What the Activity panel shows about a pane: a log of what its
 // agent did, the files it touched, the subagents it started, and the git
 // state of its directory. Only the chrome gets this. Widgets don't, since the
 // log quotes commands and prompts.
+
+export type ActivityTab = 'log' | 'files' | 'agents' | 'git'
+
+export const ACTIVITY_TABS: readonly ActivityTab[] = ['log', 'files', 'agents', 'git']
 
 /**
  * session: started, resumed, cleared, ended. prompt: the user sent one.

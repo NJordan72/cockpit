@@ -1,3 +1,4 @@
+import { realpathSync } from 'node:fs'
 import { basename, join } from 'node:path'
 import {
   app,
@@ -19,8 +20,7 @@ import {
   type LauncherSettings,
   type Layout,
   type LayoutNode,
-  type PaneNode,
-  type SidebarSettings
+  type PaneNode
 } from '@shared/config'
 import {
   IPC,
@@ -31,6 +31,7 @@ import {
   type PtyCreateOptions,
   type PtyCreated
 } from '@shared/ipc'
+import { BUILT_IN_LAYOUTS } from '@shared/layouts'
 import { resolveTheme, type ResolvedTheme } from '@shared/theme'
 import { AgentMonitor } from './agents/monitor'
 import { serveAssets } from './assets'
@@ -42,7 +43,9 @@ import { buildKidsMenu, buildMenu } from './menu'
 import { abbreviateHome, claudeHome, cockpitHome, codexHome, expandHome } from './paths'
 import { PtyManager } from './pty'
 import { registerSchemes } from './schemes'
+import { SystemMonitor } from './system'
 import { ThemeStore } from './themes'
+import { TreeWatcher } from './watch'
 import { WidgetHost } from './widgets/host'
 import iconPath from '../../resources/icon.png?asset'
 import { listSessions, widgetSession } from './widgets/sessions'
@@ -57,6 +60,12 @@ const ptys = new PtyManager({
 })
 let config: ConfigStore
 let themes: ThemeStore
+let images: TreeWatcher
+let imagesRevision = 0
+const system = new SystemMonitor((sample) => {
+  const win = mainWindow
+  if (win && !win.isDestroyed()) win.webContents.send(IPC.systemSample, sample)
+})
 let widgets: WidgetHost
 let agents: AgentMonitor
 let mainWindow: BrowserWindow | null = null
@@ -150,6 +159,21 @@ function windowBackground(): string {
   return /^#[0-9a-f]{3,8}$/i.test(bg) ? bg : '#1e1f24'
 }
 
+/** Built-in layouts, then ones only config.json has. */
+function layoutChoices(): { id: string; name: string }[] {
+  const builtIn = BUILT_IN_LAYOUTS.map((l) => ({ id: l.id, name: l.name }))
+  const mine = Object.keys(config.get().appearance.layouts)
+    .filter((id) => !BUILT_IN_LAYOUTS.some((l) => l.id === id))
+    .map((id) => ({ id, name: id }))
+  return [...builtIn, ...mine]
+}
+
+/** Only a built-in layout the user has changed can go back to how it was. */
+function canResetLayout(): boolean {
+  const a = config.get().appearance
+  return BUILT_IN_LAYOUTS.some((l) => l.id === a.layout) && a.layout in a.layouts
+}
+
 /** The chrome owns the appearance; menu choices go to it to apply and save. */
 function sendAppearance(command: AppearanceCommand): void {
   const win = mainWindow
@@ -168,6 +192,12 @@ function applyMenu(): void {
           themes: themes.list(),
           theme: currentTheme().id,
           onTheme: (id) => sendAppearance({ type: 'theme', id }),
+          layouts: layoutChoices(),
+          layout: config.get().appearance.layout,
+          onLayout: (id) => sendAppearance({ type: 'layout', id }),
+          onResetLayout: () => sendAppearance({ type: 'resetLayout' }),
+          canResetLayout: canResetLayout(),
+          onTogglePanels: () => sendAppearance({ type: 'togglePanels' }),
           onOpenFolder: () => void shell.openPath(cockpitHome())
         })
   )
@@ -260,6 +290,7 @@ function createWindow(): void {
     if (details.isMainFrame && !details.isSameDocument) {
       ptys.killAllFor(wc)
       widgets.detach(wc)
+      system.set(false)
       lastSessions = ''
       layoutShown = false
     }
@@ -274,6 +305,7 @@ function createWindow(): void {
     layoutShown = false
     ptys.killAllFor(wc)
     widgets.detach(wc)
+    system.set(false)
   })
 
   if (!app.isPackaged && process.env.ELECTRON_RENDERER_URL) {
@@ -379,8 +411,8 @@ function registerIpc(): void {
     }
     return gitStatus(cwd ?? expandHome(pane.cwd))
   })
-  ipcMain.on(IPC.sidebarSave, (e, sidebar: SidebarSettings) => {
-    if (trusted(e)) config.setSidebar(sidebar)
+  ipcMain.on(IPC.systemWatch, (e, on: unknown) => {
+    if (trusted(e)) system.set(on === true)
   })
   ipcMain.on(IPC.launcherSave, (e, launcher: LauncherSettings) => {
     if (trusted(e)) config.setLauncher(launcher)
@@ -443,9 +475,21 @@ async function startup(): Promise<void> {
     appearanceChanged()
   })
   themes.start()
+  const imagesDir = join(cockpitHome(), 'images')
+  images = new TreeWatcher(imagesDir, () => {
+    imagesRevision++
+    mainWindow?.webContents.send(IPC.imagesChanged, imagesRevision)
+  })
+  images.start()
   serveAssets({
     theme: (id) => themes.root(id),
-    images: () => null
+    images: () => {
+      try {
+        return realpathSync(imagesDir)
+      } catch {
+        return null
+      }
+    }
   })
 
   widgets = new WidgetHost({
@@ -518,6 +562,8 @@ app.on('before-quit', () => {
 
 app.on('will-quit', () => {
   // A startup that failed partway leaves some of these unset.
-  const parts = [config, themes, widgets, agents] as ({ close: () => void } | undefined)[]
+  const parts = [config, themes, images, system, widgets, agents] as (
+    { close: () => void } | undefined
+  )[]
   for (const part of parts) part?.close()
 })

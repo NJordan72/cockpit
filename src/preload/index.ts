@@ -8,7 +8,8 @@ import {
   type CockpitApi,
   type PaneSession,
   type PtyCreateOptions,
-  type PtyExitInfo
+  type PtyExitInfo,
+  type SystemSample
 } from '@shared/ipc'
 import type { ThemeDefinition } from '@shared/theme'
 import type { SecretPrompt, WidgetEventTopic, WidgetInfo } from '@shared/widgets'
@@ -57,6 +58,8 @@ const onActivityUpdate: Subscribe<[ActivityUpdate]> = channel(IPC.activityUpdate
 const onKidsChanged: Subscribe<[boolean]> = channel(IPC.kidsChanged)
 const onAppearanceCommand: Subscribe<[AppearanceCommand]> = channel(IPC.appearanceCommand)
 const onThemesChanged: Subscribe<[ThemeDefinition[]]> = channel(IPC.themesChanged)
+const onImagesChanged: Subscribe<[number]> = channel(IPC.imagesChanged)
+const onSystemSample: Subscribe<[SystemSample]> = channel(IPC.systemSample)
 
 function subscribe<T>(map: Map<string, Set<T>>, id: string, cb: T): () => void {
   let set = map.get(id)
@@ -89,7 +92,6 @@ const api: CockpitApi = {
       return () => configSubs.delete(cb)
     },
     saveLayout: (layout) => ipcRenderer.send(IPC.layoutSave, layout),
-    saveSidebar: (sidebar) => ipcRenderer.send(IPC.sidebarSave, sidebar),
     saveLauncher: (launcher) => ipcRenderer.send(IPC.launcherSave, launcher),
     saveAppearance: (appearance) => ipcRenderer.send(IPC.appearanceSave, appearance),
     onAppearanceCommand
@@ -97,6 +99,13 @@ const api: CockpitApi = {
   themes: {
     list: () => ipcRenderer.invoke(IPC.themesList),
     onChange: onThemesChanged
+  },
+  images: {
+    onChange: onImagesChanged
+  },
+  system: {
+    watch: (on) => ipcRenderer.send(IPC.systemWatch, on),
+    onSample: onSystemSample
   },
   dirs: {
     list: () => ipcRenderer.invoke(IPC.dirsList)

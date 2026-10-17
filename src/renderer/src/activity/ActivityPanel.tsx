@@ -6,7 +6,7 @@ import type {
   PaneActivity,
   SubagentRun
 } from '@shared/activity'
-import { ACTIVITY_TABS, type ActivitySettings, type ActivityTab } from '@shared/config'
+import { ACTIVITY_TABS, type ActivityTab } from '@shared/config'
 import type { PaneSession } from '@shared/ipc'
 import { formatAgo } from '../sessions'
 import {
@@ -22,15 +22,20 @@ import {
 } from './model'
 import { useGit, useNow, usePaneActivity } from './useActivity'
 
+export interface ActivityView {
+  tab: ActivityTab
+  collapsed: boolean
+}
+
 interface Props {
   /** The focused pane. */
   session: PaneSession
-  settings: ActivitySettings
-  onChange: (next: ActivitySettings) => void
-  /** The window and the sidebar are showing. */
+  settings: ActivityView
+  onChange: (next: ActivityView) => void
+  /** Folding works only where the panel sits in a column. */
+  canCollapse: boolean
+  /** The panel is on screen. */
   visible: boolean
-  style: React.CSSProperties
-  sectionRef: React.Ref<HTMLElement>
 }
 
 const TAB_LABEL: Record<ActivityTab, string> = {
@@ -53,9 +58,8 @@ export function ActivityPanel({
   session,
   settings,
   onChange,
-  visible,
-  style,
-  sectionRef
+  canCollapse,
+  visible
 }: Props): React.JSX.Element {
   const activity = usePaneActivity(session.id)
   const [logFilter, setLogFilter] = useState<LogFilter>({ events: true, tools: true })
@@ -73,23 +77,23 @@ export function ActivityPanel({
   }
 
   return (
-    <section
-      ref={sectionRef}
-      className={`activity${open ? '' : ' collapsed'}`}
-      style={style}
-      aria-label="Activity"
-    >
-      <header className="sidebar-head activity-head" title={`${session.name} · ${session.cwd}`}>
-        <button
-          type="button"
-          tabIndex={-1}
-          className="widget-toggle"
-          aria-expanded={open}
-          title={open ? 'Hide activity' : 'Show activity'}
-          onClick={() => onChange({ ...settings, collapsed: open })}
-        >
-          {open ? '▾' : '▸'}
-        </button>
+    <section className={`activity${open ? '' : ' collapsed'}`} aria-label="Activity">
+      <header
+        className="sidebar-head activity-head frame-head"
+        title={`${session.name} · ${session.cwd}`}
+      >
+        {canCollapse && (
+          <button
+            type="button"
+            tabIndex={-1}
+            className="widget-toggle"
+            aria-expanded={open}
+            title={open ? 'Hide activity' : 'Show activity'}
+            onClick={() => onChange({ ...settings, collapsed: open })}
+          >
+            {open ? '▾' : '▸'}
+          </button>
+        )}
         <div className="activity-tabs" role="tablist">
           {ACTIVITY_TABS.map((t) => (
             <button

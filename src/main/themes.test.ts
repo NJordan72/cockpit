@@ -149,6 +149,14 @@ describe('assetFile', () => {
     expect(assetFile('cockpit-asset://themes/neon/theme.css', roots)?.type).toMatch(/text\/css/)
   })
 
+  it('leaves the type open for a name without an extension', () => {
+    expect(assetFile('cockpit-asset://images/banner', roots)).toEqual({
+      file: '/home/.cockpit/images/banner',
+      root: '/home/.cockpit/images',
+      type: null
+    })
+  })
+
   it('refuses unknown themes, other file types, and escapes', () => {
     for (const url of [
       'cockpit-asset://themes/nope/a.png',

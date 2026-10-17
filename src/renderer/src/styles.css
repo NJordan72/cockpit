@@ -63,9 +63,6 @@ kbd {
   flex: none;
   display: flex;
   align-items: stretch;
-  padding-left: var(--traffic-lights-w);
-  border-bottom: 1px solid var(--border);
-  -webkit-app-region: drag;
   user-select: none;
 }
 
@@ -209,12 +206,6 @@ kbd {
 }
 
 /* ---- workspace, panes, dividers ---- */
-
-.main {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-}
 
 .workspace {
   flex: 1;
@@ -534,43 +525,405 @@ kbd {
   color: var(--muted);
 }
 
-/* ---- widget sidebar ---- */
+/* ---- the frame: the window's panels ---- */
 
-.sidebar {
+.frame-root {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  /* The floating layer's items are placed against this box. */
   position: relative;
-  flex: none;
+}
+
+:root[data-boxed] .frame-root {
+  padding: var(--gap);
+}
+
+.frame-cell {
+  position: relative;
   display: flex;
   flex-direction: column;
   min-width: 0;
+  min-height: 0;
+}
+
+.frame-top {
+  flex: 1;
+}
+
+.frame-node {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.frame-children {
+  flex: 1;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+}
+
+.frame-children.column {
+  flex-direction: column;
+}
+
+:root[data-boxed] .frame-children {
+  gap: var(--gap);
+}
+
+/* Edge to edge, neighbours share a line. */
+:root:not([data-boxed]) .frame-children.row > .frame-cell + .frame-cell {
   border-left: 1px solid var(--border);
+}
+
+:root:not([data-boxed]) .frame-children.column > .frame-cell + .frame-cell {
+  border-top: 1px solid var(--border);
+}
+
+.frame-panel {
+  overflow: hidden;
   background: var(--bg);
 }
 
-.sidebar.hidden {
+/* With a gap, every panel is a box of its own. */
+:root[data-boxed] .frame-panel,
+:root[data-boxed] .frame-tabs {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+:root[data-boxed] .frame-tabs .frame-panel {
+  border: 0;
+  border-radius: 0;
+}
+
+.frame-tabs,
+.frame-split.titled {
+  background: var(--bg);
+}
+
+.tab-page {
+  flex: 1;
+}
+
+.tab-page.hidden {
   display: none;
 }
 
-.sidebar-resize {
+/* Where a terminal area or a widget goes; the floating layer draws it. */
+.frame-slot {
+  flex: 1;
+  min-height: 0;
+  anchor-name: var(--slot);
+}
+
+.frame-slot.content {
+  flex: none;
+}
+
+/* Terminals and widgets, drawn once and placed over their slots, so a layout
+   change never remounts a terminal or reloads a widget. */
+.frame-floating {
+  display: contents;
+}
+
+.floating-item {
   position: absolute;
-  z-index: 3;
-  left: -4px;
+  z-index: 1;
+  position-anchor: var(--anchor);
+  position-visibility: always;
+  top: anchor(top);
+  left: anchor(left);
+  width: anchor-size(width);
+  height: anchor-size(height);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.frame-divider {
+  position: absolute;
+  /* Above the floating layer, or a terminal or widget would take the drag. */
+  z-index: 5;
+}
+
+.frame-divider.row {
   top: 0;
   bottom: 0;
-  width: 7px;
+  right: calc(-4px - var(--gap) / 2);
+  width: 8px;
   cursor: col-resize;
 }
 
-.sidebar-resize:hover,
-.sidebar-resize:active {
-  background: linear-gradient(to right, transparent 3px, var(--accent) 3px 4px, transparent 4px);
+.frame-divider.column {
+  left: 0;
+  right: 0;
+  bottom: calc(-4px - var(--gap) / 2);
+  height: 8px;
+  cursor: row-resize;
 }
 
-.sessions {
+.frame-divider.row:hover,
+.frame-divider.row:active {
+  background: linear-gradient(
+    to right,
+    transparent 3.5px,
+    var(--accent) 3.5px 4.5px,
+    transparent 4.5px
+  );
+}
+
+.frame-divider.column:hover,
+.frame-divider.column:active {
+  background: linear-gradient(
+    to bottom,
+    transparent 3.5px,
+    var(--accent) 3.5px 4.5px,
+    transparent 4.5px
+  );
+}
+
+.frame-head {
   flex: none;
   display: flex;
-  flex-direction: column;
-  max-height: 45%;
+  align-items: center;
+  gap: 2px;
+  height: var(--header-height);
+  padding: 0 4px 0 2px;
   border-bottom: 1px solid var(--border);
+  user-select: none;
+}
+
+.frame-panel.collapsed .frame-head {
+  border-bottom: 0;
+}
+
+.group-head {
+  padding-left: 10px;
+}
+
+.frame-tabs > .group-head {
+  padding-left: 6px;
+}
+
+.panel-head-pad {
+  flex: none;
+  width: 8px;
+}
+
+.frame-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 11px;
+  font-weight: var(--header-weight);
+  letter-spacing: var(--header-tracking);
+  text-transform: var(--header-case);
+  color: var(--muted);
+}
+
+.frame-tab-strip {
+  flex: 1;
+  display: flex;
+  gap: 2px;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.frame-tab-strip button {
+  flex: none;
+  max-width: 160px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  border: 0;
+  border-radius: var(--radius);
+  background: none;
+  padding: 2px 8px;
+  color: var(--muted);
+  font-size: 11px;
+  letter-spacing: var(--header-tracking);
+  text-transform: var(--header-case);
+}
+
+.frame-tab-strip button:hover {
+  background: var(--bg-hover);
+  color: var(--fg);
+}
+
+.frame-tab-strip button.on {
+  color: var(--fg);
+  background: var(--bg-raised);
+}
+
+/* The window drags by whatever touches its top edge, and the traffic lights
+   sit in its top left corner. */
+.at-top > .frame-head,
+.frame-panel.at-top .frame-head,
+.panel-tabbar.at-top .titlebar,
+.panel-image.at-top,
+.panel-clock.at-top {
+  -webkit-app-region: drag;
+}
+
+.frame-head button,
+.titlebar button,
+.frame-divider {
+  -webkit-app-region: no-drag;
+}
+
+.at-top.at-left > .frame-head,
+.frame-panel.at-top.at-left .frame-head,
+.panel-tabbar.at-top.at-left .titlebar {
+  padding-left: var(--traffic-lights-w);
+}
+
+/* ---- clock, image, and system panels ---- */
+
+.clock {
+  flex: 1;
+  min-height: 64px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4em;
+  container-type: size;
+  overflow: hidden;
+}
+
+.clock-time {
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: min(44cqh, 15cqw);
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.04em;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent);
+}
+
+.clock-period {
+  margin-left: 0.25em;
+  font-size: 0.35em;
+  font-weight: normal;
+  letter-spacing: var(--header-tracking);
+}
+
+.clock-date {
+  font-size: max(10px, min(9cqh, 5cqw));
+  letter-spacing: var(--header-tracking);
+  text-transform: var(--header-case);
+  color: var(--muted);
+}
+
+.image-panel {
+  display: block;
+  flex: 1 1 0px;
+  min-height: 0;
+  width: 100%;
+  user-select: none;
+}
+
+.image-missing {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--muted);
+  background: repeating-linear-gradient(
+    -45deg,
+    transparent 0 10px,
+    color-mix(in srgb, var(--border) 50%, transparent) 10px 11px
+  );
+}
+
+.image-missing code {
+  font-family: var(--font-mono);
+  color: var(--fg);
+}
+
+.monitor {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 6px 10px 10px;
+  font-size: 11px;
+}
+
+.monitor-wait {
+  color: var(--muted);
+}
+
+.monitor-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-top: 5px;
+}
+
+.monitor-label {
+  font-size: 10px;
+  letter-spacing: var(--header-tracking);
+  text-transform: var(--header-case);
+  color: var(--muted);
+}
+
+.monitor-value {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--accent);
+}
+
+.monitor-sub {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--muted);
+}
+
+.meter {
+  height: 6px;
+  border-radius: var(--radius);
+  background: var(--bg-hover);
+  overflow: hidden;
+}
+
+.meter-fill {
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.4s ease-out;
+}
+
+.meter.high .meter-fill {
+  background: var(--yellow);
+}
+
+.meter.full .meter-fill {
+  background: var(--red);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .meter-fill {
+    transition: none;
+  }
+}
+
+/* ---- session list, widgets ---- */
+
+.sessions {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .sessions .sidebar-head {
@@ -686,34 +1039,7 @@ kbd {
   color: var(--muted);
 }
 
-.sidebar-tabs {
-  flex: 1;
-  display: flex;
-  gap: 2px;
-  min-width: 0;
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-
-.sidebar-tabs button {
-  flex: none;
-  max-width: 160px;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  border: 0;
-  border-radius: var(--radius);
-  background: none;
-  padding: 2px 8px;
-  color: var(--muted);
-}
-
-.sidebar-tabs button.on {
-  color: var(--fg);
-  background: var(--bg-raised);
-}
-
-.sidebar button.icon,
+button.icon,
 .widget-toggle {
   flex: none;
   width: 22px;
@@ -725,93 +1051,20 @@ kbd {
   line-height: 1;
 }
 
-.sidebar button.icon:hover,
-.widget-toggle:hover,
-.sidebar-tabs button:hover {
+button.icon:hover,
+.widget-toggle:hover {
   background: var(--bg-hover);
   color: var(--fg);
 }
 
-.sidebar-body {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  overflow-y: auto;
-}
-
-.widget {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  border-bottom: 1px solid var(--border);
-}
-
-.sidebar.tabs .widget {
-  border-bottom: 0;
-}
-
-.widget.hidden {
-  display: none;
-}
-
-.widget-head {
-  flex: none;
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  height: calc(var(--header-height) - 2px);
-  padding: 0 4px 0 2px;
-  user-select: none;
-}
-
-.widget-name {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  font-size: 12px;
-  color: var(--muted);
-}
-
-.widget-body {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-}
-
-.widget.collapsed .widget-body {
-  display: none;
-}
-
 .widget-frame {
   display: block;
-  width: 100%;
   flex: 1;
+  width: 100%;
   min-height: 0;
   border: 0;
   background: var(--bg);
   color-scheme: var(--color-scheme);
-}
-
-.widget-frame[style*='height'] {
-  flex: none;
-}
-
-.widget-divider {
-  flex: none;
-  height: 5px;
-  margin: -3px 0 -2px;
-  position: relative;
-  z-index: 2;
-  cursor: row-resize;
-}
-
-.widget-divider:hover,
-.widget-divider:active {
-  background: linear-gradient(to bottom, transparent 2px, var(--accent) 2px 3px, transparent 3px);
 }
 
 .widget-error {
@@ -838,10 +1091,10 @@ kbd {
 /* ---- activity panel ---- */
 
 .activity {
+  flex: 1;
   display: flex;
   flex-direction: column;
   min-height: 0;
-  border-bottom: 1px solid var(--border);
 }
 
 .activity-head {
@@ -1474,18 +1727,13 @@ img.kids-sprite {
   background: radial-gradient(ellipse at center, transparent 60%, rgb(0 0 0 / 0.6) 100%);
 }
 
-/* Glow stays on text and on the terminal's canvas. A filter on anything that
-   contains the picker or a dialog would trap their position: fixed. */
+/* Glow is a text shadow on the chrome's text. The terminal's canvas is
+   opaque, so a drop-shadow there outlines the canvas rather than the text, and
+   a filter on anything containing the picker or a dialog would trap their
+   position: fixed. */
 :root[data-effects~='glow'] body {
   text-shadow: 0 0 calc(var(--glow) * 6px)
     color-mix(in srgb, currentColor calc(var(--glow) * 55%), transparent);
-}
-
-:root[data-effects~='glow'] .xterm-screen canvas {
-  filter: drop-shadow(
-    0 0 calc(var(--glow) * 2.5px)
-      color-mix(in srgb, var(--accent) calc(var(--glow) * 40%), transparent)
-  );
 }
 
 @media (prefers-reduced-transparency: reduce) {
@@ -1499,7 +1747,7 @@ img.kids-sprite {
 
 :root[data-theme~='amber'] .tab.active,
 :root[data-theme~='amber'] .activity-tabs button.on,
-:root[data-theme~='amber'] .sidebar-tabs button.on,
+:root[data-theme~='amber'] .frame-tab-strip button.on,
 :root[data-theme~='amber'] .launcher-agents button.on {
   background: var(--accent);
   color: var(--accent-fg);
@@ -1512,6 +1760,7 @@ img.kids-sprite {
 }
 
 :root[data-theme~='amber'] .sidebar-title,
+:root[data-theme~='amber'] .frame-title,
 :root[data-theme~='amber'] .launcher-title {
   color: var(--accent);
 }

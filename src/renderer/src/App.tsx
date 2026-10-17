@@ -1,19 +1,37 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
-import type {
-  Action,
-  AppearanceSettings,
-  CockpitConfig,
-  Layout,
-  SidebarSettings
+import {
+  activeLayout,
+  type Action,
+  type AppearanceSettings,
+  type CockpitConfig,
+  type Layout
 } from '@shared/config'
+import {
+  edges,
+  panels,
+  placeWidgets,
+  updateNode,
+  visiblePanels,
+  type FrameNode,
+  type FramePanel,
+  type FrameState
+} from '@shared/frame'
+import { builtInLayout } from '@shared/layouts'
 import { resolveTheme, themeVars, type ResolvedTheme, type ThemeDefinition } from '@shared/theme'
-import type { PaneSession } from '@shared/ipc'
+import type { AppearanceCommand, PaneSession } from '@shared/ipc'
 import type { SecretPrompt, SessionStatus, WidgetInfo } from '@shared/widgets'
+import { ActivityPanel } from './activity/ActivityPanel'
 import { Launcher } from './components/Launcher'
 import { Picker } from './components/Picker'
 import { SecretPromptDialog } from './components/SecretPromptDialog'
+import { SessionList } from './components/SessionList'
 import { TabBar } from './components/TabBar'
 import { Workspace } from './components/Workspace'
+import { Clock } from './frame/Clock'
+import { FrameView, type PanelPlace } from './frame/FrameView'
+import { ImagePanel } from './frame/ImagePanel'
+import { slotName } from './frame/layout'
+import { Monitor } from './frame/Monitor'
 import { KidsMode } from './kids/KidsMode'
 import { actionFor, compileKeymap } from './keybindings'
 import { findPane, makePane } from './layout/model'
@@ -21,8 +39,7 @@ import { activeTab, layoutReducer } from './layout/reducer'
 import { terminals } from './terminal/registry'
 import { applyTheme } from './theme'
 import { setWidgetTheme, startWidgetHost } from './widgets/host'
-import { Sidebar } from './widgets/Sidebar'
-import { visibleWidgets, withPlacements } from './widgets/sidebarModel'
+import { WidgetFrame } from './widgets/WidgetFrame'
 
 declare global {
   interface Window {
@@ -53,8 +70,12 @@ export function App(): React.JSX.Element {
   const [themes, setThemes] = useState<ThemeDefinition[] | null>(null)
   const [layout, dispatch] = useReducer(layoutReducer, { tabs: [], activeTabId: null })
   const [picker, setPicker] = useState<PickerState | null>(null)
-  const [sidebarState, setSidebar] = useState<SidebarSettings | null>(null)
   const [widgets, setWidgets] = useState<WidgetInfo[]>([])
+  /** Heights reported by content-sized widgets. */
+  const [contentHeights, setContentHeights] = useState<Record<string, number>>({})
+  /** Bumped to reload a widget. */
+  const [reloads, setReloads] = useState<Record<string, number>>({})
+  const [imagesRevision, setImagesRevision] = useState(0)
   const [prompts, setPrompts] = useState<SecretPrompt[]>([])
   const [windowVisible, setWindowVisible] = useState(() => document.visibilityState === 'visible')
   const [sessions, setSessions] = useState<PaneSession[]>([])
@@ -62,6 +83,8 @@ export function App(): React.JSX.Element {
   const [restorable, setRestorable] = useState<Layout | null>(null)
   const [kids, setKids] = useState(false)
   const loaded = useRef(false)
+  /** The appearance main has on disk, as JSON, so it isn't saved back to it. */
+  const savedAppearance = useRef<string | null>(null)
   const launcherInput = useRef<HTMLInputElement>(null)
 
   const statuses = useMemo(
@@ -69,18 +92,56 @@ export function App(): React.JSX.Element {
     [sessions]
   )
 
-  // New widgets get a placement, so config.json lists every installed widget.
-  const sidebar = useMemo(
-    () => (sidebarState ? withPlacements(sidebarState, widgets) : null),
-    [sidebarState, widgets]
+  const appearance = config?.appearance ?? null
+  const widgetMap = useMemo(() => new Map(widgets.map((w) => [w.id, w])), [widgets])
+  // Installed widgets nobody placed go into the layout's widget group.
+  const tree = useMemo(
+    () =>
+      appearance
+        ? placeWidgets(
+            activeLayout(appearance),
+            widgets.map((w) => w.id)
+          )
+        : null,
+    [appearance, widgets]
   )
-  // Kids mode covers the sidebar, so widgets count as hidden under it.
+  const focused = sessions.find((s) => s.focused) ?? null
+  const hasFocus = focused !== null
+  // Panels with nothing to show take no room.
+  const frameState = useMemo<FrameState>(() => {
+    const absent = new Set<string>()
+    for (const p of tree ? panels(tree) : []) {
+      if (p.panel === 'activity' && !hasFocus) absent.add(p.id)
+      if (p.panel === 'widget' && p.widget && !widgetMap.has(p.widget)) absent.add(p.id)
+    }
+    return { absent, panelsHidden: appearance?.panelsHidden ?? false }
+  }, [tree, hasFocus, widgetMap, appearance?.panelsHidden])
+  const visible = useMemo(
+    () => (tree ? visiblePanels(tree, frameState) : new Set<string>()),
+    [tree, frameState]
+  )
+  const frameEdges = useMemo(() => (tree ? edges(tree, frameState) : new Map()), [tree, frameState])
+  // Widgets whose panel is on screen.
+  const shownWidgets = useMemo(
+    () =>
+      new Set(
+        (tree ? panels(tree) : []).flatMap((p) => (p.widget && visible.has(p.id) ? [p.widget] : []))
+      ),
+    [tree, visible]
+  )
+  // Kids mode covers everything, so widgets count as hidden under it.
   const widgetsVisible = windowVisible && !kids
   // A hidden widget's prompt waits until the widget is shown.
-  const prompt = useMemo(() => {
-    const shown = sidebar ? visibleWidgets(sidebar, widgets, widgetsVisible) : new Set<string>()
-    return prompts.find((p) => shown.has(p.widgetId)) ?? null
-  }, [sidebar, widgets, widgetsVisible, prompts])
+  const prompt = useMemo(
+    () => (widgetsVisible ? (prompts.find((p) => shownWidgets.has(p.widgetId)) ?? null) : null),
+    [widgetsVisible, shownWidgets, prompts]
+  )
+  const workspaceShown = (tree ? panels(tree) : []).some(
+    (p) => p.panel === 'workspace' && visible.has(p.id)
+  )
+  const monitorOn =
+    widgetsVisible &&
+    (tree ? panels(tree) : []).some((p) => p.panel === 'monitor' && visible.has(p.id))
 
   const configRef = useRef(config)
   const layoutRef = useRef(layout)
@@ -121,15 +182,16 @@ export function App(): React.JSX.Element {
     let cancelled = false
     void api.config.get().then((c) => {
       if (cancelled) return
+      savedAppearance.current = JSON.stringify(c.appearance)
       setConfig(c)
-      setSidebar(c.sidebar)
       setRestorable(c.layout.tabs.length > 0 ? c.layout : null)
       loaded.current = true
     })
-    // Only hand edits arrive here; they may rearrange the sidebar.
+    // Only hand edits arrive here, the appearance among them. Saving that back
+    // would rewrite the user's file a moment after they saved it.
     const off = api.config.onChange((c) => {
+      savedAppearance.current = JSON.stringify(c.appearance)
       setConfig(c)
-      setSidebar(c.sidebar)
     })
     return () => {
       cancelled = true
@@ -153,22 +215,37 @@ export function App(): React.JSX.Element {
     }
   }, [api])
 
-  const setAppearance = useCallback(
-    (next: AppearanceSettings) => {
-      setConfig((c) => c && { ...c, appearance: next })
-      api.config.saveAppearance(next)
-    },
-    [api]
-  )
+  useEffect(() => api.images.onChange(setImagesRevision), [api])
 
-  // The View menu asks; the chrome owns the appearance and saves it.
-  useEffect(
-    () =>
-      api.config.onAppearanceCommand((command) => {
-        const current = configRef.current?.appearance
-        if (current) setAppearance({ ...current, theme: command.id })
-      }),
-    [api, setAppearance]
+  useEffect(() => {
+    api.system.watch(monitorOn)
+  }, [api, monitorOn])
+
+  const updateAppearance = useCallback((fn: (a: AppearanceSettings) => AppearanceSettings) => {
+    setConfig((c) => c && { ...c, appearance: fn(c.appearance) })
+  }, [])
+
+  // The chrome owns the appearance. Save it shortly after it settles (divider
+  // drags change it on every frame); a hand edit comes back here unchanged.
+  useEffect(() => {
+    if (!appearance) return
+    const json = JSON.stringify(appearance)
+    if (json === savedAppearance.current) return
+    const t = setTimeout(() => {
+      savedAppearance.current = json
+      api.config.saveAppearance(appearance)
+    }, SAVE_DELAY_MS)
+    return () => {
+      clearTimeout(t)
+    }
+  }, [api, appearance])
+
+  /** A change to the layout in use. Saved as that layout's own copy. */
+  const setTree = useCallback(
+    (next: FrameNode) => {
+      updateAppearance((a) => ({ ...a, layouts: { ...a.layouts, [a.layout]: next } }))
+    },
+    [updateAppearance]
   )
 
   useEffect(() => {
@@ -197,16 +274,6 @@ export function App(): React.JSX.Element {
       document.removeEventListener('visibilitychange', onVisibility)
     }
   }, [api])
-
-  useEffect(() => {
-    if (!sidebar) return
-    const t = setTimeout(() => {
-      api.config.saveSidebar(sidebar)
-    }, SAVE_DELAY_MS)
-    return () => {
-      clearTimeout(t)
-    }
-  }, [api, sidebar])
 
   // Keyed by value, so unrelated config edits don't restyle every terminal.
   const themeKey =
@@ -257,6 +324,41 @@ export function App(): React.JSX.Element {
     if (tab) terminals.get(tab.activePaneId)?.focus()
     else launcherInput.current?.focus()
   }, [])
+
+  const runAppearance = useCallback(
+    (command: AppearanceCommand) => {
+      switch (command.type) {
+        case 'theme':
+          updateAppearance((a) => ({ ...a, theme: command.id }))
+          return
+        case 'layout':
+          updateAppearance((a) => ({ ...a, layout: command.id }))
+          break
+        case 'resetLayout':
+          // A layout written by hand has no built-in version to go back to.
+          updateAppearance((a) =>
+            builtInLayout(a.layout)
+              ? {
+                  ...a,
+                  layouts: Object.fromEntries(
+                    Object.entries(a.layouts).filter(([name]) => name !== a.layout)
+                  )
+                }
+              : a
+          )
+          break
+        case 'togglePanels':
+          updateAppearance((a) => ({ ...a, panelsHidden: !a.panelsHidden }))
+          break
+      }
+      // A panel that had the keyboard may be gone.
+      requestAnimationFrame(focusWorkspace)
+    },
+    [updateAppearance, focusWorkspace]
+  )
+
+  // The View menu asks; the chrome carries it out.
+  useEffect(() => api.config.onAppearanceCommand(runAppearance), [api, runAppearance])
 
   const openPicker = useCallback(
     async (mode: PickerState['mode']) => {
@@ -309,7 +411,7 @@ export function App(): React.JSX.Element {
           dispatch({ type: 'cycleTab', delta: -1 })
           return
         case 'toggleSidebar':
-          setSidebar((sb) => sb && { ...sb, visible: !sb.visible })
+          runAppearance({ type: 'togglePanels' })
           return
         case 'kidsMode':
           api.kids.set(true)
@@ -320,7 +422,7 @@ export function App(): React.JSX.Element {
         }
       }
     },
-    [api, openPicker]
+    [api, openPicker, runAppearance]
   )
 
   // App shortcuts run in the capture phase, before xterm sees the key.
@@ -424,48 +526,149 @@ export function App(): React.JSX.Element {
     [api, focusWorkspace]
   )
 
-  if (!config || !terminalTheme) return <div className="app" />
+  const setContentHeight = useCallback((id: string, height: number) => {
+    setContentHeights((h) => (h[id] === height ? h : { ...h, [id]: height }))
+  }, [])
+
+  const reloadWidget = useCallback((id: string) => {
+    setReloads((r) => ({ ...r, [id]: (r[id] ?? 0) + 1 }))
+  }, [])
+
+  // The theme and the config arrive together before anything shows; after
+  // that neither goes back to null, so the terminals are never unmounted.
+  if (!config || !terminalTheme || !tree || !resolved) return <div className="app" />
+
+  const renderPanel = (p: FramePanel, place: PanelPlace): React.ReactNode => {
+    switch (p.panel) {
+      case 'tabbar':
+        return (
+          <TabBar
+            layout={layout}
+            presets={config.presets}
+            statuses={statuses}
+            dispatch={dispatch}
+            onNewTab={() => void openPicker('tab')}
+            onCloseTab={(tabId) => dispatch({ type: 'closeTab', tabId })}
+          />
+        )
+      case 'sessions':
+        return (
+          <SessionList
+            sessions={sessions}
+            collapsed={place.collapsed}
+            onToggle={place.canCollapse ? place.toggleCollapsed : undefined}
+            onSelect={revealPane}
+            onHidePanels={() => runAppearance({ type: 'togglePanels' })}
+          />
+        )
+      case 'activity':
+        return focused ? (
+          <ActivityPanel
+            session={focused}
+            settings={{ tab: p.tab ?? 'log', collapsed: place.collapsed }}
+            canCollapse={place.canCollapse}
+            onChange={(next) => {
+              setTree(
+                updateNode(tree, p.id, (n) => {
+                  if (n.type !== 'panel') return n
+                  const updated: FramePanel = { ...n, tab: next.tab }
+                  if (next.collapsed) updated.collapsed = true
+                  else delete updated.collapsed
+                  return updated
+                })
+              )
+            }}
+            visible={widgetsVisible && place.visible}
+          />
+        ) : null
+      case 'clock':
+        return <Clock panel={p} visible={widgetsVisible && place.visible} />
+      case 'image':
+        return <ImagePanel panel={p} themeId={resolved.id} revision={imagesRevision} />
+      case 'monitor':
+        return <Monitor />
+      default:
+        return null
+    }
+  }
+
+  // Widgets in a fixed order: React moves reordered siblings in the DOM, and
+  // a moved iframe reloads.
+  const floatingWidgets = widgets
+    .filter((w) => w.manifest)
+    .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
 
   return (
     <div className="app">
-      <TabBar
-        layout={layout}
-        presets={config.presets}
-        statuses={statuses}
-        dispatch={dispatch}
-        onNewTab={() => void openPicker('tab')}
-        onCloseTab={(tabId) => dispatch({ type: 'closeTab', tabId })}
-      />
-      <div className="main">
-        {layout.tabs.length > 0 ? (
-          <Workspace
-            layout={layout}
-            presets={config.presets}
-            settings={config.terminal}
-            theme={terminalTheme}
-            dispatch={dispatch}
-          />
-        ) : (
-          <Launcher
-            presets={config.presets}
-            initialPresetId={config.launcher.presetId}
-            projectsDir={config.projectsDir}
-            restoreTabs={restorable?.tabs.length ?? 0}
-            inputRef={launcherInput}
-            onLaunch={launch}
-            onRestore={restore}
-          />
-        )}
-        {sidebar && (
-          <Sidebar
-            widgets={widgets}
-            sessions={sessions}
-            onSelectSession={revealPane}
-            settings={sidebar}
-            windowVisible={widgetsVisible}
-            onChange={setSidebar}
-          />
-        )}
+      <div className="frame-root">
+        <FrameView
+          tree={tree}
+          state={frameState}
+          visible={visible}
+          edges={frameEdges}
+          widgets={widgetMap}
+          sizing={{
+            contentWidgets: new Set(
+              widgets.filter((w) => w.manifest?.sizing === 'content').map((w) => w.id)
+            ),
+            state: frameState
+          }}
+          contentHeights={contentHeights}
+          onChange={setTree}
+          onReloadWidget={reloadWidget}
+          renderPanel={renderPanel}
+        />
+        {/* Not positioned: the items' containing block must be .frame-root,
+            the ancestor of the placeholders they anchor to. */}
+        <div className="frame-floating">
+          <div
+            className="floating-item"
+            style={{
+              ['--anchor' as string]: slotName('workspace'),
+              display: workspaceShown ? undefined : 'none'
+            }}
+          >
+            {layout.tabs.length > 0 ? (
+              <Workspace
+                layout={layout}
+                presets={config.presets}
+                settings={config.terminal}
+                theme={terminalTheme}
+                dispatch={dispatch}
+              />
+            ) : (
+              <Launcher
+                presets={config.presets}
+                initialPresetId={config.launcher.presetId}
+                projectsDir={config.projectsDir}
+                restoreTabs={restorable?.tabs.length ?? 0}
+                inputRef={launcherInput}
+                onLaunch={launch}
+                onRestore={restore}
+              />
+            )}
+          </div>
+          {floatingWidgets.map((w) =>
+            w.manifest ? (
+              <div
+                key={w.id}
+                className="floating-item"
+                style={{
+                  ['--anchor' as string]: slotName(`w-${w.id}`),
+                  display: shownWidgets.has(w.id) ? undefined : 'none'
+                }}
+              >
+                <WidgetFrame
+                  key={`${String(w.revision)}:${String(reloads[w.id] ?? 0)}`}
+                  id={w.id}
+                  manifest={w.manifest}
+                  visible={widgetsVisible && shownWidgets.has(w.id)}
+                  onSize={(h) => setContentHeight(w.id, h)}
+                />
+              </div>
+            ) : null
+          )}
+        </div>
       </div>
       {picker && (
         <Picker

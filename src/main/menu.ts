@@ -8,6 +8,14 @@ export interface MenuHandlers {
   /** The theme in use. */
   theme: string
   onTheme: (id: string) => void
+  layouts: { id: string; name: string }[]
+  /** The layout in use. */
+  layout: string
+  onLayout: (id: string) => void
+  onResetLayout: () => void
+  /** The layout in use is built in and has been changed. */
+  canResetLayout: boolean
+  onTogglePanels: () => void
   onOpenFolder: () => void
 }
 
@@ -27,6 +35,22 @@ export function buildMenu(handlers: MenuHandlers): Menu {
     enabled: !t.error,
     click: () => handlers.onTheme(t.id)
   }))
+  const layoutItems: MenuItemConstructorOptions[] = [
+    ...handlers.layouts.map((l): MenuItemConstructorOptions => ({
+      id: `layout:${l.id}`,
+      label: l.name,
+      type: 'radio',
+      checked: l.id === handlers.layout,
+      click: () => handlers.onLayout(l.id)
+    })),
+    { type: 'separator' },
+    {
+      id: 'layout-reset',
+      label: 'Reset Layout',
+      enabled: handlers.canResetLayout,
+      click: handlers.onResetLayout
+    }
+  ]
   const template: MenuItemConstructorOptions[] = [
     {
       label: app.name,
@@ -56,6 +80,9 @@ export function buildMenu(handlers: MenuHandlers): Menu {
       label: 'View',
       submenu: [
         { label: 'Theme', submenu: themeItems },
+        { label: 'Layout', submenu: layoutItems },
+        // No accelerator: Cmd+B (toggleSidebar) is the chrome's, and can be rebound.
+        { id: 'toggle-panels', label: 'Toggle Panels', click: handlers.onTogglePanels },
         { type: 'separator' },
         { label: 'Kids Mode', click: handlers.onKidsMode },
         { type: 'separator' },

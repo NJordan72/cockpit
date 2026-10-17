@@ -1,7 +1,8 @@
 # Cockpit
 
 A personal macOS app for running Claude Code and Codex side by side: a
-terminal host with tabs, splits, presets, and a sidebar of sandboxed widgets.
+terminal host with tabs, splits, presets, and panels of sandboxed widgets,
+arranged by a layout and styled by a theme.
 See `INSTRUCTIONS.md` for the build plan and current status.
 
 ## Install
@@ -61,22 +62,22 @@ relaunch. Processes and scrollback are not restored; each pane starts its
 preset fresh in the directory it was last in. When a pane's process exits, the
 pane shows the exit status; press `Enter` to restart it.
 
-| Key (default)       | Action                      |
-| ------------------- | --------------------------- |
-| Cmd+T               | New tab (picker)            |
-| Cmd+D / Cmd+Shift+D | Split right / down (picker) |
-| Cmd+W               | Close pane (last pane: tab) |
-| Cmd+Alt+Arrow       | Move focus between panes    |
-| Cmd+Shift+] / [     | Next / previous tab         |
-| Cmd+1 … Cmd+9       | Go to tab                   |
-| Cmd+B               | Show or hide the sidebar    |
+| Key (default)       | Action                                     |
+| ------------------- | ------------------------------------------ |
+| Cmd+T               | New tab (picker)                           |
+| Cmd+D / Cmd+Shift+D | Split right / down (picker)                |
+| Cmd+W               | Close pane (last pane: tab)                |
+| Cmd+Alt+Arrow       | Move focus between panes                   |
+| Cmd+Shift+] / [     | Next / previous tab                        |
+| Cmd+1 … Cmd+9       | Go to tab                                  |
+| Cmd+B               | Hide or show every panel but the terminals |
 
 ## Agent awareness
 
 Every pane has a status: **idle**, **working**, **needs input**, **done**
 (finished a turn you haven't looked at), or **exited**. A tab shows a dot for
 the most urgent status among its panes (idle gets none), and the **Sessions**
-list at the top of the sidebar shows every pane with its status, Claude Code's
+panel shows every pane with its status, Claude Code's
 title for the conversation, and how many tokens its context holds. Click a
 session to jump to it. When a pane goes to needs input or done while
 Cockpit's window isn't focused, macOS shows a notification; clicking it
@@ -138,7 +139,7 @@ tabs, each with a count:
 - **Git**: the branch, how far it is ahead of or behind its upstream, changed
   and untracked files, and the last five commits. Cockpit reads them from the
   directory the agent works in (a shell's current directory, for Shell panes)
-  a second after the agent does something, every 10 seconds while the sidebar
+  a second after the agent does something, every 10 seconds while the panel
   shows, and when the window comes forward.
 
 Claude Code panes fill every tab, from the same hooks that drive their status
@@ -149,14 +150,14 @@ Git. The log is kept in memory, never written to disk, and never shown to
 widgets. Each pane keeps its newest 1,000 entries until the pane closes or
 Cockpit quits.
 
-Drag the line under the panel to resize it, or fold it with ▾. Its height,
-tab, and folded state are saved in `config.json` under `sidebar.activity`.
-When no widget takes up height, the panel fills the sidebar.
+Drag the line under the panel to resize it, or fold it with ▾. Its size, tab,
+and folded state are saved with the layout (see [Themes and
+layouts](#themes-and-layouts)). When no widget below it takes up height, the
+panel fills its column.
 
 ## Widgets
 
-The sidebar on the right holds widgets: small HTML pages, each in its own
-sandboxed iframe, that reach the network, secrets, and storage only through an
+Widgets are small HTML pages, each in its own sandboxed iframe, that reach the network, secrets, and storage only through an
 API that checks their manifest. Put a widget folder (or a symlink to one) in
 `~/.cockpit/widgets/`; Cockpit picks it up and reloads it whenever its files
 change. To install the examples:
@@ -171,12 +172,39 @@ examples/widgets/install.sh shortcut-stories   # just one
 Cockpit asks for a Shortcut API token and keeps it encrypted; see
 [its README](examples/widgets/shortcut-stories/README.md).
 
-Widgets stack by default. Each one collapses from its header, and the line
-between two widgets drags to resize them. The button at the top of the
-sidebar switches to one widget per tab, and the sidebar's left edge drags to
-change its width. All of that is saved in `config.json` under `sidebar`.
+New widgets go into the layout's Widgets group, stacked by default. Each one
+collapses from its header, and the line between two widgets drags to resize
+them. The button at the right of the group's title switches it to one widget
+per tab. All of that is saved with the layout, and a layout can put any
+widget somewhere else.
 
 Writing a widget, the manifest, and the full API: [docs/widgets.md](docs/widgets.md).
+
+## Themes and layouts
+
+View > Theme switches between themes: Midnight (the default), Amber (cream
+and amber on black, with CRT scanlines), Paper (light), and any in
+`~/.cockpit/themes/`. A theme sets colors, fonts, corners, panel spacing, and
+the terminal's palette, and can bring a stylesheet, images, and fonts of its
+own. [docs/themes.md](docs/themes.md) explains how to make one.
+
+View > Layout arranges the window:
+
+- **Classic**: the tab bar across the top, the terminals, and on the right
+  Sessions, Activity, and widgets.
+- **Cockpit**: an image banner and a clock across the top, Activity on the
+  left, and Sessions, a System monitor, and widgets on the right.
+
+Every line between two panels drags, and panels in a column fold from their
+title. Changes are saved as your own copy of that layout; View > Layout >
+Reset Layout goes back to the built-in one. Layouts can also be written in
+`config.json`, from these panels: the terminals, the tab bar, Sessions,
+Activity, any widget, a clock, an image or GIF from `~/.cockpit/images/`, and
+a System monitor (CPU, memory, load, uptime). Hand edits apply while Cockpit
+runs, and terminals and widgets keep running when the layout changes.
+[docs/layouts.md](docs/layouts.md) has the format.
+
+View > Open Cockpit Folder opens `~/.cockpit` in Finder.
 
 ## Kids mode
 
@@ -265,13 +293,12 @@ to `config.json.broken-<time>` before being replaced.
   ],
   "keybindings": { "newTab": "Cmd+T", "splitRight": "Cmd+D" /* ... */ },
   "terminal": { "fontFamily": "...", "fontSize": 13 },
-  "appearance": { "theme": "midnight", "overrides": { "accent": "#ff9e64" } },
-  "sidebar": {
-    "visible": true,
-    "width": 320,
-    "mode": "stack",
-    "activity": { "collapsed": false, "height": 320, "tab": "log" },
-    "widgets": [/* ... */]
+  "appearance": {
+    "theme": "midnight",
+    "overrides": { "accent": "#ff9e64" },
+    "layout": "classic",
+    "layouts": {/* your changed or hand-written layouts */},
+    "panelsHidden": false
   },
   "projectsDir": "~/dev",
   "launcher": { "presetId": "claude" },
@@ -286,8 +313,11 @@ the Dock. Keybindings take `Cmd`, `Ctrl`, `Alt`/`Option`, `Shift` plus a key
 `Esc`, `[`, `]`, and other punctuation); an empty string unbinds an action.
 `appearance.theme` picks a theme (also in View > Theme), and
 `appearance.overrides` changes single tokens of it (`bg`, `fg`, `accent`,
-`radius`, ...). [docs/themes.md](docs/themes.md) lists the tokens and explains
-how to make a theme of your own.
+`radius`, ...); see [docs/themes.md](docs/themes.md). `appearance.layout`
+picks a layout, and `appearance.layouts` holds the ones you changed or wrote;
+see [docs/layouts.md](docs/layouts.md). A config from before version 3 is kept
+as `config.v2.json` when Cockpit first rewrites it; its sidebar settings become
+your copy of the Classic layout.
 Set `COCKPIT_HOME` to use a different directory than `~/.cockpit`.
 
 ## Terminal keys
