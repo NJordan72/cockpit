@@ -14,6 +14,7 @@ import {
 import {
   migrateConfig,
   paneIds,
+  type LauncherSettings,
   type Layout,
   type LayoutNode,
   type PaneNode,
@@ -29,9 +30,9 @@ import {
 import { resolveTheme } from '@shared/theme'
 import { AgentMonitor } from './agents/monitor'
 import { ConfigStore } from './config'
-import { listProjects, processCwd, processCwdSync, resolveCwd } from './dirs'
+import { listDirs, processCwd, processCwdSync, resolveCwd } from './dirs'
 import { buildMenu } from './menu'
-import { abbreviateHome, cockpitHome } from './paths'
+import { abbreviateHome, claudeHome, cockpitHome, codexHome } from './paths'
 import { PtyManager } from './pty'
 import { registerWidgetScheme, WidgetHost } from './widgets/host'
 import { listSessions, widgetSession } from './widgets/sessions'
@@ -50,12 +51,23 @@ let agents: AgentMonitor
 let mainWindow: BrowserWindow | null = null
 let lastSessions = ''
 let warnedNotifications = false
+/**
+ * The chrome opens on the start screen, where the saved layout is only
+ * offered for restoring. Its panes are live once the chrome sends a layout.
+ */
+let layoutShown = false
 
 registerWidgetScheme()
 
+const NO_LAYOUT: Layout = { tabs: [], activeTabId: null }
+
+/** The layout on screen: the saved one, once the chrome has shown it. */
+function liveLayout(): Layout {
+  return layoutShown ? config.get().layout : NO_LAYOUT
+}
+
 function sessions(): PaneSession[] {
-  const c = config.get()
-  return listSessions(c.layout, c.presets, (id) => agents.status(id))
+  return listSessions(liveLayout(), config.get().presets, (id) => agents.status(id))
 }
 
 /** Push the session list to the chrome and to widgets that read it, if it changed. */
@@ -75,7 +87,7 @@ function sessionsChanged(): void {
 function findPaneNode(id: string): PaneNode | null {
   const find = (n: LayoutNode): PaneNode | null =>
     n.type === 'pane' ? (n.id === id ? n : null) : (n.children.map(find).find(Boolean) ?? null)
-  for (const tab of config.get().layout.tabs) {
+  for (const tab of liveLayout().tabs) {
     const pane = find(tab.root)
     if (pane) return pane
   }
@@ -89,7 +101,7 @@ function updateFocus(): void {
     agents.setFocused(null)
     return
   }
-  const { layout } = config.get()
+  const layout = liveLayout()
   const tab = layout.tabs.find((t) => t.id === layout.activeTabId)
   agents.setFocused(tab && paneIds(tab.root).includes(tab.activePaneId) ? tab.activePaneId : null)
 }
@@ -158,6 +170,7 @@ function createWindow(): void {
       ptys.killAllFor(wc)
       widgets.detach(wc)
       lastSessions = ''
+      layoutShown = false
     }
   })
   win.on('close', () => {
@@ -165,6 +178,7 @@ function createWindow(): void {
   })
   win.on('closed', () => {
     if (mainWindow === win) mainWindow = null
+    layoutShown = false
     ptys.killAllFor(wc)
     widgets.detach(wc)
   })
@@ -206,7 +220,7 @@ function registerIpc(): void {
       throw err
     }
     const display = abbreviateHome(cwd)
-    if (display !== '~') config.addRecentDir(display)
+    if (display !== '~') config.addRecentDir(display, preset.id)
     sessionsChanged()
     return { pid, cwd: display }
   })
@@ -237,6 +251,7 @@ function registerIpc(): void {
     if (!trusted(e)) return
     // Run it through migration so a bad layout can't corrupt the file.
     config.setLayout(migrateConfig({ ...config.get(), layout }).layout)
+    layoutShown = true
     updateFocus()
     sessionsChanged()
   })
@@ -247,10 +262,12 @@ function registerIpc(): void {
   ipcMain.on(IPC.sidebarSave, (e, sidebar: SidebarSettings) => {
     if (trusted(e)) config.setSidebar(sidebar)
   })
+  ipcMain.on(IPC.launcherSave, (e, launcher: LauncherSettings) => {
+    if (trusted(e)) config.setLauncher(launcher)
+  })
   ipcMain.handle(IPC.dirsList, async (e): Promise<DirListing> => {
     if (!trusted(e)) throw new Error('untrusted sender')
-    const c = config.get()
-    return { recent: c.recentDirs, projects: await listProjects(c.projectsDir) }
+    return { dirs: await listDirs(config.get(), { claude: claudeHome(), codex: codexHome() }) }
   })
 }
 

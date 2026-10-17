@@ -25,22 +25,41 @@ bun run build   # production build into out/
 bun run start   # run the production build
 ```
 
-The window opens a login shell (`$SHELL -l`), so `claude`, `codex`, and
-anything else on your login PATH work as usual.
+Panes run their commands through a login shell (`$SHELL -l`), so `claude`,
+`codex`, and anything else on your login PATH work as usual.
+
+## Start screen
+
+Cockpit opens on a list of your projects: the folders in `~/dev`, plus recent
+directories elsewhere, most recently used first. "Used" counts a Cockpit pane
+started there, and Claude Code or Codex run there from anywhere (Cockpit reads
+when each last wrote to its transcripts in `~/.claude/projects/` and its
+session logs in `~/.codex/sessions/`). Each row says which agent ran last and
+how long ago.
+
+The switch at the top picks the agent (`Tab` flips it), and `Enter` or a click
+opens the selected project in a new tab with that agent. The switch remembers
+the agent you launched last. Type to filter, or type a path starting with `~`
+or `/`. The switch lists every preset with a command (Claude Code and Codex by
+default).
+
+If the last session left tabs open, **Restore last session** brings them back
+instead. Launching a project starts fresh, and the old layout is gone. Closing
+the last tab returns to the start screen.
 
 ## Tabs, splits, presets
 
 `Cmd+T` opens a picker: choose a preset with `Tab` (Shell, Claude Code, Codex
-by default), pick a directory (the current pane's, recent ones, then
-subdirectories of `~/dev` by last change), and press `Enter`. Type to filter,
-or type a path starting with `~` or `/`. Split keys open the same picker,
-starting in the focused pane's directory and preset.
+by default), pick a directory (the current pane's, then the start screen's
+list), and press `Enter`. Type to filter, or type a path starting with `~` or
+`/`. Split keys open the same picker, starting in the focused pane's directory
+and preset.
 
 The layout (tabs, splits, sizes, each pane's preset and directory) is saved to
-`~/.cockpit/config.json` and restored on relaunch. Processes and scrollback are
-not restored; each pane starts its preset fresh in the directory it was last
-in. When a pane's process exits, the pane shows the exit status; press `Enter`
-to restart it.
+`~/.cockpit/config.json`, and the start screen offers to restore it on
+relaunch. Processes and scrollback are not restored; each pane starts its
+preset fresh in the directory it was last in. When a pane's process exits, the
+pane shows the exit status; press `Enter` to restart it.
 
 | Key (default)       | Action                      |
 | ------------------- | --------------------------- |
@@ -141,7 +160,8 @@ to `config.json.broken-<time>` before being replaced.
   "terminal": { "fontFamily": "...", "fontSize": 13 },
   "theme": { "accent": "#ff9e64" },
   "sidebar": { "visible": true, "width": 320, "mode": "stack", "widgets": [/* ... */] },
-  "projectsDir": "~/dev"
+  "projectsDir": "~/dev",
+  "launcher": { "presetId": "claude" }
 }
 ```
 
@@ -178,13 +198,14 @@ uses typescript-eslint's `strictTypeChecked` rules with zero warnings allowed.
 
 `scripts/drive.mjs` launches the built app through Playwright and takes
 commands on stdin (`launch`, `relaunch`, `type`, `press`, `nkey`, `click`,
-`drag`, `sleep`, `screen`, `panes`, `layout`, `size`, `ss`, `resize`,
+`drag`, `sleep`, `screen`, `panes`, `launcher`, `layout`, `size`, `ss`, `resize`,
 `clipboard`, `eval`, `widgets`, `weval`, `wclick`, `wtext`, `secret`,
 `stubopen`, `opened`, `sessions`, `stubnotify`, `watchnotify`, `notes`,
 `clicknote`, `badge`, `blur`, `focus`, `focused`, `hide`, `unhide`, `quit`).
 The `w` commands act inside a widget's frame, and `secret` answers the host's
 secret prompt (`secret $VAR` reads the value from the environment without
-printing it). `sessions` prints each pane's status. `stubnotify` records
+printing it). `launcher` prints the start screen's agent and first rows.
+`sessions` prints each pane's status. `stubnotify` records
 notifications instead of showing them, `watchnotify` records them and shows
 them for real (noting whether macOS did), `notes` lists them, and
 `clicknote 0` clicks one. `blur` and `hide` take focus away from the window,
@@ -196,9 +217,13 @@ to keep your real config out of it:
 ```sh
 bun run build && COCKPIT_HOME=/tmp/cockpit-test node scripts/drive.mjs
 driver> launch
+driver> launcher
+driver> press Meta+t
+driver> press Enter
 driver> type echo hi
 driver> press Enter
 driver> screen
 ```
 
-Screenshots go to `out/shots/`.
+The app opens on the start screen; `Meta+t` then `Enter` opens a shell in the
+top project. Screenshots go to `out/shots/`.

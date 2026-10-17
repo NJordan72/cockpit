@@ -1,9 +1,9 @@
-import type { DirListing } from '@shared/ipc'
+import type { DirEntry } from '@shared/ipc'
 
 export interface DirItem {
   path: string
   label: string
-  tag?: 'current' | 'recent' | 'path'
+  tag?: 'current' | 'path'
 }
 
 const basename = (p: string): string =>
@@ -28,14 +28,14 @@ export function fuzzyScore(query: string, text: string): number | null {
 }
 
 /**
- * Candidate directories for the picker: the current one, then recent ones,
- * then projects by modification time. A query filters them, and a query that
- * looks like a path is offered as-is.
+ * Candidate directories: the current one, then the listed ones in their order
+ * (most recently used first). A query filters them, and a query that looks
+ * like a path is offered as-is.
  */
 export function rankDirs(
   query: string,
   currentDir: string | null,
-  listing: DirListing | null
+  dirs: readonly DirEntry[]
 ): DirItem[] {
   const seen = new Set<string>()
   const base: DirItem[] = []
@@ -45,8 +45,7 @@ export function rankDirs(
     base.push(tag ? { path, label: basename(path), tag } : { path, label: basename(path) })
   }
   if (currentDir) add(currentDir, 'current')
-  for (const d of listing?.recent ?? []) add(d, 'recent')
-  for (const p of listing?.projects ?? []) add(p.path)
+  for (const d of dirs) add(d.path)
 
   const q = query.trim()
   if (!q) return base

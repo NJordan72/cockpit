@@ -5,6 +5,7 @@ import {
   pushRecentDir,
   readSidebar,
   type CockpitConfig,
+  type LauncherSettings,
   type Layout,
   type SidebarSettings
 } from '@shared/config'
@@ -45,8 +46,14 @@ export class ConfigStore {
     this.write()
   }
 
-  addRecentDir(dir: string): void {
-    this.config = { ...this.config, recentDirs: pushRecentDir(this.config.recentDirs, dir) }
+  setLauncher(launcher: LauncherSettings): void {
+    this.config = { ...this.config, launcher: migrateConfig({ launcher }).launcher }
+    this.write()
+  }
+
+  addRecentDir(dir: string, presetId: string): void {
+    const entry = { path: dir, presetId, at: Date.now() }
+    this.config = { ...this.config, recentDirs: pushRecentDir(this.config.recentDirs, entry) }
     this.write()
   }
 

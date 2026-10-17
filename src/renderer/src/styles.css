@@ -311,18 +311,104 @@ kbd {
   background: var(--accent);
 }
 
-.empty {
-  position: absolute;
-  inset: 0;
+.launcher {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  justify-content: center;
+  padding: 9vh 24px 24px;
+  overflow: hidden;
+}
+
+.launcher-inner {
+  width: min(680px, 100%);
   display: flex;
   flex-direction: column;
+  min-height: 0;
+}
+
+.launcher-title {
+  margin: 0 0 18px;
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.launcher-controls {
+  display: flex;
   align-items: center;
-  justify-content: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.launcher-agents {
+  display: flex;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--bg-raised);
+}
+
+.launcher-agents button {
+  border: 0;
+  border-radius: 5px;
+  background: none;
+  padding: 5px 14px;
   color: var(--muted);
 }
 
-.empty p {
-  margin: 4px;
+.launcher-agents button:hover {
+  color: var(--fg);
+}
+
+.launcher-agents button.on {
+  color: var(--fg);
+  background: color-mix(in srgb, var(--accent) 22%, var(--bg-hover));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 60%, transparent);
+}
+
+.launcher-spacer {
+  flex: 1;
+}
+
+.launcher-restore {
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: none;
+  padding: 4px 10px;
+  color: var(--muted);
+}
+
+.launcher-restore:hover {
+  color: var(--fg);
+  background: var(--bg-hover);
+}
+
+.launcher .picker-input {
+  margin: 0 0 8px;
+  padding: 9px 11px;
+  font-size: 14px;
+}
+
+.launcher .picker-list {
+  min-height: 0;
+  padding: 0;
+}
+
+.launcher .picker-list li {
+  padding: 7px 10px;
+  font-size: 14px;
+}
+
+.launcher .dir-name {
+  font-weight: 500;
+}
+
+.launcher-used {
+  flex: none;
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
 }
 
 /* ---- picker ---- */

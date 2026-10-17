@@ -82,7 +82,8 @@ const api: CockpitApi = {
       return () => configSubs.delete(cb)
     },
     saveLayout: (layout) => ipcRenderer.send(IPC.layoutSave, layout),
-    saveSidebar: (sidebar) => ipcRenderer.send(IPC.sidebarSave, sidebar)
+    saveSidebar: (sidebar) => ipcRenderer.send(IPC.sidebarSave, sidebar),
+    saveLauncher: (launcher) => ipcRenderer.send(IPC.launcherSave, launcher)
   },
   dirs: {
     list: () => ipcRenderer.invoke(IPC.dirsList)

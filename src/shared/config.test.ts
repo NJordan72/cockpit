@@ -6,7 +6,8 @@ import {
   migrateConfig,
   normalizeSizes,
   pushRecentDir,
-  SIDEBAR_MAX_WIDTH
+  SIDEBAR_MAX_WIDTH,
+  type RecentDir
 } from './config'
 
 describe('migrateConfig', () => {
@@ -138,10 +139,44 @@ describe('normalizeSizes', () => {
 })
 
 describe('pushRecentDir', () => {
+  const dir = (path: string, at = 1): RecentDir => ({ path, presetId: 'shell', at })
   it('moves an existing dir to the front and caps the list', () => {
-    expect(pushRecentDir(['a', 'b', 'c'], 'b')).toEqual(['b', 'a', 'c'])
-    const many = Array.from({ length: 30 }, (_, i) => `d${i}`)
-    expect(pushRecentDir(many, 'new')).toHaveLength(20)
+    const pushed = pushRecentDir([dir('a'), dir('b'), dir('c')], dir('b', 9))
+    expect(pushed).toEqual([dir('b', 9), dir('a'), dir('c')])
+    const many = Array.from({ length: 30 }, (_, i) => dir(`d${i}`))
+    expect(pushRecentDir(many, dir('new'))).toHaveLength(20)
+  })
+})
+
+describe('migrateConfig: recent dirs and launcher', () => {
+  it('upgrades version 1 paths to entries with no time', () => {
+    const c = migrateConfig({ version: 1, recentDirs: ['~/dev/a', '~/dev/b', '~/dev/a', 3] })
+    expect(c.recentDirs).toEqual([
+      { path: '~/dev/a', at: 0 },
+      { path: '~/dev/b', at: 0 }
+    ])
+  })
+
+  it('keeps valid entries and repairs bad fields', () => {
+    const c = migrateConfig({
+      recentDirs: [
+        { path: '~/dev/a', presetId: 'codex', at: 5 },
+        { path: '~/dev/b', presetId: '', at: -1 },
+        { presetId: 'claude', at: 2 }
+      ]
+    })
+    expect(c.recentDirs).toEqual([
+      { path: '~/dev/a', presetId: 'codex', at: 5 },
+      { path: '~/dev/b', at: 0 }
+    ])
+  })
+
+  it('remembers the launcher agent, defaulting to Claude Code', () => {
+    expect(migrateConfig({}).launcher).toEqual({ presetId: 'claude' })
+    expect(migrateConfig({ launcher: { presetId: 'codex' } }).launcher).toEqual({
+      presetId: 'codex'
+    })
+    expect(migrateConfig({ launcher: { presetId: 7 } }).launcher).toEqual({ presetId: 'claude' })
   })
 })
 

@@ -2,7 +2,7 @@
 // or hand-edited files. Pure so it can be unit tested.
 import { isSafeThemeValue, THEME_KEYS, type ThemeOverrides } from './theme'
 
-export const CONFIG_VERSION = 1
+export const CONFIG_VERSION = 2
 
 export interface Preset {
   id: string
@@ -93,6 +93,20 @@ export interface SidebarSettings {
   widgets: WidgetPlacement[]
 }
 
+export interface RecentDir {
+  /** Path with ~ for home. */
+  path: string
+  /** Preset of the last pane started there. Missing in entries from version 1. */
+  presetId?: string
+  /** When that pane started, in ms since the epoch; 0 if unknown. */
+  at: number
+}
+
+export interface LauncherSettings {
+  /** The agent the start screen launches with: the last one launched from it. */
+  presetId: string
+}
+
 export interface CockpitConfig {
   version: number
   presets: Preset[]
@@ -104,7 +118,8 @@ export interface CockpitConfig {
   /** Directory the Cmd+T picker lists projects from. */
   projectsDir: string
   /** Most recently used working directories, newest first. */
-  recentDirs: string[]
+  recentDirs: RecentDir[]
+  launcher: LauncherSettings
   layout: Layout
 }
 
@@ -167,6 +182,7 @@ export function defaultConfig(): CockpitConfig {
     sidebar: defaultSidebar(),
     projectsDir: '~/dev',
     recentDirs: [],
+    launcher: { presetId: 'claude' },
     layout: { tabs: [], activeTabId: null }
   }
 }
@@ -291,6 +307,16 @@ export function readSidebar(v: unknown): SidebarSettings {
   }
 }
 
+function readRecentDir(v: unknown): RecentDir | null {
+  // Version 1 kept bare paths.
+  if (nonEmpty(v)) return { path: v, at: 0 }
+  if (!isObj(v) || !nonEmpty(v.path)) return null
+  const at = typeof v.at === 'number' && Number.isFinite(v.at) && v.at > 0 ? v.at : 0
+  const dir: RecentDir = { path: v.path, at }
+  if (nonEmpty(v.presetId)) dir.presetId = v.presetId
+  return dir
+}
+
 function readTheme(v: unknown): ThemeOverrides {
   const theme: ThemeOverrides = {}
   if (!isObj(v)) return theme
@@ -310,8 +336,8 @@ export function migrateConfig(raw: unknown): CockpitConfig {
   const def = defaultConfig()
   if (!isObj(raw)) return def
 
-  // Version 1 is the first format. When the format changes, upgrade older
-  // shapes here (keyed on raw.version) before the field-by-field read below.
+  // Fields are read one by one, so older shapes are upgraded where they're
+  // read. Version 2 added times and presets to recentDirs (readRecentDir).
   const rawPresets: unknown = raw.presets
 
   let presets = def.presets
@@ -341,9 +367,15 @@ export function migrateConfig(raw: unknown): CockpitConfig {
     if (typeof size === 'number' && size >= 6 && size <= 48) terminal.fontSize = size
   }
 
-  const recentDirs = Array.isArray(raw.recentDirs)
-    ? [...new Set(raw.recentDirs.filter(nonEmpty))].slice(0, MAX_RECENT_DIRS)
-    : []
+  const recentDirs: RecentDir[] = []
+  if (Array.isArray(raw.recentDirs)) {
+    const seen = new Set<string>()
+    for (const d of raw.recentDirs.map(readRecentDir)) {
+      if (!d || seen.has(d.path)) continue
+      seen.add(d.path)
+      recentDirs.push(d)
+    }
+  }
 
   return {
     version: CONFIG_VERSION,
@@ -353,11 +385,17 @@ export function migrateConfig(raw: unknown): CockpitConfig {
     theme: readTheme(raw.theme),
     sidebar: readSidebar(raw.sidebar),
     projectsDir: nonEmpty(raw.projectsDir) ? raw.projectsDir : def.projectsDir,
-    recentDirs,
+    recentDirs: recentDirs.slice(0, MAX_RECENT_DIRS),
+    launcher: {
+      presetId:
+        isObj(raw.launcher) && nonEmpty(raw.launcher.presetId)
+          ? raw.launcher.presetId
+          : def.launcher.presetId
+    },
     layout: readLayout(raw.layout, new Set(presets.map((p) => p.id)))
   }
 }
 
-export function pushRecentDir(dirs: string[], dir: string): string[] {
-  return [dir, ...dirs.filter((d) => d !== dir)].slice(0, MAX_RECENT_DIRS)
+export function pushRecentDir(dirs: RecentDir[], dir: RecentDir): RecentDir[] {
+  return [dir, ...dirs.filter((d) => d.path !== dir.path)].slice(0, MAX_RECENT_DIRS)
 }

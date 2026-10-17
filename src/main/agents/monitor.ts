@@ -3,9 +3,8 @@
 // and transcript details.
 import { randomUUID } from 'node:crypto'
 import fs from 'node:fs'
-import os from 'node:os'
-import path from 'node:path'
 import type { AgentKind } from '@shared/widgets'
+import { claudeHome } from '../paths'
 import { CodexWatcher } from './codex'
 import { parseClaudeHook, type AgentSignal } from './events'
 import { installAgentFiles, type AgentFiles } from './files'
@@ -171,8 +170,7 @@ export class AgentMonitor {
     t.reading = true
     t.lastRead = Date.now()
     const entry = t
-    const root = process.env.CLAUDE_CONFIG_DIR ?? path.join(os.homedir(), '.claude')
-    void readTranscript(file, root).then((info) => {
+    void readTranscript(file, claudeHome()).then((info) => {
       entry.reading = false
       if (this.transcripts.get(paneId) !== entry) return
       if (info) this.tracker.annotate(paneId, info)

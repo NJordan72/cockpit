@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Preset } from '@shared/config'
-import type { DirListing } from '@shared/ipc'
+import type { DirEntry } from '@shared/ipc'
 import { rankDirs } from './rankDirs'
 
 interface Props {
@@ -21,7 +21,7 @@ export function Picker({
   onSubmit,
   onCancel
 }: Props): React.JSX.Element {
-  const [listing, setListing] = useState<DirListing | null>(null)
+  const [dirs, setDirs] = useState<DirEntry[]>([])
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState(0)
   const [presetIdx, setPresetIdx] = useState(() =>
@@ -35,10 +35,10 @@ export function Picker({
 
   useEffect(() => {
     inputRef.current?.focus()
-    void window.cockpit.dirs.list().then(setListing)
+    void window.cockpit.dirs.list().then((l) => setDirs(l.dirs))
   }, [])
 
-  const items = useMemo(() => rankDirs(query, currentDir, listing), [query, currentDir, listing])
+  const items = useMemo(() => rankDirs(query, currentDir, dirs), [query, currentDir, dirs])
 
   useEffect(() => {
     listRef.current?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest' })

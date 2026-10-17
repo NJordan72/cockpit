@@ -1,21 +1,22 @@
 import { describe, expect, it } from 'vitest'
+import type { DirEntry } from '@shared/ipc'
 import { fuzzyScore, rankDirs } from './rankDirs'
 
-const listing = {
-  recent: ['~/dev/cockpit', '~/dev/api'],
-  projects: [
-    { path: '~/dev/api', name: 'api', mtimeMs: 3 },
-    { path: '~/dev/web-console', name: 'web-console', mtimeMs: 2 },
-    { path: '~/dev/cockpit', name: 'cockpit', mtimeMs: 1 }
-  ]
-}
+const dir = (name: string): DirEntry => ({
+  path: `~/dev/${name}`,
+  name,
+  mtimeMs: 1,
+  usedMs: 0,
+  usedPresetId: null
+})
+const listing = [dir('cockpit'), dir('api'), dir('web-console')]
 
 describe('rankDirs', () => {
-  it('lists current, then recent, then projects, without duplicates', () => {
+  it('lists current, then the rest in order, without duplicates', () => {
     expect(rankDirs('', '~/dev/web-console', listing).map((d) => [d.path, d.tag])).toEqual([
       ['~/dev/web-console', 'current'],
-      ['~/dev/cockpit', 'recent'],
-      ['~/dev/api', 'recent']
+      ['~/dev/cockpit', undefined],
+      ['~/dev/api', undefined]
     ])
   })
 

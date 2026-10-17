@@ -1,5 +1,5 @@
 // IPC channel names and payload types shared by main, preload, and renderer.
-import type { CockpitConfig, Layout, SidebarSettings } from './config'
+import type { CockpitConfig, LauncherSettings, Layout, SidebarSettings } from './config'
 import type {
   SecretPrompt,
   SessionInfo,
@@ -23,6 +23,7 @@ export const IPC = {
   configChanged: 'config:changed',
   layoutSave: 'layout:save',
   sidebarSave: 'sidebar:save',
+  launcherSave: 'launcher:save',
   dirsList: 'dirs:list',
   widgetsList: 'widgets:list',
   widgetsChanged: 'widgets:changed',
@@ -71,11 +72,18 @@ export interface DirEntry {
   path: string
   name: string
   mtimeMs: number
+  /**
+   * When a Cockpit pane, Claude Code, or Codex last ran here (ms since the
+   * epoch), or 0 if never.
+   */
+  usedMs: number
+  /** The preset that ran then, if one matches. */
+  usedPresetId: string | null
 }
 
 export interface DirListing {
-  recent: string[]
-  projects: DirEntry[]
+  /** Recent dirs and the projects dir's subdirectories, most recently used first. */
+  dirs: DirEntry[]
 }
 
 /** A key press forwarded from the main process (matches KeyboardEvent's fields). */
@@ -107,6 +115,7 @@ export interface CockpitApi {
     onChange(cb: (config: CockpitConfig) => void): () => void
     saveLayout(layout: Layout): void
     saveSidebar(sidebar: SidebarSettings): void
+    saveLauncher(launcher: LauncherSettings): void
   }
   dirs: {
     list(): Promise<DirListing>

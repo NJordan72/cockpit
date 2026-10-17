@@ -120,14 +120,6 @@ export function Workspace({
           />
         )
       })}
-      {layout.tabs.length === 0 && (
-        <div className="empty">
-          <p>No open tabs.</p>
-          <p>
-            <kbd>⌘T</kbd> opens one.
-          </p>
-        </div>
-      )}
     </div>
   )
 }

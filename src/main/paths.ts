@@ -5,6 +5,13 @@ import path from 'node:path'
 export const cockpitHome = (): string =>
   process.env.COCKPIT_HOME ?? path.join(os.homedir(), '.cockpit')
 
+/** Claude Code's config and transcripts. */
+export const claudeHome = (): string =>
+  process.env.CLAUDE_CONFIG_DIR ?? path.join(os.homedir(), '.claude')
+
+/** Codex's config and session logs. */
+export const codexHome = (): string => process.env.CODEX_HOME ?? path.join(os.homedir(), '.codex')
+
 export function expandHome(p: string): string {
   if (p === '~') return os.homedir()
   if (p.startsWith('~/')) return path.join(os.homedir(), p.slice(2))

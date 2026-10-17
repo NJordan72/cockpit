@@ -457,4 +457,32 @@ action that removes merged worktrees.
 - Left for later: real notifications (needs signing), agent awareness for
   `claude` typed by hand in a Shell pane, and showing the OSC title in tabs.
 
+### Start screen (added 2026-10-17, not in the original plan)
+
+- Cockpit opens on a start screen instead of restoring the layout directly:
+  `~/dev`'s folders plus recent dirs elsewhere, most recently used first, an
+  agent switch (presets with a command; `Tab` flips it) that remembers the
+  last agent launched (`config.json` `launcher.presetId`), and a filter that
+  also takes a typed path. Enter or a click opens a tab. Closing the last tab
+  returns to it.
+- "Most recently used" is the latest of: a Cockpit pane started there
+  (`recentDirs` entries now carry `at` and `presetId`; config version 2,
+  version 1's bare paths are read as entries with no time), the newest
+  `*.jsonl` mtime in Claude Code's `~/.claude/projects/<dir with
+non-alphanumerics as ->/`, and the newest mtime among the 500 newest Codex
+  session files whose first line's `cwd` is that dir. Each row names the
+  preset of that use and how long ago. The Cmd+T picker uses the same list
+  (current dir first), so its "recent" tag is gone.
+- The saved layout becomes a "Restore last session" button. Nothing is saved
+  over it until a project is launched or it's restored, so quitting from the
+  start screen keeps it. Main lists no sessions until the chrome sends a
+  layout, so the sidebar doesn't show the saved panes as exited.
+- Verified in the built app with a scratch COCKPIT_HOME and harmless presets
+  (`claude --version; exec zsh` and the Codex equivalent): the list matched
+  real Claude/Codex use, Tab and Enter opened Codex in the top project,
+  closing the tab came back with Codex still selected and the row marked
+  "Codex · now", filtering opened another project, relaunch offered Restore
+  (also after quitting from the start screen), Restore brought the tab back,
+  the selection scrolls into view, and Cmd+T still works.
+
 Next: M5 (optional).

@@ -60,9 +60,12 @@ const COMMANDS = {
       timeout: 30_000
     })
     page = await app.firstWindow()
-    await page.waitForFunction(() => (window.__cockpitDebug?.ids().length ?? 0) > 0, null, {
-      timeout: 15_000
-    })
+    // It opens on the start screen, or on terminals once something is open.
+    await page.waitForFunction(
+      () => (window.__cockpitDebug?.ids().length ?? 0) > 0 || document.querySelector('.launcher'),
+      null,
+      { timeout: 15_000 }
+    )
     console.log('launched:', page.url())
   },
 
@@ -158,6 +161,28 @@ const COMMANDS = {
   async relaunch() {
     await COMMANDS.quit()
     await COMMANDS.launch()
+  },
+
+  // The start screen: the selected agent, the restore offer, and the first rows
+  // (`launcher 30` for more). `>` marks the selected row.
+  async launcher(n) {
+    const view = await page.evaluate(
+      (n) => {
+        const el = document.querySelector('.launcher')
+        if (!el) return null
+        const text = (sel) => el.querySelector(sel)?.textContent?.trim() ?? null
+        const rows = [...el.querySelectorAll('.launcher-list li')].slice(0, n).map((li) => {
+          const cell = (sel) => li.querySelector(sel)?.textContent ?? ''
+          const mark = li.classList.contains('selected') ? '>' : ' '
+          return `${mark} ${cell('.dir-name')}  ${cell('.dir-path')}  ${cell('.launcher-used')}`
+        })
+        return { agent: text('.launcher-agents .on'), restore: text('.launcher-restore'), rows }
+      },
+      Number(n) || 15
+    )
+    if (!view) return console.log('no start screen')
+    console.log(`agent: ${view.agent}${view.restore ? `  | ${view.restore}` : ''}`)
+    console.log(view.rows.join('\n'))
   },
 
   // Print the saved layout from $COCKPIT_HOME/config.json as an indented tree.

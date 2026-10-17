@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
-import type { Action, CockpitConfig, SidebarSettings } from '@shared/config'
+import type { Action, CockpitConfig, Layout, SidebarSettings } from '@shared/config'
 import { resolveTheme, themeVars, type Theme } from '@shared/theme'
 import type { PaneSession } from '@shared/ipc'
 import type { SecretPrompt, SessionStatus, WidgetInfo } from '@shared/widgets'
+import { Launcher } from './components/Launcher'
 import { Picker } from './components/Picker'
 import { SecretPromptDialog } from './components/SecretPromptDialog'
 import { TabBar } from './components/TabBar'
@@ -49,7 +50,10 @@ export function App(): React.JSX.Element {
   const [prompts, setPrompts] = useState<SecretPrompt[]>([])
   const [windowVisible, setWindowVisible] = useState(() => document.visibilityState === 'visible')
   const [sessions, setSessions] = useState<PaneSession[]>([])
+  /** The layout saved last time, until a project is launched or it is restored. */
+  const [restorable, setRestorable] = useState<Layout | null>(null)
   const loaded = useRef(false)
+  const launcherInput = useRef<HTMLInputElement>(null)
 
   const statuses = useMemo(
     () => new Map<string, SessionStatus>(sessions.map((s) => [s.id, s.status])),
@@ -96,15 +100,15 @@ export function App(): React.JSX.Element {
     }
   }, [api])
 
-  // Load config and restore the saved layout (or open one shell tab).
+  // Load config. The app opens on the start screen, which offers the saved
+  // layout for restoring; nothing is saved over it until the user picks.
   useEffect(() => {
     let cancelled = false
     void api.config.get().then((c) => {
       if (cancelled) return
       setConfig(c)
       setSidebar(c.sidebar)
-      if (c.layout.tabs.length > 0) dispatch({ type: 'replace', layout: c.layout })
-      else dispatch({ type: 'newTab', pane: makePane('shell', '~') })
+      setRestorable(c.layout.tabs.length > 0 ? c.layout : null)
       loaded.current = true
     })
     // Only hand edits arrive here; they may rearrange the sidebar.
@@ -189,9 +193,11 @@ export function App(): React.JSX.Element {
     return keymap
   }, [config])
 
-  const focusActiveTerminal = useCallback(() => {
+  /** Give the keyboard to the active terminal, or to the start screen when no tab is open. */
+  const focusWorkspace = useCallback(() => {
     const tab = activeTab(layoutRef.current)
     if (tab) terminals.get(tab.activePaneId)?.focus()
+    else launcherInput.current?.focus()
   }, [])
 
   const openPicker = useCallback(
@@ -291,33 +297,50 @@ export function App(): React.JSX.Element {
 
   // When the window comes back, Chromium can hand focus to the first button in
   // the page, where a stray Enter would close a tab. Give it to the terminal
-  // unless something that takes typing (the picker, a prompt, a widget) has it.
+  // (or the start screen) unless something that takes typing (the picker, a
+  // prompt, a widget) has it.
   useEffect(() => {
     const onFocus = (): void => {
       requestAnimationFrame(() => {
         if (pickerRef.current || promptRef.current) return
         const el = document.activeElement
-        if (!el || el === document.body || el.tagName === 'BUTTON') focusActiveTerminal()
+        if (!el || el === document.body || el.tagName === 'BUTTON') focusWorkspace()
       })
     }
     window.addEventListener('focus', onFocus)
     return () => {
       window.removeEventListener('focus', onFocus)
     }
-  }, [focusActiveTerminal])
+  }, [focusWorkspace])
 
   const closePicker = useCallback(() => {
     setPicker(null)
-    requestAnimationFrame(focusActiveTerminal)
-  }, [focusActiveTerminal])
+    requestAnimationFrame(focusWorkspace)
+  }, [focusWorkspace])
+
+  const launch = useCallback(
+    (presetId: string, cwd: string) => {
+      dispatch({ type: 'newTab', pane: makePane(presetId, cwd) })
+      setRestorable(null)
+      const launcher = { presetId }
+      api.config.saveLauncher(launcher)
+      setConfig((c) => c && { ...c, launcher })
+    },
+    [api]
+  )
+
+  const restore = useCallback(() => {
+    if (restorable) dispatch({ type: 'replace', layout: restorable })
+    setRestorable(null)
+  }, [restorable])
 
   const answerPrompt = useCallback(
     (prompt: SecretPrompt, value: string | null) => {
       api.widgets.answerSecret(prompt.promptId, value)
       setPrompts((ps) => ps.filter((p) => p.promptId !== prompt.promptId))
-      requestAnimationFrame(focusActiveTerminal)
+      requestAnimationFrame(focusWorkspace)
     },
-    [api, focusActiveTerminal]
+    [api, focusWorkspace]
   )
 
   if (!config || !terminalTheme) return <div className="app" />
@@ -333,13 +356,25 @@ export function App(): React.JSX.Element {
         onCloseTab={(tabId) => dispatch({ type: 'closeTab', tabId })}
       />
       <div className="main">
-        <Workspace
-          layout={layout}
-          presets={config.presets}
-          settings={config.terminal}
-          theme={terminalTheme}
-          dispatch={dispatch}
-        />
+        {layout.tabs.length > 0 ? (
+          <Workspace
+            layout={layout}
+            presets={config.presets}
+            settings={config.terminal}
+            theme={terminalTheme}
+            dispatch={dispatch}
+          />
+        ) : (
+          <Launcher
+            presets={config.presets}
+            initialPresetId={config.launcher.presetId}
+            projectsDir={config.projectsDir}
+            restoreTabs={restorable?.tabs.length ?? 0}
+            inputRef={launcherInput}
+            onLaunch={launch}
+            onRestore={restore}
+          />
+        )}
         {sidebar && (
           <Sidebar
             widgets={widgets}
@@ -360,6 +395,7 @@ export function App(): React.JSX.Element {
           onCancel={closePicker}
           onSubmit={(presetId, cwd) => {
             const pane = makePane(presetId, cwd)
+            setRestorable(null)
             if (picker.mode === 'tab') dispatch({ type: 'newTab', pane })
             else if (picker.paneId)
               dispatch({ type: 'split', paneId: picker.paneId, direction: picker.mode, pane })
