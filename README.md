@@ -68,6 +68,7 @@ pane shows the exit status; press `Enter` to restart it.
 | Cmd+D / Cmd+Shift+D | Split right / down (picker)                |
 | Cmd+W               | Close pane (last pane: tab)                |
 | Cmd+Shift+Backspace | Clear pane: restart its preset fresh       |
+| Cmd+Shift+R         | Resume: pick an old session for the pane   |
 | Cmd+Alt+Arrow       | Move focus between panes                   |
 | Cmd+Shift+] / [     | Next / previous tab                        |
 | Cmd+1 … Cmd+9       | Go to tab                                  |
@@ -80,6 +81,8 @@ a new tab, split right or down, clear the pane, and hide or show the panels, and
 switches layouts. Clear ends the pane's process and starts its preset again in
 the same directory, with a new terminal and an empty status, activity log, and
 file list; the old conversation stays in Claude Code's or Codex's own history.
+Resume does the same, but starts the agent at its own list of past sessions
+in that directory (`claude --resume`, `codex resume`) so you can pick one up again.
 Hover a button to see its shortcut. The toolbar stays put
 when Cmd+B hides the panels, so the Panels button can bring them back.
 

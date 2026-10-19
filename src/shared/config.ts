@@ -24,6 +24,7 @@ export type Action =
   | 'splitDown'
   | 'closePane'
   | 'clearPane'
+  | 'resumePane'
   | 'focusLeft'
   | 'focusRight'
   | 'focusUp'
@@ -49,6 +50,8 @@ export interface PaneNode {
   id: string
   presetId: string
   cwd: string
+  /** Start the agent at its own session picker. Dropped once the pane has started. */
+  resume?: boolean
 }
 
 export interface SplitNode {
@@ -188,6 +191,7 @@ export const DEFAULT_KEYBINDINGS: Keybindings = {
   splitDown: 'Cmd+Shift+D',
   closePane: 'Cmd+W',
   clearPane: 'Cmd+Shift+Backspace',
+  resumePane: 'Cmd+Shift+R',
   focusLeft: 'Cmd+Alt+Left',
   focusRight: 'Cmd+Alt+Right',
   focusUp: 'Cmd+Alt+Up',

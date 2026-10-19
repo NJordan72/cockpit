@@ -19,7 +19,7 @@ export type LayoutAction =
   | { type: 'newTab'; pane: PaneNode }
   | { type: 'split'; paneId: string; direction: 'row' | 'column'; pane: PaneNode }
   | { type: 'closePane'; paneId: string }
-  | { type: 'clearPane'; paneId: string }
+  | { type: 'clearPane'; paneId: string; resume?: boolean }
   | { type: 'closeTab'; tabId: string }
   | { type: 'focusPane'; paneId: string }
   | { type: 'focusDirection'; direction: Direction }
@@ -88,9 +88,10 @@ export function layoutReducer(layout: Layout, action: LayoutAction): Layout {
       const tab = tabOfPane(layout, action.paneId)
       if (!tab) return layout
       const id = newId('pane')
+      const root = renamePane(tab.root, action.paneId, id)
       return mapTab(layout, tab.id, (t) => ({
         ...t,
-        root: renamePane(t.root, action.paneId, id),
+        root: action.resume ? updatePane(root, id, { resume: true }) : root,
         activePaneId: t.activePaneId === action.paneId ? id : t.activePaneId
       }))
     }
@@ -151,11 +152,13 @@ export function layoutReducer(layout: Layout, action: LayoutAction): Layout {
     }
 
     case 'setCwd': {
+      // The pane has started, so a restart from here opens a new session.
       const tab = tabOfPane(layout, action.paneId)
-      if (!tab || findPane(tab.root, action.paneId)?.cwd === action.cwd) return layout
+      const pane = tab && findPane(tab.root, action.paneId)
+      if (!tab || !pane || (pane.cwd === action.cwd && !pane.resume)) return layout
       return mapTab(layout, tab.id, (t) => ({
         ...t,
-        root: updatePane(t.root, action.paneId, { cwd: action.cwd })
+        root: updatePane(t.root, action.paneId, { cwd: action.cwd, resume: undefined })
       }))
     }
   }

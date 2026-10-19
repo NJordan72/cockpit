@@ -49,17 +49,23 @@ export interface AgentLaunch {
   agent: AgentKind | null
 }
 
-/** The preset command with the flags its agent needs to report to Cockpit. */
+/**
+ * The preset command with the flags its agent needs to report to Cockpit.
+ * With `resume`, the agent opens its own picker of past sessions in the
+ * directory: `claude --resume` (first, so its optional value can't take the
+ * next word) or `codex resume`. Other commands run as they are.
+ */
 export function agentLaunch(
   command: string | undefined,
-  files: { claudeSettings: string }
+  files: { claudeSettings: string },
+  resume = false
 ): AgentLaunch {
   const found = detectAgent(command)
   if (!command || !found) return { command, agent: null }
   const flags =
     found.agent === 'claude'
-      ? ['--settings', files.claudeSettings]
-      : CODEX_SETTINGS.flatMap((s) => ['-c', s])
+      ? [...(resume ? ['--resume'] : []), '--settings', files.claudeSettings]
+      : [...CODEX_SETTINGS.flatMap((s) => ['-c', s]), ...(resume ? ['resume'] : [])]
   const inserted = flags.map(shQuote).join(' ')
   return {
     command: `${command.slice(0, found.end)} ${inserted}${command.slice(found.end)}`,

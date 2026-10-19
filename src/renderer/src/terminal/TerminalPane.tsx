@@ -39,10 +39,22 @@ export function TerminalPane({
   const exitRef = useRef<PtyExitInfo | null>(null)
 
   // Values the long-lived terminal effect reads later without re-running.
-  const spawnArgs = useRef({ presetId: pane.presetId, cwd: pane.cwd, onFocus, onStarted })
+  const spawnArgs = useRef({
+    presetId: pane.presetId,
+    cwd: pane.cwd,
+    resume: pane.resume === true,
+    onFocus,
+    onStarted
+  })
   useLayoutEffect(() => {
     exitRef.current = exit
-    spawnArgs.current = { presetId: pane.presetId, cwd: pane.cwd, onFocus, onStarted }
+    spawnArgs.current = {
+      presetId: pane.presetId,
+      cwd: pane.cwd,
+      resume: pane.resume === true,
+      onFocus,
+      onStarted
+    }
   })
 
   const startRef = useRef<() => void>(() => undefined)
@@ -97,9 +109,9 @@ export function TerminalPane({
     const start = (): void => {
       setExit(null)
       fit.fit()
-      const { presetId, cwd } = spawnArgs.current
+      const { presetId, cwd, resume } = spawnArgs.current
       api.pty
-        .create({ id, cols: term.cols, rows: term.rows, presetId, cwd })
+        .create({ id, cols: term.cols, rows: term.rows, presetId, cwd, resume })
         .then((created) => {
           if (!disposed) spawnArgs.current.onStarted(created.cwd)
         })

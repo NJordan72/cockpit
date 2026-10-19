@@ -319,7 +319,7 @@ function registerIpc(): void {
     const preset = config.get().presets.find((p) => p.id === opts.presetId)
     if (!preset) throw new Error(`unknown preset: ${opts.presetId}`)
     const cwd = await resolveCwd(opts.cwd, preset.cwd)
-    const launch = agents.launch(preset.command)
+    const launch = agents.launch(preset.command, opts.resume === true)
     const env = agents.spawn(opts.id, launch.agent)
     let pid: number
     try {

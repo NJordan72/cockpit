@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Layout, PaneNode } from '@shared/config'
-import { allPanes } from './model'
+import { allPanes, findPane } from './model'
 import { layoutReducer, type LayoutAction } from './reducer'
 
 const pane = (id: string): PaneNode => ({ type: 'pane', id, presetId: 'shell', cwd: '~' })
@@ -60,6 +60,17 @@ describe('layoutReducer', () => {
     expect(ids[0]).toBe('a')
     expect(ids[1]).not.toBe('b')
     expect(l.tabs[0]?.activePaneId).toBe(ids[1])
+  })
+
+  it('clearing to resume marks the new pane until it has started', () => {
+    let l = run([
+      { type: 'newTab', pane: pane('a') },
+      { type: 'clearPane', paneId: 'a', resume: true }
+    ])
+    const id = l.tabs[0]?.activePaneId ?? ''
+    expect(findPane(l.tabs[0]?.root ?? pane('x'), id)?.resume).toBe(true)
+    l = layoutReducer(l, { type: 'setCwd', paneId: id, cwd: pane('x').cwd })
+    expect(findPane(l.tabs[0]?.root ?? pane('x'), id)?.resume).toBeUndefined()
   })
 
   it('closing everything leaves no active tab', () => {

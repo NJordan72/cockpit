@@ -396,6 +396,9 @@ export function App(): React.JSX.Element {
         case 'clearPane':
           if (tab) dispatch({ type: 'clearPane', paneId: tab.activePaneId })
           return
+        case 'resumePane':
+          if (tab) dispatch({ type: 'clearPane', paneId: tab.activePaneId, resume: true })
+          return
         case 'focusLeft':
           dispatch({ type: 'focusDirection', direction: 'left' })
           return

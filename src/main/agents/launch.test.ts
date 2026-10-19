@@ -42,6 +42,16 @@ describe('agentLaunch', () => {
     expect(r.command).toContain(`-c 'tui.notification_method="osc9"'`)
   })
 
+  it('opens the session picker when resuming', () => {
+    expect(agentLaunch('claude --model opus', files, true).command).toBe(
+      `claude --resume --settings ${files.claudeSettings} --model opus`
+    )
+    expect(agentLaunch('codex --search', files, true).command).toBe(
+      `codex ${CODEX_SETTINGS.map((s) => `-c ${shQuote(s)}`).join(' ')} resume --search`
+    )
+    expect(agentLaunch('htop', files, true)).toEqual({ command: 'htop', agent: null })
+  })
+
   it('runs anything else unchanged', () => {
     expect(agentLaunch(undefined, files)).toEqual({ command: undefined, agent: null })
     expect(agentLaunch('htop', files)).toEqual({ command: 'htop', agent: null })

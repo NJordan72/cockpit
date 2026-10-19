@@ -91,8 +91,8 @@ export class AgentMonitor {
   }
 
   /** The command to run for a preset, with whatever its agent needs to report here. */
-  launch(command: string | undefined): AgentLaunch {
-    return agentLaunch(command, this.files)
+  launch(command: string | undefined, resume = false): AgentLaunch {
+    return agentLaunch(command, this.files, resume)
   }
 
   /** A pane's process is about to start. Returns the env vars that tie its events to it. */

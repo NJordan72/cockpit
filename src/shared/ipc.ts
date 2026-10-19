@@ -69,6 +69,8 @@ export interface PtyCreateOptions {
   presetId: string
   /** Working directory; falls back to the preset's, then home. */
   cwd?: string
+  /** Open the agent's session picker instead of a new session. */
+  resume?: boolean
 }
 
 export interface PtyCreated {
