@@ -16,7 +16,7 @@ import {
   type FramePanel,
   type FrameState
 } from '@shared/frame'
-import { builtInLayout } from '@shared/layouts'
+import { builtInLayout, layoutChoices } from '@shared/layouts'
 import { resolveTheme, themeVars, type ResolvedTheme, type ThemeDefinition } from '@shared/theme'
 import type { AppearanceCommand, PaneSession } from '@shared/ipc'
 import type { SecretPrompt, SessionStatus, WidgetInfo } from '@shared/widgets'
@@ -26,6 +26,7 @@ import { Picker } from './components/Picker'
 import { SecretPromptDialog } from './components/SecretPromptDialog'
 import { SessionList } from './components/SessionList'
 import { TabBar } from './components/TabBar'
+import { Toolbar } from './components/Toolbar'
 import { Workspace } from './components/Workspace'
 import { Clock } from './frame/Clock'
 import { FrameView, type PanelPlace } from './frame/FrameView'
@@ -670,6 +671,16 @@ export function App(): React.JSX.Element {
           )}
         </div>
       </div>
+      <Toolbar
+        focused={focused}
+        keybindings={config.keybindings}
+        layouts={layoutChoices(config.appearance)}
+        layout={config.appearance.layout}
+        panelsHidden={config.appearance.panelsHidden}
+        active={widgetsVisible}
+        onAction={runAction}
+        onLayout={(id) => runAppearance({ type: 'layout', id })}
+      />
       {picker && (
         <Picker
           title={PICKER_TITLES[picker.mode]}

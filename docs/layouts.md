@@ -18,7 +18,8 @@ layout in `config.json`. View > Layout > Reset Layout deletes the copy.
 ```
 
 `panelsHidden` is what Cmd+B toggles: every panel but the terminals and the
-tab bar is hidden. Edits to `config.json` apply while Cockpit runs. A layout
+tab bar is hidden. The toolbar along the bottom isn't part of the layout and
+stays where it is. Edits to `config.json` apply while Cockpit runs. A layout
 change never restarts a terminal or reloads a widget, since both are drawn
 once and placed over the spot the layout gives them.
 

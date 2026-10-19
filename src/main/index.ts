@@ -31,7 +31,7 @@ import {
   type PtyCreateOptions,
   type PtyCreated
 } from '@shared/ipc'
-import { BUILT_IN_LAYOUTS } from '@shared/layouts'
+import { BUILT_IN_LAYOUTS, layoutChoices } from '@shared/layouts'
 import { resolveTheme, type ResolvedTheme } from '@shared/theme'
 import { AgentMonitor } from './agents/monitor'
 import { serveAssets } from './assets'
@@ -159,15 +159,6 @@ function windowBackground(): string {
   return /^#[0-9a-f]{3,8}$/i.test(bg) ? bg : '#1e1f24'
 }
 
-/** Built-in layouts, then ones only config.json has. */
-function layoutChoices(): { id: string; name: string }[] {
-  const builtIn = BUILT_IN_LAYOUTS.map((l) => ({ id: l.id, name: l.name }))
-  const mine = Object.keys(config.get().appearance.layouts)
-    .filter((id) => !BUILT_IN_LAYOUTS.some((l) => l.id === id))
-    .map((id) => ({ id, name: id }))
-  return [...builtIn, ...mine]
-}
-
 /** Only a built-in layout the user has changed can go back to how it was. */
 function canResetLayout(): boolean {
   const a = config.get().appearance
@@ -192,7 +183,7 @@ function applyMenu(): void {
           themes: themes.list(),
           theme: currentTheme().id,
           onTheme: (id) => sendAppearance({ type: 'theme', id }),
-          layouts: layoutChoices(),
+          layouts: layoutChoices(config.get().appearance),
           layout: config.get().appearance.layout,
           onLayout: (id) => sendAppearance({ type: 'layout', id }),
           onResetLayout: () => sendAppearance({ type: 'resetLayout' }),

@@ -1,7 +1,7 @@
 // Layouts that ship with Cockpit. config.json keeps a copy of a layout once
 // it's been changed (a divider dragged, a panel folded); View > Layout > Reset
 // Layout deletes the copy.
-import type { SidebarSettings } from './config'
+import type { AppearanceSettings, SidebarSettings } from './config'
 import { panel, readFrame, type FrameNode, type FrameSplit, type FrameTabs } from './frame'
 
 export interface BuiltInLayout {
@@ -149,4 +149,13 @@ export function classicFromSidebar(sb: SidebarSettings): FrameNode {
       }
     ]
   })
+}
+
+/** Built-in layouts, then ones only config.json has. */
+export function layoutChoices(appearance: AppearanceSettings): { id: string; name: string }[] {
+  const builtIn = BUILT_IN_LAYOUTS.map((l) => ({ id: l.id, name: l.name }))
+  const mine = Object.keys(appearance.layouts)
+    .filter((id) => !BUILT_IN_LAYOUTS.some((l) => l.id === id))
+    .map((id) => ({ id, name: id }))
+  return [...builtIn, ...mine]
 }

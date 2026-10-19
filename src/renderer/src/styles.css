@@ -525,6 +525,97 @@ kbd {
   color: var(--muted);
 }
 
+/* ---- toolbar along the bottom ---- */
+
+.toolbar {
+  flex: none;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 8px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-raised);
+  color: var(--muted);
+  font-size: 12px;
+  user-select: none;
+}
+
+.toolbar-pane {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  white-space: nowrap;
+}
+
+.toolbar-status {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.toolbar-name {
+  flex: none;
+  max-width: 30%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--fg);
+}
+
+.toolbar-cwd {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  /* Keep the end of a long path, where the repo name is. */
+  direction: rtl;
+  text-align: left;
+  font-family: var(--font-mono);
+}
+
+.toolbar-git {
+  flex: none;
+  font-family: var(--font-mono);
+}
+
+.toolbar-changed {
+  color: var(--yellow);
+}
+
+.toolbar-actions {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.toolbar-actions button,
+.toolbar-actions select {
+  height: 20px;
+  border: 0;
+  border-radius: var(--radius);
+  background: none;
+  padding: 0 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.toolbar-actions button:hover:not(:disabled),
+.toolbar-actions select:hover {
+  background: var(--bg-hover);
+  color: var(--fg);
+}
+
+.toolbar-actions button.on {
+  color: var(--fg);
+}
+
+.toolbar-actions button:disabled {
+  opacity: 0.4;
+}
+
 /* ---- the frame: the window's panels ---- */
 
 .frame-root {

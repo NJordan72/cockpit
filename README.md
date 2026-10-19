@@ -72,6 +72,13 @@ pane shows the exit status; press `Enter` to restart it.
 | Cmd+1 … Cmd+9       | Go to tab                                  |
 | Cmd+B               | Hide or show every panel but the terminals |
 
+The toolbar along the bottom of the window shows the focused pane: its status,
+preset (or Claude Code's name for the conversation), directory, and git branch
+with commits ahead and behind and the number of changed files. Its buttons open
+a new tab, split right or down, and hide or show the panels, and its menu
+switches layouts. Hover a button to see its shortcut. The toolbar stays put
+when Cmd+B hides the panels, so the Panels button can bring them back.
+
 ## Agent awareness
 
 Every pane has a status: **idle**, **working**, **needs input**, **done**

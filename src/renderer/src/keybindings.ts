@@ -119,3 +119,32 @@ export function compileKeymap(bindings: Keybindings): { keymap: Keymap; invalid:
 export function actionFor(keymap: Keymap, e: KeyEventLike): Action | null {
   return keymap.find((k) => matches(k.chord, e))?.action ?? null
 }
+
+const KEY_SYMBOL: Record<string, string> = {
+  left: '←',
+  right: '→',
+  up: '↑',
+  down: '↓',
+  enter: '↩',
+  return: '↩',
+  tab: '⇥',
+  esc: '⎋',
+  escape: '⎋',
+  space: 'Space',
+  backspace: '⌫',
+  delete: '⌦'
+}
+
+/** "Cmd+Shift+D" → "⇧⌘D", in the order macOS menus use. null when it doesn't parse. */
+export function chordLabel(binding: string): string | null {
+  const chord = parseChord(binding)
+  if (!chord) return null
+  const key = binding.split('+').pop()?.trim() ?? ''
+  return (
+    (chord.ctrl ? '⌃' : '') +
+    (chord.alt ? '⌥' : '') +
+    (chord.shift ? '⇧' : '') +
+    (chord.meta ? '⌘' : '') +
+    (KEY_SYMBOL[key.toLowerCase()] ?? key.toUpperCase())
+  )
+}

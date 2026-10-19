@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_KEYBINDINGS } from '@shared/config'
-import { actionFor, compileKeymap, parseChord } from './keybindings'
+import { actionFor, chordLabel, compileKeymap, parseChord } from './keybindings'
 
 const ev = (
   code: string,
@@ -58,5 +58,19 @@ describe('actionFor', () => {
     const r = compileKeymap({ ...DEFAULT_KEYBINDINGS, newTab: '', closePane: 'Cmd+Nope' })
     expect(r.keymap.some((k) => k.action === 'newTab')).toBe(false)
     expect(r.invalid).toEqual(['closePane: Cmd+Nope'])
+  })
+})
+
+describe('chordLabel', () => {
+  it('writes modifiers as macOS symbols, in menu order', () => {
+    expect(chordLabel('Cmd+Shift+D')).toBe('⇧⌘D')
+    expect(chordLabel('Shift+Ctrl+Alt+Cmd+t')).toBe('⌃⌥⇧⌘T')
+    expect(chordLabel('Cmd+Alt+Left')).toBe('⌥⌘←')
+    expect(chordLabel('Cmd+]')).toBe('⌘]')
+  })
+
+  it('returns null for bindings that do not parse', () => {
+    expect(chordLabel('Hyper+X')).toBeNull()
+    expect(chordLabel('')).toBeNull()
   })
 })
