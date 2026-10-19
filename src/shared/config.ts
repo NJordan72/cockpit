@@ -23,6 +23,7 @@ export type Action =
   | 'splitRight'
   | 'splitDown'
   | 'closePane'
+  | 'clearPane'
   | 'focusLeft'
   | 'focusRight'
   | 'focusUp'
@@ -186,6 +187,7 @@ export const DEFAULT_KEYBINDINGS: Keybindings = {
   splitRight: 'Cmd+D',
   splitDown: 'Cmd+Shift+D',
   closePane: 'Cmd+W',
+  clearPane: 'Cmd+Shift+Backspace',
   focusLeft: 'Cmd+Alt+Left',
   focusRight: 'Cmd+Alt+Right',
   focusUp: 'Cmd+Alt+Up',

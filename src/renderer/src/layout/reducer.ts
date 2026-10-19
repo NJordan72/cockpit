@@ -7,6 +7,7 @@ import {
   neighbor,
   newId,
   removePane,
+  renamePane,
   setSizes,
   splitPane,
   updatePane,
@@ -18,6 +19,7 @@ export type LayoutAction =
   | { type: 'newTab'; pane: PaneNode }
   | { type: 'split'; paneId: string; direction: 'row' | 'column'; pane: PaneNode }
   | { type: 'closePane'; paneId: string }
+  | { type: 'clearPane'; paneId: string }
   | { type: 'closeTab'; tabId: string }
   | { type: 'focusPane'; paneId: string }
   | { type: 'focusDirection'; direction: Direction }
@@ -78,6 +80,19 @@ export function layoutReducer(layout: Layout, action: LayoutAction): Layout {
         activePaneId = near ?? allPanes(root)[0]?.id ?? activePaneId
       }
       return mapTab(layout, tab.id, (t) => ({ ...t, root, activePaneId }))
+    }
+
+    case 'clearPane': {
+      // A new id remounts the terminal: the old process is killed, everything
+      // main kept about it is dropped, and the preset starts again.
+      const tab = tabOfPane(layout, action.paneId)
+      if (!tab) return layout
+      const id = newId('pane')
+      return mapTab(layout, tab.id, (t) => ({
+        ...t,
+        root: renamePane(t.root, action.paneId, id),
+        activePaneId: t.activePaneId === action.paneId ? id : t.activePaneId
+      }))
     }
 
     case 'closeTab': {

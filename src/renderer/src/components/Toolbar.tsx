@@ -20,7 +20,8 @@ interface Props {
 const BUTTONS: { action: Action; label: string; title: string; needsPane: boolean }[] = [
   { action: 'newTab', label: '+ Tab', title: 'New tab', needsPane: false },
   { action: 'splitRight', label: '◫ Right', title: 'Split right', needsPane: true },
-  { action: 'splitDown', label: '⊟ Down', title: 'Split down', needsPane: true }
+  { action: 'splitDown', label: '⊟ Down', title: 'Split down', needsPane: true },
+  { action: 'clearPane', label: '⟲ Clear', title: 'Clear session', needsPane: true }
 ]
 
 /** The bar along the bottom of the window: the focused pane, and the actions most used on it. */

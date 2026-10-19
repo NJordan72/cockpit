@@ -49,6 +49,19 @@ describe('layoutReducer', () => {
     expect(l.tabs.find((t) => t.id === l.activeTabId)?.activePaneId).toBe('c')
   })
 
+  it('clearing a pane gives it a new id in the same place, still focused', () => {
+    const l = run([
+      { type: 'newTab', pane: pane('a') },
+      { type: 'split', paneId: 'a', direction: 'row', pane: pane('b') },
+      { type: 'clearPane', paneId: 'b' }
+    ])
+    const ids = allPanes(l.tabs[0]?.root ?? pane('x')).map((p) => p.id)
+    expect(ids).toHaveLength(2)
+    expect(ids[0]).toBe('a')
+    expect(ids[1]).not.toBe('b')
+    expect(l.tabs[0]?.activePaneId).toBe(ids[1])
+  })
+
   it('closing everything leaves no active tab', () => {
     const l = run([
       { type: 'newTab', pane: pane('a') },

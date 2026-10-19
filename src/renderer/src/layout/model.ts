@@ -108,6 +108,12 @@ export function updatePane(
   return { ...root, children: root.children.map((c) => updatePane(c, id, patch)) }
 }
 
+/** The same pane under a new id, so its terminal and session start over. */
+export function renamePane(root: LayoutNode, id: string, to: string): LayoutNode {
+  if (root.type === 'pane') return root.id === id ? { ...root, id: to } : root
+  return { ...root, children: root.children.map((c) => renamePane(c, id, to)) }
+}
+
 export interface Arrangement {
   panes: Map<string, Rect>
   dividers: Divider[]
