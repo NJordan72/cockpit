@@ -4,6 +4,7 @@ import type { Layout, Preset, TerminalSettings } from '@shared/config'
 import { allPanes, arrange, dragSizes, findSplit, type Divider } from '../layout/model'
 import type { LayoutAction } from '../layout/reducer'
 import { TerminalPane } from '../terminal/TerminalPane'
+import { WebPane } from '../web/WebPane'
 
 interface Props {
   layout: Layout
@@ -92,16 +93,26 @@ export function Workspace({
               display: visible ? 'block' : 'none'
             }}
           >
-            <TerminalPane
-              pane={pane}
-              presetName={presets.find((p) => p.id === pane.presetId)?.name ?? pane.presetId}
-              settings={settings}
-              theme={theme}
-              focused={tab.activePaneId === pane.id && (multi || visible)}
-              visible={visible}
-              onFocus={() => dispatch({ type: 'focusPane', paneId: pane.id })}
-              onStarted={(cwd) => dispatch({ type: 'setCwd', paneId: pane.id, cwd })}
-            />
+            {pane.url ? (
+              <WebPane
+                pane={{ ...pane, url: pane.url }}
+                focused={tab.activePaneId === pane.id && (multi || visible)}
+                visible={visible}
+                onFocus={() => dispatch({ type: 'focusPane', paneId: pane.id })}
+                onPage={(url, title) => dispatch({ type: 'setPage', paneId: pane.id, url, title })}
+              />
+            ) : (
+              <TerminalPane
+                pane={pane}
+                presetName={presets.find((p) => p.id === pane.presetId)?.name ?? pane.presetId}
+                settings={settings}
+                theme={theme}
+                focused={tab.activePaneId === pane.id && (multi || visible)}
+                visible={visible}
+                onFocus={() => dispatch({ type: 'focusPane', paneId: pane.id })}
+                onStarted={(cwd) => dispatch({ type: 'setCwd', paneId: pane.id, cwd })}
+              />
+            )}
           </div>
         )
       })}

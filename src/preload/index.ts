@@ -137,6 +137,9 @@ const api: CockpitApi = {
     save: (paneId, req) => ipcRenderer.invoke(IPC.commandsSave, paneId, req),
     delete: (paneId, name, scope) => ipcRenderer.invoke(IPC.commandsDelete, paneId, name, scope)
   },
+  web: {
+    openExternal: (url) => ipcRenderer.send(IPC.openWeb, url)
+  },
   menu: (items) => ipcRenderer.invoke(IPC.menuPopup, items),
   activity: {
     get: (paneId) => ipcRenderer.invoke(IPC.activityGet, paneId),

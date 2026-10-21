@@ -1,4 +1,5 @@
 import { paneIds, type Layout, type Preset } from '@shared/config'
+import { pageLabel } from '@shared/web'
 import type { SessionStatus } from '@shared/widgets'
 import { findPane } from '../layout/model'
 import type { LayoutAction } from '../layout/reducer'
@@ -30,7 +31,11 @@ export function TabBar({
         {layout.tabs.map((tab, i) => {
           const pane = findPane(tab.root, tab.activePaneId)
           const preset = presets.find((p) => p.id === pane?.presetId)
-          const label = pane ? `${preset?.name ?? pane.presetId} · ${basename(pane.cwd)}` : 'Tab'
+          const label = !pane
+            ? 'Tab'
+            : pane.url
+              ? (pane.title ?? pageLabel(pane.url))
+              : `${preset?.name ?? pane.presetId} · ${basename(pane.cwd)}`
           const active = tab.id === layout.activeTabId
           // The most urgent status among the tab's panes. Idle is the normal
           // state and gets no badge.
@@ -46,7 +51,9 @@ export function TabBar({
               role="tab"
               aria-selected={active}
               className={`tab${active ? ' active' : ''}`}
-              title={status ? `${pane?.cwd ?? ''} · ${STATUS_LABEL[status]}` : pane?.cwd}
+              title={
+                status ? `${pane?.cwd ?? ''} · ${STATUS_LABEL[status]}` : (pane?.url ?? pane?.cwd)
+              }
               data-status={status ?? undefined}
               onMouseDown={() => dispatch({ type: 'selectTab', tabId: tab.id })}
             >

@@ -106,4 +106,21 @@ describe('layoutReducer', () => {
     expect(after.tabs[0]?.root).toEqual({ ...pane('a'), cwd: '~/dev/x' })
     expect(layoutReducer(after, { type: 'setCwd', paneId: 'a', cwd: '~/dev/x' })).toBe(after)
   })
+
+  it('records where a web pane went, and leaves terminals alone', () => {
+    const web: PaneNode = { ...pane('w'), url: 'https://a.dev/' }
+    const before = run([{ type: 'newTab', pane: web }])
+    const after = layoutReducer(before, {
+      type: 'setPage',
+      paneId: 'w',
+      url: 'https://a.dev/b',
+      title: 'B'
+    })
+    expect(after.tabs[0]?.root).toEqual({ ...web, url: 'https://a.dev/b', title: 'B' })
+    expect(
+      layoutReducer(after, { type: 'setPage', paneId: 'w', url: 'https://a.dev/b', title: 'B' })
+    ).toBe(after)
+    const term = run([{ type: 'newTab', pane: pane('t') }])
+    expect(layoutReducer(term, { type: 'setPage', paneId: 't', url: 'https://x.dev/' })).toBe(term)
+  })
 })

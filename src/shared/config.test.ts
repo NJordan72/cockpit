@@ -131,6 +131,27 @@ describe('migrateConfig', () => {
     })
     expect(c.layout.tabs[0]?.root).toEqual({ type: 'pane', id: 'p1', presetId: 'shell', cwd: '~' })
   })
+
+  it('keeps web panes with a web URL and drops other URLs', () => {
+    const tab = (id: string, url: unknown): unknown => ({
+      id,
+      root: { type: 'pane', id: `p-${id}`, presetId: 'shell', url, title: 'Deck' }
+    })
+    const c = migrateConfig({
+      layout: { tabs: [tab('a', 'file:///tmp/deck/index.html'), tab('b', 'javascript:alert(1)')] }
+    })
+    expect(c.layout.tabs.map((t) => t.root)).toEqual([
+      {
+        type: 'pane',
+        id: 'p-a',
+        presetId: 'shell',
+        cwd: '~',
+        url: 'file:///tmp/deck/index.html',
+        title: 'Deck'
+      },
+      { type: 'pane', id: 'p-b', presetId: 'shell', cwd: '~' }
+    ])
+  })
 })
 
 describe('normalizeSizes', () => {
