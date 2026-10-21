@@ -54,7 +54,7 @@ the last tab returns to the start screen.
 by default), pick a directory (the current pane's, then the start screen's
 list), and press `Enter`. Type to filter, or type a path starting with `~` or
 `/`. Split keys open the same picker, starting in the focused pane's directory
-and preset.
+and preset. Drag a tab along the tab bar to move it.
 
 The layout (tabs, splits, sizes, each pane's preset and directory) is saved to
 `~/.cockpit/config.json`, and the start screen offers to restore it on

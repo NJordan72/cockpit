@@ -97,6 +97,16 @@ kbd {
   box-shadow: inset 0 -2px 0 var(--accent);
 }
 
+/* While a tab is dragged, the others slide aside to show where it will land. */
+.tabs.reordering .tab {
+  transition: transform 120ms ease;
+}
+
+.tabs.reordering .tab.dragging {
+  z-index: 1;
+  transition: none;
+}
+
 .tab-index {
   font-size: 10px;
   opacity: 0.6;
