@@ -22,7 +22,8 @@ import {
   type LauncherSettings,
   type Layout,
   type LayoutNode,
-  type PaneNode
+  type PaneNode,
+  type RecentPage
 } from '@shared/config'
 import {
   IPC,
@@ -545,6 +546,10 @@ function registerIpc(): void {
     if (!trusted(e)) throw new Error('untrusted sender')
     return { dirs: await listDirs(config.get(), { claude: claudeHome(), codex: codexHome() }) }
   })
+  ipcMain.handle(IPC.webRecent, (e): RecentPage[] => {
+    if (!trusted(e)) throw new Error('untrusted sender')
+    return config.get().recentPages
+  })
 }
 
 /**
@@ -594,6 +599,14 @@ function guardWebPane(contents: WebContents): void {
   contents.on('will-navigate', stay)
   contents.on('will-redirect', stay)
   contents.on('will-frame-navigate', stay)
+  // What the new-tab picker offers under Web. In-page navigations, such as a
+  // slide deck's #hash, aren't new pages.
+  contents.on('did-navigate', (_e, url) => {
+    if (isWebUrl(url)) config.addRecentPage(url)
+  })
+  contents.on('page-title-updated', (_e, title, explicitSet) => {
+    if (explicitSet) config.setRecentPageTitle(contents.getURL(), title)
+  })
   // The page has the keyboard, so the chrome never sees its shortcuts. Pass
   // Cmd chords on, as WidgetHost does for widgets.
   contents.on('before-input-event', (_e, input) => {

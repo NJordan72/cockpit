@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { Preset } from '@shared/config'
+import type { Preset, RecentPage } from '@shared/config'
 import type { DirEntry } from '@shared/ipc'
 import { rankDirs } from './rankDirs'
+import { rankPages } from './rankPages'
 
 interface Props {
   title: string
@@ -10,6 +11,7 @@ interface Props {
   /** Shown first: usually the focused pane's directory. */
   currentDir: string | null
   onSubmit: (presetId: string, cwd: string) => void
+  onOpenPage: (url: string) => void
   onCancel: () => void
 }
 
@@ -19,9 +21,11 @@ export function Picker({
   initialPresetId,
   currentDir,
   onSubmit,
+  onOpenPage,
   onCancel
 }: Props): React.JSX.Element {
   const [dirs, setDirs] = useState<DirEntry[]>([])
+  const [pages, setPages] = useState<RecentPage[]>([])
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState(0)
   const [presetIdx, setPresetIdx] = useState(() =>
@@ -36,9 +40,28 @@ export function Picker({
   useEffect(() => {
     inputRef.current?.focus()
     void window.cockpit.dirs.list().then((l) => setDirs(l.dirs))
+    void window.cockpit.web.recent().then(setPages)
   }, [])
 
-  const items = useMemo(() => rankDirs(query, currentDir, dirs), [query, currentDir, dirs])
+  // Web comes after the presets.
+  const web = presetIdx === presets.length
+  const items = useMemo(
+    () =>
+      web
+        ? rankPages(query, pages).map((p) => ({
+            key: p.url,
+            label: p.label,
+            detail: p.url,
+            tag: p.tag
+          }))
+        : rankDirs(query, currentDir, dirs).map((d) => ({
+            key: d.path,
+            label: d.label,
+            detail: d.path,
+            tag: d.tag
+          })),
+    [web, query, pages, currentDir, dirs]
+  )
 
   useEffect(() => {
     listRef.current?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest' })
@@ -47,7 +70,14 @@ export function Picker({
   const preset = presets[presetIdx] ?? presets[0]
   const submit = (index: number): void => {
     const item = items[index]
-    if (preset && item) onSubmit(preset.id, item.path)
+    if (!item) return
+    if (web) onOpenPage(item.key)
+    else if (preset) onSubmit(preset.id, item.key)
+  }
+  const choose = (i: number): void => {
+    setPresetIdx(i)
+    setSelected(0)
+    inputRef.current?.focus()
   }
 
   const onKeyDown = (e: React.KeyboardEvent): void => {
@@ -68,10 +98,13 @@ export function Picker({
         e.preventDefault()
         setSelected((s) => Math.max(s - 1, 0))
         break
-      case 'Tab':
+      case 'Tab': {
         e.preventDefault()
-        setPresetIdx((i) => (i + (e.shiftKey ? -1 : 1) + presets.length) % presets.length)
+        const options = presets.length + 1
+        setPresetIdx((i) => (i + (e.shiftKey ? -1 : 1) + options) % options)
+        setSelected(0)
         break
+      }
     }
   }
 
@@ -94,14 +127,20 @@ export function Picker({
                 role="radio"
                 aria-checked={i === presetIdx}
                 className={i === presetIdx ? 'on' : ''}
-                onClick={() => {
-                  setPresetIdx(i)
-                  inputRef.current?.focus()
-                }}
+                onClick={() => choose(i)}
               >
                 {p.name}
               </button>
             ))}
+            <button
+              type="button"
+              role="radio"
+              aria-checked={web}
+              className={web ? 'on' : ''}
+              onClick={() => choose(presets.length)}
+            >
+              Web
+            </button>
           </div>
           <span className="picker-hint">
             <kbd>⇥</kbd> preset
@@ -110,7 +149,9 @@ export function Picker({
         <input
           ref={inputRef}
           className="picker-input"
-          placeholder="Filter directories, or type a path"
+          placeholder={
+            web ? 'Filter recent pages, or type an address' : 'Filter directories, or type a path'
+          }
           value={query}
           spellCheck={false}
           onChange={(e) => {
@@ -121,7 +162,7 @@ export function Picker({
         <ul className="picker-list" ref={listRef} role="listbox">
           {items.map((item, i) => (
             <li
-              key={item.path}
+              key={item.key}
               role="option"
               aria-selected={i === selected}
               className={i === selected ? 'selected' : ''}
@@ -129,11 +170,19 @@ export function Picker({
               onClick={() => submit(i)}
             >
               <span className="dir-name">{item.label}</span>
-              <span className="dir-path">{item.path}</span>
+              <span className="dir-path">{item.detail}</span>
               {item.tag && <span className="dir-tag">{item.tag}</span>}
             </li>
           ))}
-          {items.length === 0 && <li className="picker-empty">No matching directories</li>}
+          {items.length === 0 && (
+            <li className="picker-empty">
+              {!web
+                ? 'No matching directories'
+                : pages.length > 0
+                  ? 'No matching pages'
+                  : 'No recent pages. Type an address to open one.'}
+            </li>
+          )}
         </ul>
       </div>
     </div>

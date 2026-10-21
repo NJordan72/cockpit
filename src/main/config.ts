@@ -4,6 +4,7 @@ import {
   CONFIG_VERSION,
   migrateConfig,
   pushRecentDir,
+  pushRecentPage,
   readAppearance,
   type AppearanceSettings,
   type CockpitConfig,
@@ -55,6 +56,21 @@ export class ConfigStore {
   addRecentDir(dir: string, presetId: string): void {
     const entry = { path: dir, presetId, at: Date.now() }
     this.config = { ...this.config, recentDirs: pushRecentDir(this.config.recentDirs, entry) }
+    this.write()
+  }
+
+  addRecentPage(url: string): void {
+    const recentPages = pushRecentPage(this.config.recentPages, { url, at: Date.now() })
+    this.config = { ...this.config, recentPages }
+    this.write()
+  }
+
+  /** Give a recent page the title it set. Pages not in the list are left out. */
+  setRecentPageTitle(url: string, title: string): void {
+    const page = this.config.recentPages.find((p) => p.url === url)
+    if (!page || page.title === title) return
+    const recentPages = this.config.recentPages.map((p) => (p === page ? { ...p, title } : p))
+    this.config = { ...this.config, recentPages }
     this.write()
   }
 

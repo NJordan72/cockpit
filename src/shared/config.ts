@@ -138,6 +138,15 @@ export interface RecentDir {
   at: number
 }
 
+export interface RecentPage {
+  /** An http, https, or file URL. */
+  url: string
+  /** The title the page gave itself, if it set one. */
+  title?: string
+  /** When it last loaded, in ms since the epoch. */
+  at: number
+}
+
 export interface LauncherSettings {
   /** The agent the start screen launches with: the last one launched from it. */
   presetId: string
@@ -184,6 +193,8 @@ export interface CockpitConfig {
   projectsDir: string
   /** Most recently used working directories, newest first. */
   recentDirs: RecentDir[]
+  /** Pages most recently loaded in web panes, newest first. */
+  recentPages: RecentPage[]
   launcher: LauncherSettings
   kids: KidsSettings
   layout: Layout
@@ -275,6 +286,7 @@ export function defaultConfig(): CockpitConfig {
     appearance: defaultAppearance(),
     projectsDir: '~/dev',
     recentDirs: [],
+    recentPages: [],
     launcher: { presetId: 'claude' },
     kids: { ...DEFAULT_KIDS },
     layout: { tabs: [], activeTabId: null }
@@ -282,6 +294,7 @@ export function defaultConfig(): CockpitConfig {
 }
 
 const MAX_RECENT_DIRS = 20
+const MAX_RECENT_PAGES = 20
 
 type Obj = Record<string, unknown>
 const isObj = (v: unknown): v is Obj => typeof v === 'object' && v !== null && !Array.isArray(v)
@@ -434,6 +447,14 @@ function readRecentDir(v: unknown): RecentDir | null {
   return dir
 }
 
+function readRecentPage(v: unknown): RecentPage | null {
+  if (!isObj(v) || !nonEmpty(v.url) || !isWebUrl(v.url)) return null
+  const at = typeof v.at === 'number' && Number.isFinite(v.at) && v.at > 0 ? v.at : 0
+  const page: RecentPage = { url: v.url, at }
+  if (nonEmpty(v.title)) page.title = v.title
+  return page
+}
+
 export function readKids(v: unknown): KidsSettings {
   const def = DEFAULT_KIDS
   if (!isObj(v)) return { ...def }
@@ -548,6 +569,16 @@ export function migrateConfig(raw: unknown): CockpitConfig {
     }
   }
 
+  const recentPages: RecentPage[] = []
+  if (Array.isArray(raw.recentPages)) {
+    const seen = new Set<string>()
+    for (const p of raw.recentPages.map(readRecentPage)) {
+      if (!p || seen.has(p.url)) continue
+      seen.add(p.url)
+      recentPages.push(p)
+    }
+  }
+
   return {
     version: CONFIG_VERSION,
     presets,
@@ -556,6 +587,7 @@ export function migrateConfig(raw: unknown): CockpitConfig {
     appearance: readAppearance(raw),
     projectsDir: nonEmpty(raw.projectsDir) ? raw.projectsDir : def.projectsDir,
     recentDirs: recentDirs.slice(0, MAX_RECENT_DIRS),
+    recentPages: recentPages.slice(0, MAX_RECENT_PAGES),
     launcher: {
       presetId:
         isObj(raw.launcher) && nonEmpty(raw.launcher.presetId)
@@ -569,4 +601,11 @@ export function migrateConfig(raw: unknown): CockpitConfig {
 
 export function pushRecentDir(dirs: RecentDir[], dir: RecentDir): RecentDir[] {
   return [dir, ...dirs.filter((d) => d.path !== dir.path)].slice(0, MAX_RECENT_DIRS)
+}
+
+/** Put `page` first. A page that comes back without a title keeps the one it had. */
+export function pushRecentPage(pages: RecentPage[], page: RecentPage): RecentPage[] {
+  const old = pages.find((p) => p.url === page.url)
+  const entry = page.title === undefined && old?.title ? { ...page, title: old.title } : page
+  return [entry, ...pages.filter((p) => p.url !== page.url)].slice(0, MAX_RECENT_PAGES)
 }

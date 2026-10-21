@@ -68,7 +68,9 @@ bare host (`example.com`, `localhost:5173`), or a file path
 address field, and ↗ to open the page in your browser. Pages run sandboxed
 with no access to Cockpit, keep their cookies in their own partition, open
 new windows in the browser, and are reopened on restore at the page they were
-on. Cmd+R reloads the focused page.
+on. Cmd+R reloads the focused page. The Cmd+T picker's Web option lists the 20
+pages most recently loaded in web panes; type to filter them, or type a new
+address.
 
 | Key (default)       | Action                                     |
 | ------------------- | ------------------------------------------ |
