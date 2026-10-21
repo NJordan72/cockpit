@@ -139,6 +139,32 @@ describe('with hooks', () => {
     expect(status()).toBe('idle')
   })
 
+  it('treats a number key in a dialog as an answer', () => {
+    tracker.report('t1', report({ kind: 'waiting', key: 'Bash:1', message: 'May I?' }))
+    tracker.input('p1', '12') // pasted text isn't a keypress
+    expect(status()).toBe('needs-input')
+    tracker.input('p1', '1')
+    expect(status()).toBe('working')
+  })
+
+  it('ignores a reminder that arrives after the user answered', () => {
+    const reminder = report({
+      kind: 'waiting',
+      key: null,
+      message: 'Claude needs you',
+      reminder: true
+    })
+    tracker.report('t1', report({ kind: 'waiting', key: 'Bash:1', message: 'May I?' }))
+    tracker.input('p1', '\r')
+    tracker.report('t1', reminder)
+    expect(status()).toBe('working')
+    // The next request counts again, and so do reminders about it.
+    tracker.report('t1', report({ kind: 'waiting', key: 'Edit:2', message: 'Edit?' }))
+    tracker.input('p1', '\x1b[B')
+    tracker.report('t1', reminder)
+    expect(state()).toMatchObject({ status: 'needs-input', message: 'Edit?' })
+  })
+
   it('stays working while the spinner animates, and ends an interrupted turn on silence', () => {
     tracker.report('t1', report({ kind: 'working', clears: true }))
     stream(DEFAULT_TIMINGS.hookedQuietMs * 2)

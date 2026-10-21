@@ -117,6 +117,10 @@ How each kind of pane is followed:
   one that has been quiet for a few seconds is idle. Typing and redraws after
   a resize don't count.
 
+A dialog counts as answered when you press Enter, Esc, or a number key (which
+picks that option in Claude Code's dialogs), and a reminder Claude sends after
+you answered doesn't bring needs input back.
+
 Agent awareness needs the preset's command to start with `claude` or `codex`
 (optionally after `VAR=value` settings). Running `claude` by hand in a Shell
 pane gets the output heuristic only. Interrupting a turn with Esc sends no

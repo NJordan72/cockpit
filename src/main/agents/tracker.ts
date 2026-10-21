@@ -49,6 +49,8 @@ interface Pane {
   hooked: boolean
   /** Requests the agent is blocked on, by key (see AgentSignal). */
   pending: Set<string>
+  /** The user answered a dialog since the agent last asked for something. */
+  answered: boolean
   lastInput: number
   lastOutput: number
   streakStart: number
@@ -64,8 +66,12 @@ export type StatusListener = (paneId: string, prev: PaneStatus | null, next: Pan
 /** Terminal focus reports (CSI I / CSI O) are written to the PTY but aren't typing. */
 const isFocusReport = (data: string): boolean =>
   data.length > 0 && data.replaceAll('\x1b[I', '').replaceAll('\x1b[O', '') === ''
-/** Keys that close an agent's dialog either way: Enter, or a bare Esc. */
-const ANSWERS_DIALOG = (data: string): boolean => data.includes('\r') || data === '\x1b'
+/**
+ * Keys that close an agent's dialog either way: Enter, a bare Esc, or a
+ * number on its own, which picks that option in Claude Code's dialogs.
+ */
+const ANSWERS_DIALOG = (data: string): boolean =>
+  data.includes('\r') || data === '\x1b' || /^[1-9]$/.test(data)
 
 export class StatusTracker {
   private panes = new Map<string, Pane>()
@@ -98,6 +104,7 @@ export class StatusTracker {
       },
       hooked: false,
       pending: new Set(),
+      answered: false,
       lastInput: 0,
       lastOutput: 0,
       streakStart: 0,
@@ -133,6 +140,7 @@ export class StatusTracker {
       // The user answered. If they allowed it, the agent carries on and its
       // next event confirms; if they refused, it goes quiet and times out.
       pane.pending.clear()
+      pane.answered = true
       this.set(pane, 'working')
     }
   }
@@ -200,6 +208,13 @@ export class StatusTracker {
         else this.update(pane, extra)
         break
       case 'waiting': {
+        // A reminder that arrives after the user answered is about that
+        // answered request, not a new one.
+        if (signal.reminder && pane.answered) {
+          this.update(pane, extra)
+          break
+        }
+        if (!signal.reminder) pane.answered = false
         if (signal.key) pane.pending.add(signal.key)
         const shown = pane.state.status === 'needs-input' ? pane.state.message : null
         const message =
