@@ -123,4 +123,30 @@ describe('layoutReducer', () => {
     const term = run([{ type: 'newTab', pane: pane('t') }])
     expect(layoutReducer(term, { type: 'setPage', paneId: 't', url: 'https://x.dev/' })).toBe(term)
   })
+
+  it('moves a tab to a new position and keeps the selection', () => {
+    const l = run([
+      { type: 'newTab', pane: pane('a') },
+      { type: 'newTab', pane: pane('b') },
+      { type: 'newTab', pane: pane('c') }
+    ])
+    const order = (x: Layout): string[] => x.tabs.map((t) => t.activePaneId)
+    const [a, , c] = l.tabs
+    if (!a || !c) throw new Error('expected three tabs')
+    expect(order(layoutReducer(l, { type: 'moveTab', tabId: a.id, index: 2 }))).toEqual([
+      'b',
+      'c',
+      'a'
+    ])
+    const moved = layoutReducer(l, { type: 'moveTab', tabId: c.id, index: 0 })
+    expect(order(moved)).toEqual(['c', 'a', 'b'])
+    expect(moved.activeTabId).toBe(l.activeTabId)
+    expect(order(layoutReducer(l, { type: 'moveTab', tabId: a.id, index: 99 }))).toEqual([
+      'b',
+      'c',
+      'a'
+    ])
+    expect(layoutReducer(l, { type: 'moveTab', tabId: a.id, index: 0 })).toBe(l)
+    expect(layoutReducer(l, { type: 'moveTab', tabId: 'nope', index: 0 })).toBe(l)
+  })
 })

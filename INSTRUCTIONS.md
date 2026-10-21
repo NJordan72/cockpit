@@ -744,3 +744,22 @@ Next: M5 (optional).
   `slides/`, `index.html` (relative, after a `cd`), and `~/Desktop` get a
   pointer and underline and open the right absolute path; `missing.md` isn't
   linked. Not verified: OSC 8 links from a real agent.
+
+### Tab reordering (added 2026-10-21, not in the original plan)
+
+- Dragging a tab along the tab bar moves it (`moveTab` in the layout reducer).
+  A press still selects the tab; it becomes a drag after 4 px, the other tabs
+  slide aside to show where it will land, and the layout changes once, on
+  release. The tab stays inside the row, and the bar doesn't scroll while
+  dragging, so with more tabs than fit, a tab can only go as far as the
+  visible ones.
+- The workspace now renders panes sorted by id instead of in tab order. React
+  moves keyed siblings that change order, and a moved `<webview>` reloads: with
+  the old order, dragging a tab ahead of a web tab reloaded its page.
+- Verified in the built app with a scratch COCKPIT_HOME holding a shell tab, a
+  web tab (a file:// page that shows a random marker per load), and a split
+  tab: drags in both directions, the saved order in config.json, the web page
+  keeping its webContents and marker (and losing both with the sort removed),
+  the shell keeping its screen and the keyboard after a drag, a click and a
+  2 px wobble not moving anything, Cmd+2 following the new order, the close
+  button, and no console errors.

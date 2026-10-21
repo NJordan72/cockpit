@@ -30,16 +30,21 @@ export function Workspace({
 }: Props): React.JSX.Element {
   const ref = useRef<HTMLDivElement>(null)
 
+  // Sorted by pane id so the order never follows the tabs. React moves keyed
+  // siblings that change order, and moving a <webview> reloads its page, so
+  // reordering tabs mustn't reorder the panes.
   const placed = useMemo(
     () =>
-      layout.tabs.flatMap((tab) => {
-        const { panes } = arrange(tab.root)
-        return allPanes(tab.root).map((pane) => ({
-          tab,
-          pane,
-          rect: panes.get(pane.id) ?? { x: 0, y: 0, w: 1, h: 1 }
-        }))
-      }),
+      layout.tabs
+        .flatMap((tab) => {
+          const { panes } = arrange(tab.root)
+          return allPanes(tab.root).map((pane) => ({
+            tab,
+            pane,
+            rect: panes.get(pane.id) ?? { x: 0, y: 0, w: 1, h: 1 }
+          }))
+        })
+        .sort((a, b) => (a.pane.id < b.pane.id ? -1 : 1)),
     [layout.tabs]
   )
 

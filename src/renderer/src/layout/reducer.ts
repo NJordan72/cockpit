@@ -26,6 +26,7 @@ export type LayoutAction =
   | { type: 'selectTab'; tabId: string }
   | { type: 'selectTabIndex'; index: number }
   | { type: 'cycleTab'; delta: number }
+  | { type: 'moveTab'; tabId: string; index: number }
   | { type: 'resize'; splitId: string; sizes: number[] }
   | { type: 'setCwd'; paneId: string; cwd: string }
   | { type: 'setPage'; paneId: string; url: string; title?: string }
@@ -141,6 +142,15 @@ export function layoutReducer(layout: Layout, action: LayoutAction): Layout {
       const idx = layout.tabs.findIndex((t) => t.id === layout.activeTabId)
       const next = layout.tabs[(((idx + action.delta) % n) + n) % n]
       return next ? { ...layout, activeTabId: next.id } : layout
+    }
+
+    case 'moveTab': {
+      // `index` is the tab's position once it has moved.
+      const tab = layout.tabs.find((t) => t.id === action.tabId)
+      if (!tab) return layout
+      const tabs = layout.tabs.filter((t) => t !== tab)
+      tabs.splice(Math.max(0, Math.min(action.index, tabs.length)), 0, tab)
+      return tabs.every((t, i) => t === layout.tabs[i]) ? layout : { ...layout, tabs }
     }
 
     case 'resize': {
