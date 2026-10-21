@@ -65,6 +65,7 @@ pane shows the exit status; press `Enter` to restart it.
 | Key (default)       | Action                                     |
 | ------------------- | ------------------------------------------ |
 | Cmd+T               | New tab (picker)                           |
+| Cmd+Shift+T         | New shell tab, no agent, in the same dir   |
 | Cmd+D / Cmd+Shift+D | Split right / down (picker)                |
 | Cmd+W               | Close pane (last pane: tab)                |
 | Cmd+Shift+Backspace | Clear pane: restart its preset fresh       |
@@ -77,7 +78,7 @@ pane shows the exit status; press `Enter` to restart it.
 The toolbar along the bottom of the window shows the focused pane: its status,
 preset (or Claude Code's name for the conversation), directory, and git branch
 with commits ahead and behind and the number of changed files. Its buttons open
-a new tab, split right or down, clear the pane, and hide or show the panels, and its menu
+a new tab, a plain shell tab (no agent) in the focused pane's directory, split right or down, clear the pane, and hide or show the panels, and its menu
 switches layouts. Clear ends the pane's process and starts its preset again in
 the same directory, with a new terminal and an empty status, activity log, and
 file list; the old conversation stays in Claude Code's or Codex's own history.

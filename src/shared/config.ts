@@ -20,6 +20,7 @@ export interface Preset {
 
 export type Action =
   | 'newTab'
+  | 'newShell'
   | 'splitRight'
   | 'splitDown'
   | 'closePane'
@@ -187,6 +188,7 @@ export const DEFAULT_PRESETS: Preset[] = [
 
 export const DEFAULT_KEYBINDINGS: Keybindings = {
   newTab: 'Cmd+T',
+  newShell: 'Cmd+Shift+T',
   splitRight: 'Cmd+D',
   splitDown: 'Cmd+Shift+D',
   closePane: 'Cmd+W',

@@ -377,12 +377,30 @@ export function App(): React.JSX.Element {
     [api]
   )
 
+  /**
+   * A plain terminal: a new tab running the first preset with no command (a
+   * login shell), in the directory the focused pane is in now.
+   */
+  const openShell = useCallback(async () => {
+    const preset = configRef.current?.presets.find((p) => !p.command)
+    if (!preset) return
+    const tab = activeTab(layoutRef.current)
+    const pane = tab ? findPane(tab.root, tab.activePaneId) : null
+    const live = pane ? await api.pty.cwd(pane.id) : null
+    setPicker(null)
+    setRestorable(null)
+    dispatch({ type: 'newTab', pane: makePane(preset.id, live ?? pane?.cwd ?? preset.cwd) })
+  }, [api])
+
   const runAction = useCallback(
     (action: Action) => {
       const tab = activeTab(layoutRef.current)
       switch (action) {
         case 'newTab':
           void openPicker('tab')
+          return
+        case 'newShell':
+          void openShell()
           return
         case 'splitRight':
           void openPicker('row')
@@ -429,7 +447,7 @@ export function App(): React.JSX.Element {
         }
       }
     },
-    [api, openPicker, runAppearance]
+    [api, openPicker, openShell, runAppearance]
   )
 
   // App shortcuts run in the capture phase, before xterm sees the key.
