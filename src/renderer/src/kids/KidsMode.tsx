@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import { Terminal, type ITheme } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { Unicode11Addon } from '@xterm/addon-unicode11'
 import { terminalFontStack, type KidsSettings, type TerminalSettings } from '@shared/config'
 import type { KidsCharacter } from '@shared/ipc'
 import type { Theme } from '@shared/theme'
+import { slotName } from '../frame/layout'
 import { KidsAudio } from './audio'
 import { Effects } from './effects'
 import {
@@ -21,11 +22,15 @@ import {
 } from './model'
 import { PretendAgent, type Shown } from './pretend'
 
+export type KidsStatus = 'idle' | 'working' | 'done'
+
 interface Props {
   settings: KidsSettings
   terminal: TerminalSettings
   theme: Theme
   xtermTheme: ITheme
+  /** The pretend agent's state, for the tab bar's kids tab. */
+  onStatus: (status: KidsStatus) => void
   onExit: () => void
 }
 
@@ -37,30 +42,31 @@ const SPEAK_DELAY_MS = 450
 const shownFor = (s: Sprite): Shown => (s.kind === 'emoji' ? { emoji: s.text } : { name: s.name })
 
 /**
- * A pretend terminal for a small child. It covers the whole window and takes
- * every key: letters show big and bring out a character, keys play music, and
- * Enter makes the pretend agent "work". Typing the exit word leaves.
+ * A pretend terminal for a small child, drawn over the workspace in place of
+ * the real terminals. It takes every key: letters show big and bring out a
+ * character, keys play music, and Enter makes the pretend agent "work". Typing
+ * the exit word leaves.
  */
 export function KidsMode({
   settings,
   terminal,
   theme,
   xtermTheme,
+  onStatus,
   onExit
 }: Props): React.JSX.Element {
   const rootRef = useRef<HTMLDivElement>(null)
   const termRef = useRef<HTMLDivElement>(null)
   const fxRef = useRef<HTMLDivElement>(null)
-  const [status, setStatus] = useState<'idle' | 'working' | 'done'>('idle')
   // Read when the effect starts; kids mode restarts to pick up changes.
-  const start = useRef({ settings, terminal, theme, xtermTheme, onExit })
+  const start = useRef({ settings, terminal, theme, xtermTheme, onStatus, onExit })
 
   useEffect(() => {
     const root = rootRef.current
     const host = termRef.current
     const layer = fxRef.current
     if (!root || !host || !layer) return
-    const { settings, terminal, theme, xtermTheme, onExit } = start.current
+    const { settings, terminal, theme, xtermTheme, onStatus, onExit } = start.current
 
     const term = new Terminal({
       fontFamily: terminalFontStack(terminal.fontFamily),
@@ -79,7 +85,7 @@ export function KidsMode({
     term.open(host)
     fit.fit()
 
-    const agent = new PretendAgent(term, setStatus)
+    const agent = new PretendAgent(term, onStatus)
     agent.welcome(settings.name)
     const audio = new KidsAudio(settings.volume)
     const fx = new Effects(layer, [
@@ -207,9 +213,9 @@ export function KidsMode({
       tone(null)
     }
 
-    // Capture phase on the window, so nothing under the overlay (a real
-    // terminal, the sidebar) ever sees the key. The chrome's own shortcut
-    // handler stands aside while kids mode is on.
+    // Capture phase on the window, so nothing else (a real terminal, a panel)
+    // ever sees the key. The chrome's own shortcut handler stands aside while
+    // kids mode is on.
     const onKeyDown = (e: KeyboardEvent): void => {
       e.preventDefault()
       e.stopPropagation()
@@ -223,16 +229,16 @@ export function KidsMode({
     const onPointer = (e: PointerEvent): void => {
       e.preventDefault()
       root.focus()
+      const box = root.getBoundingClientRect()
+      const x = e.clientX - box.left
+      const y = e.clientY - box.top
       fx.sprite(randomSprite(characters, Math.random), {
         move: Math.random() < 0.5 ? 'jump' : 'spin',
-        spot: {
-          x: (e.clientX / window.innerWidth) * 100,
-          y: (e.clientY / window.innerHeight) * 100
-        }
+        spot: { x: (x / box.width) * 100, y: (y / box.height) * 100 }
       })
-      fx.sparkle({ x: e.clientX, y: e.clientY })
+      fx.sparkle({ x, y })
       if (settings.sound === 'songs') tone(null)
-      else audio.note(pentatonic(Math.floor((e.clientX / window.innerWidth) * 15)))
+      else audio.note(pentatonic(Math.floor((x / box.width) * 15)))
     }
     const keepFocus = (): void => {
       requestAnimationFrame(() => root.focus())
@@ -267,27 +273,21 @@ export function KidsMode({
       window.clearTimeout(speakTimer)
       if ('speechSynthesis' in window) speechSynthesis.cancel()
       agent.dispose()
+      onStatus('idle')
       fx.clear()
       audio.close()
       term.dispose()
     }
   }, [])
 
-  const label = `${settings.name || 'Kids'} · work`
   return (
-    <div className="kids" ref={rootRef} tabIndex={-1} onContextMenu={(e) => e.preventDefault()}>
-      <div className="titlebar kids-titlebar">
-        <div className="tabs">
-          <div className="tab active">
-            <span className="tab-index">1</span>
-            {status !== 'idle' && <span className={`status-dot ${status}`} />}
-            <span className="tab-label">{label}</span>
-          </div>
-        </div>
-        <span className="kids-hint">
-          type <b>{settings.exitWord}</b> to leave
-        </span>
-      </div>
+    <div
+      className="kids"
+      ref={rootRef}
+      tabIndex={-1}
+      style={{ ['--anchor' as string]: slotName('workspace') }}
+      onContextMenu={(e) => e.preventDefault()}
+    >
       <div className="kids-terminal" ref={termRef} />
       <div className="kids-fx" ref={fxRef} />
     </div>

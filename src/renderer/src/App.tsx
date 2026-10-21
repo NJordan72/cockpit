@@ -36,7 +36,7 @@ import { FrameView, type PanelPlace } from './frame/FrameView'
 import { ImagePanel } from './frame/ImagePanel'
 import { slotName } from './frame/layout'
 import { Monitor } from './frame/Monitor'
-import { KidsMode } from './kids/KidsMode'
+import { KidsMode, type KidsStatus } from './kids/KidsMode'
 import { actionFor, compileKeymap } from './keybindings'
 import { findPane, makePane, makeWebPane } from './layout/model'
 import { CommandsPanel } from './panels/CommandsPanel'
@@ -97,6 +97,7 @@ export function App(): React.JSX.Element {
   /** The layout saved last time, until a project is launched or it is restored. */
   const [restorable, setRestorable] = useState<Layout | null>(null)
   const [kids, setKids] = useState(false)
+  const [kidsStatus, setKidsStatus] = useState<KidsStatus>('idle')
   /** The prompt being saved as a command, and the pane it came from. */
   const [saving, setSaving] = useState<{ prompt: string; paneId: string | null } | null>(null)
   /** Bumped when a command is saved, so the Commands panel reads its list again. */
@@ -150,18 +151,18 @@ export function App(): React.JSX.Element {
       ),
     [tree, visible]
   )
-  // Kids mode covers everything, so widgets count as hidden under it.
-  const widgetsVisible = windowVisible && !kids
-  // A hidden widget's prompt waits until the widget is shown.
+  // A hidden widget's prompt waits until the widget is shown. Kids mode leaves
+  // widgets on screen, but their prompts wait until it ends.
   const prompt = useMemo(
-    () => (widgetsVisible ? (prompts.find((p) => shownWidgets.has(p.widgetId)) ?? null) : null),
-    [widgetsVisible, shownWidgets, prompts]
+    () =>
+      windowVisible && !kids ? (prompts.find((p) => shownWidgets.has(p.widgetId)) ?? null) : null,
+    [windowVisible, kids, shownWidgets, prompts]
   )
   const workspaceShown = (tree ? panels(tree) : []).some(
     (p) => p.panel === 'workspace' && visible.has(p.id)
   )
   const monitorOn =
-    widgetsVisible &&
+    windowVisible &&
     (tree ? panels(tree) : []).some((p) => p.panel === 'monitor' && visible.has(p.id))
 
   const configRef = useRef(config)
@@ -561,8 +562,13 @@ export function App(): React.JSX.Element {
     const off = api.kids.onChange((active) => {
       pushed = true
       setKids(active)
-      if (active) setPicker(null)
-      else requestAnimationFrame(focusWorkspace)
+      if (active) {
+        // Kids mode leaves the rest of the window on screen, where these
+        // would sit inert until it ends.
+        setPicker(null)
+        setOpeningUrl(false)
+        setSaving(null)
+      } else requestAnimationFrame(focusWorkspace)
     })
     void api.kids.active().then((active) => {
       if (!cancelled && !pushed) setKids(active)
@@ -685,6 +691,15 @@ export function App(): React.JSX.Element {
             layout={layout}
             presets={config.presets}
             statuses={statuses}
+            kids={
+              kids
+                ? {
+                    label: `${config.kids.name || 'Kids'} · work`,
+                    status: kidsStatus,
+                    exitWord: config.kids.exitWord
+                  }
+                : null
+            }
             dispatch={dispatch}
             onNewTab={() => void openPicker('tab')}
             onCloseTab={(tabId) => dispatch({ type: 'closeTab', tabId })}
@@ -717,26 +732,26 @@ export function App(): React.JSX.Element {
                 })
               )
             }}
-            visible={widgetsVisible && place.visible}
+            visible={windowVisible && place.visible}
             onSavePrompt={savePrompt}
           />
         ) : null
       case 'prs':
         return (
-          <PrPanel session={focused} visible={widgetsVisible && place.visible} onRun={runPrompt} />
+          <PrPanel session={focused} visible={windowVisible && place.visible} onRun={runPrompt} />
         )
       case 'commands':
         return (
           <CommandsPanel
             session={focused}
-            visible={widgetsVisible && place.visible}
+            visible={windowVisible && place.visible}
             revision={commandsRevision}
             onRun={runPrompt}
             onSave={savePrompt}
           />
         )
       case 'clock':
-        return <Clock panel={p} visible={widgetsVisible && place.visible} />
+        return <Clock panel={p} visible={windowVisible && place.visible} />
       case 'image':
         return <ImagePanel panel={p} themeId={resolved.id} revision={imagesRevision} />
       case 'monitor':
@@ -754,131 +769,135 @@ export function App(): React.JSX.Element {
 
   return (
     <div className="app">
-      <div className="frame-root">
-        <FrameView
-          tree={tree}
-          state={frameState}
-          visible={visible}
-          edges={frameEdges}
-          widgets={widgetMap}
-          sizing={{
-            contentWidgets: new Set(
-              widgets.filter((w) => w.manifest?.sizing === 'content').map((w) => w.id)
-            ),
-            state: frameState
-          }}
-          contentHeights={contentHeights}
-          onChange={setTree}
-          onReloadWidget={reloadWidget}
-          renderPanel={renderPanel}
-        />
-        {/* Not positioned: the items' containing block must be .frame-root,
-            the ancestor of the placeholders they anchor to. */}
-        <div className="frame-floating">
-          <div
-            className="floating-item"
-            style={{
-              ['--anchor' as string]: slotName('workspace'),
-              display: workspaceShown ? undefined : 'none'
+      {/* Kids mode draws over the terminals; the rest stays on screen but can't be used. */}
+      <div className="app-main" inert={kids}>
+        <div className="frame-root">
+          <FrameView
+            tree={tree}
+            state={frameState}
+            visible={visible}
+            edges={frameEdges}
+            widgets={widgetMap}
+            sizing={{
+              contentWidgets: new Set(
+                widgets.filter((w) => w.manifest?.sizing === 'content').map((w) => w.id)
+              ),
+              state: frameState
             }}
-          >
-            {layout.tabs.length > 0 ? (
-              <Workspace
-                layout={layout}
-                presets={config.presets}
-                settings={config.terminal}
-                theme={terminalTheme}
-                dispatch={dispatch}
-              />
-            ) : (
-              <Launcher
-                presets={config.presets}
-                initialPresetId={config.launcher.presetId}
-                projectsDir={config.projectsDir}
-                restoreTabs={restorable?.tabs.length ?? 0}
-                inputRef={launcherInput}
-                onLaunch={launch}
-                onRestore={restore}
-              />
+            contentHeights={contentHeights}
+            onChange={setTree}
+            onReloadWidget={reloadWidget}
+            renderPanel={renderPanel}
+          />
+          {/* Not positioned: the items' containing block must be .frame-root,
+              the ancestor of the placeholders they anchor to. */}
+          <div className="frame-floating">
+            <div
+              className="floating-item"
+              style={{
+                ['--anchor' as string]: slotName('workspace'),
+                display: workspaceShown ? undefined : 'none'
+              }}
+            >
+              {layout.tabs.length > 0 ? (
+                <Workspace
+                  layout={layout}
+                  presets={config.presets}
+                  settings={config.terminal}
+                  theme={terminalTheme}
+                  dispatch={dispatch}
+                />
+              ) : (
+                <Launcher
+                  presets={config.presets}
+                  initialPresetId={config.launcher.presetId}
+                  projectsDir={config.projectsDir}
+                  restoreTabs={restorable?.tabs.length ?? 0}
+                  inputRef={launcherInput}
+                  onLaunch={launch}
+                  onRestore={restore}
+                />
+              )}
+            </div>
+            {floatingWidgets.map((w) =>
+              w.manifest ? (
+                <div
+                  key={w.id}
+                  className="floating-item"
+                  style={{
+                    ['--anchor' as string]: slotName(`w-${w.id}`),
+                    display: shownWidgets.has(w.id) ? undefined : 'none'
+                  }}
+                >
+                  <WidgetFrame
+                    key={`${String(w.revision)}:${String(reloads[w.id] ?? 0)}`}
+                    id={w.id}
+                    manifest={w.manifest}
+                    visible={windowVisible && shownWidgets.has(w.id)}
+                    onSize={(h) => setContentHeight(w.id, h)}
+                  />
+                </div>
+              ) : null
             )}
           </div>
-          {floatingWidgets.map((w) =>
-            w.manifest ? (
-              <div
-                key={w.id}
-                className="floating-item"
-                style={{
-                  ['--anchor' as string]: slotName(`w-${w.id}`),
-                  display: shownWidgets.has(w.id) ? undefined : 'none'
-                }}
-              >
-                <WidgetFrame
-                  key={`${String(w.revision)}:${String(reloads[w.id] ?? 0)}`}
-                  id={w.id}
-                  manifest={w.manifest}
-                  visible={widgetsVisible && shownWidgets.has(w.id)}
-                  onSize={(h) => setContentHeight(w.id, h)}
-                />
-              </div>
-            ) : null
-          )}
         </div>
+        <Toolbar
+          focused={focused}
+          keybindings={config.keybindings}
+          layouts={layoutChoices(config.appearance)}
+          layout={config.appearance.layout}
+          panelsHidden={config.appearance.panelsHidden}
+          active={windowVisible}
+          onAction={runAction}
+          onLayout={(id) => runAppearance({ type: 'layout', id })}
+        />
+        {picker && (
+          <Picker
+            title={PICKER_TITLES[picker.mode]}
+            presets={config.presets}
+            initialPresetId={picker.presetId}
+            currentDir={picker.currentDir}
+            onCancel={closePicker}
+            onSubmit={(presetId, cwd) => placePicked(picker, makePane(presetId, cwd))}
+            onOpenPage={(url) => placePicked(picker, makeWebPane(url, picker.currentDir ?? '~'))}
+          />
+        )}
+        {openingUrl && (
+          <OpenUrlDialog
+            canSplit={layout.tabs.length > 0}
+            onOpen={openUrl}
+            onCancel={() => {
+              setOpeningUrl(false)
+              requestAnimationFrame(focusWorkspace)
+            }}
+          />
+        )}
+        {prompt && (
+          <SecretPromptDialog
+            key={prompt.promptId}
+            prompt={prompt}
+            onAnswer={(value) => answerPrompt(prompt, value)}
+          />
+        )}
+        {saving && (
+          <SaveCommandDialog
+            prompt={saving.prompt}
+            paneId={saving.paneId}
+            onClose={(saved) => {
+              setSaving(null)
+              if (saved) setCommandsRevision((r) => r + 1)
+              requestAnimationFrame(focusWorkspace)
+            }}
+          />
+        )}
       </div>
-      <Toolbar
-        focused={focused}
-        keybindings={config.keybindings}
-        layouts={layoutChoices(config.appearance)}
-        layout={config.appearance.layout}
-        panelsHidden={config.appearance.panelsHidden}
-        active={widgetsVisible}
-        onAction={runAction}
-        onLayout={(id) => runAppearance({ type: 'layout', id })}
-      />
-      {picker && (
-        <Picker
-          title={PICKER_TITLES[picker.mode]}
-          presets={config.presets}
-          initialPresetId={picker.presetId}
-          currentDir={picker.currentDir}
-          onCancel={closePicker}
-          onSubmit={(presetId, cwd) => placePicked(picker, makePane(presetId, cwd))}
-          onOpenPage={(url) => placePicked(picker, makeWebPane(url, picker.currentDir ?? '~'))}
-        />
-      )}
-      {openingUrl && (
-        <OpenUrlDialog
-          canSplit={layout.tabs.length > 0}
-          onOpen={openUrl}
-          onCancel={() => {
-            setOpeningUrl(false)
-            requestAnimationFrame(focusWorkspace)
-          }}
-        />
-      )}
-      {prompt && (
-        <SecretPromptDialog
-          key={prompt.promptId}
-          prompt={prompt}
-          onAnswer={(value) => answerPrompt(prompt, value)}
-        />
-      )}
-      {saving && (
-        <SaveCommandDialog
-          prompt={saving.prompt}
-          paneId={saving.paneId}
-          onClose={(saved) => {
-            setSaving(null)
-            if (saved) setCommandsRevision((r) => r + 1)
-            requestAnimationFrame(focusWorkspace)
-          }}
-        />
-      )}
       {kids && theme && (
         <KidsMode
           settings={config.kids}
           terminal={config.terminal}
           theme={theme}
           xtermTheme={terminalTheme}
+          onStatus={setKidsStatus}
           onExit={() => api.kids.set(false)}
         />
       )}

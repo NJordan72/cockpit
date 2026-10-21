@@ -3,14 +3,23 @@ import { paneIds, type Layout, type Preset } from '@shared/config'
 import { pageLabel } from '@shared/web'
 import type { SessionStatus } from '@shared/widgets'
 import { dragPointer } from '../drag'
+import type { KidsStatus } from '../kids/KidsMode'
 import { findPane } from '../layout/model'
 import type { LayoutAction } from '../layout/reducer'
 import { mostUrgent, STATUS_LABEL } from '../sessions'
+
+/** Kids mode's pretend terminal, shown as the active tab while kids mode is on. */
+export interface KidsTab {
+  label: string
+  status: KidsStatus
+  exitWord: string
+}
 
 interface Props {
   layout: Layout
   presets: Preset[]
   statuses: ReadonlyMap<string, SessionStatus>
+  kids: KidsTab | null
   dispatch: (a: LayoutAction) => void
   onNewTab: () => void
   onCloseTab: (tabId: string) => void
@@ -35,6 +44,7 @@ export function TabBar({
   layout,
   presets,
   statuses,
+  kids,
   dispatch,
   onNewTab,
   onCloseTab
@@ -93,7 +103,7 @@ export function TabBar({
             : pane.url
               ? (pane.title ?? pageLabel(pane.url))
               : `${preset?.name ?? pane.presetId} · ${basename(pane.cwd)}`
-          const active = tab.id === layout.activeTabId
+          const active = !kids && tab.id === layout.activeTabId
           const dx = offset(i)
           // The most urgent status among the tab's panes. Idle is the normal
           // state and gets no badge.
@@ -134,16 +144,31 @@ export function TabBar({
             </div>
           )
         })}
-        <button
-          type="button"
-          tabIndex={-1}
-          className="tab-new"
-          aria-label="New tab"
-          onClick={onNewTab}
-        >
-          +
-        </button>
+        {kids ? (
+          <div role="tab" aria-selected className="tab active kids-tab">
+            <span className="tab-index">
+              {layout.tabs.length < 9 ? layout.tabs.length + 1 : ''}
+            </span>
+            {kids.status !== 'idle' && <span className={`status-dot ${kids.status}`} />}
+            <span className="tab-label">{kids.label}</span>
+          </div>
+        ) : (
+          <button
+            type="button"
+            tabIndex={-1}
+            className="tab-new"
+            aria-label="New tab"
+            onClick={onNewTab}
+          >
+            +
+          </button>
+        )}
       </div>
+      {kids && (
+        <span className="kids-hint">
+          type <b>{kids.exitWord}</b> to leave
+        </span>
+      )}
     </div>
   )
 }

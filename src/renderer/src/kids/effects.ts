@@ -18,8 +18,9 @@ interface Spot {
   y: number
 }
 
+// cqw and cqh are percent of the layer, which is a size container.
 const at = (s: Spot, extra = ''): string =>
-  `translate(${s.x.toFixed(1)}vw, ${s.y.toFixed(1)}vh) translate(-50%, -50%) ${extra}`
+  `translate(${s.x.toFixed(1)}cqw, ${s.y.toFixed(1)}cqh) translate(-50%, -50%) ${extra}`
 
 function keyframesFor(move: Move, s: Spot, rand: Rand): Keyframe[] {
   switch (move) {
@@ -138,7 +139,7 @@ export class Effects {
     opts: { move?: Move; spot?: Spot; delay?: number; size?: number } = {}
   ): void {
     const el = spriteElement(sprite)
-    if (opts.size) el.style.setProperty('--size', `${opts.size}vh`)
+    if (opts.size) el.style.setProperty('--size', `${opts.size}cqh`)
     const move = opts.move ?? MOVES[Math.floor(this.rand() * MOVES.length)] ?? 'jump'
     this.add('kids-sprite', el)
     this.play(el, keyframesFor(move, opts.spot ?? this.spot(), this.rand), {
