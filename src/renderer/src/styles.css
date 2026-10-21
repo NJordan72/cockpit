@@ -225,9 +225,12 @@ kbd {
   background: var(--bg);
 }
 
+/* The fit addon counts rows and columns from this box's computed size. With
+   border-box that size includes the padding, and the last row gets clipped. */
 .terminal-host {
   flex: 1;
   min-height: 0;
+  box-sizing: content-box;
   padding: 6px 4px 4px 8px;
 }
 
@@ -1979,9 +1982,11 @@ button.icon:hover,
   opacity: 0.6;
 }
 
+/* content-box for the fit addon, as with .terminal-host. */
 .kids-terminal {
   flex: 1;
   min-height: 0;
+  box-sizing: content-box;
   padding: 16px 20px;
   pointer-events: none;
 }
