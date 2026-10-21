@@ -763,3 +763,28 @@ Next: M5 (optional).
   the shell keeping its screen and the keyboard after a drag, a click and a
   2 px wobble not moving anything, Cmd+2 following the new order, the close
   button, and no console errors.
+
+### Kids mode in the workspace (added 2026-10-21, not in the original plan)
+
+- Kids mode no longer covers the whole window. Its terminal is anchored over
+  the workspace slot, the way the real terminals are, and the tab bar shows it
+  as an extra active tab with the pretend agent's status dot and the exit hint.
+  Everything else (panels, widgets, the toolbar, the real tabs) stays on screen
+  inside one `inert` wrapper, so nothing there can be clicked or focused.
+  Kiosk mode, the kids menu, and main dropping PTY input are unchanged.
+- The effects layer is a size container, and the letters, characters, and
+  sparkles are sized and placed in `cqw`/`cqh` instead of `vw`/`vh`, so they
+  stay inside the pane. Clicks are measured from the pane's corner.
+- Widgets are on screen now, so they count as visible in kids mode (polling,
+  `cockpit.visibility`, the clock, the System panel). Secret prompts still wait
+  until kids mode ends. Entering kids mode closes the open-URL and
+  save-command dialogs as well as the picker.
+- Verified in the built app with a scratch COCKPIT_HOME, in both built-in
+  layouts: the kids pane matched the workspace slot's box, with a web tab
+  active underneath; the kids tab and hint; clicks on a real tab and inside
+  the `hello` widget doing nothing (the widget saw no pointer events); letters
+  centered in the pane; a click's sparkle landing within a few pixels of the
+  pointer; the working dot on the kids tab after Enter; kids mode surviving a
+  chrome reload; and after the exit word, the tab bar, the shell's keyboard,
+  and a shell screen with none of the typed letters. No console errors beyond
+  the missing banner image in the scratch home.

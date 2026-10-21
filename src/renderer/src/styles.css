@@ -56,6 +56,11 @@ kbd {
   height: 100%;
 }
 
+/* Everything but kids mode, so one `inert` covers it while kids mode is on. */
+.app-main {
+  display: contents;
+}
+
 /* ---- title bar and tabs ---- */
 
 .titlebar {
@@ -1968,11 +1973,17 @@ button.icon:hover,
 
 /* ---- kids mode ---- */
 
-/* Above everything, including dialogs, and no drag regions: nothing under it can be reached. */
+/* Over the workspace, above its terminals and any dialog. The rest of the
+   window stays on screen but inert (see .app-main). */
 .kids {
   position: fixed;
-  inset: 0;
   z-index: 1000;
+  position-anchor: var(--anchor);
+  position-visibility: always;
+  top: anchor(top, 0px);
+  left: anchor(left, 0px);
+  width: anchor-size(width, 100vw);
+  height: anchor-size(height, 100vh);
   display: flex;
   flex-direction: column;
   background: var(--bg);
@@ -1982,16 +1993,15 @@ button.icon:hover,
   -webkit-app-region: no-drag;
 }
 
-.kids-titlebar,
-.kids-titlebar .tab {
-  padding-left: 12px;
-  -webkit-app-region: no-drag;
+.tab.kids-tab {
+  padding-right: 12px;
 }
 
 .kids-hint {
   margin-left: auto;
   align-self: center;
   padding: 0 14px;
+  white-space: nowrap;
   font-size: 11px;
   color: var(--muted);
   opacity: 0.6;
@@ -2015,10 +2025,11 @@ button.icon:hover,
 }
 
 .kids-fx {
-  position: fixed;
+  position: absolute;
   inset: 0;
   overflow: hidden;
   pointer-events: none;
+  container-type: size;
 }
 
 .kids-fx > * {
@@ -2032,24 +2043,24 @@ button.icon:hover,
 
 .kids-letter {
   font-family: var(--font-mono);
-  font-size: min(55vh, 42vw);
+  font-size: min(55cqh, 42cqw);
   font-weight: 800;
   text-shadow: 0 0.04em 0 rgb(0 0 0 / 35%);
 }
 
 .kids-sprite {
-  font-size: var(--size, 22vh);
+  font-size: var(--size, 22cqh);
 }
 
 img.kids-sprite {
   width: auto;
-  height: var(--size, 28vh);
-  max-width: 45vw;
+  height: var(--size, 28cqh);
+  max-width: 45cqw;
   object-fit: contain;
 }
 
 .kids-sparkle {
-  font-size: 4vh;
+  font-size: 4cqh;
 }
 
 /* ---- theme effects ---- */

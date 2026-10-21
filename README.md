@@ -279,12 +279,13 @@ View > Open Cockpit Folder opens `~/.cockpit` in Finder.
 
 Kids mode turns the window into a pretend terminal for a small child who wants
 to work like you. Press Cmd+Shift+K or choose View > Kids Mode. The window goes
-full screen in macOS kiosk mode, and a terminal in your font and colors covers
-everything, with a welcome box and a `>` prompt.
+full screen in macOS kiosk mode, and a terminal in your font and colors takes
+the terminals' place, with a welcome box and a `>` prompt. It has its own tab in
+the tab bar. The rest of the window stays on screen but can't be clicked.
 
 What the keys do:
 
-- A letter shows big in the middle of the screen, appears at the prompt in a
+- A letter shows big in the middle of the terminal, appears at the prompt in a
   random color, and brings out a character for that letter (B is a bear 🐻).
   The character walks, jumps, spins, dances, floats up, or zooms. After a
   pause in typing, a voice says "B is for bear".
@@ -303,7 +304,7 @@ Bitsy Spider. With `"notes"`, each key has its own note on a pentatonic scale,
 rising from left to right like a xylophone.
 
 To leave, type the exit word, `grownup` unless you change it. It's printed
-small in the top right corner.
+small at the right end of the tab bar.
 
 ### Favorite characters
 
@@ -317,16 +318,17 @@ most of the time. The folder is read each time kids mode starts, and files over
 
 ### What stays safe
 
-Your panes keep running underneath. While kids mode is on:
+Your panes keep running behind it. While kids mode is on:
 
 - The main process drops all input to PTYs, so nothing typed reaches Claude
-  Code, Codex, or a shell, even if a key got past the overlay.
+  Code, Codex, or a shell, even if a key got past kids mode.
 - Kiosk mode turns off Cmd+Tab, force quit, hiding, and the Dock. The menu is
   replaced by one with no shortcuts, so Cmd+Q, Cmd+H, and Cmd+M do nothing, and
   Cockpit ignores its own shortcuts such as Cmd+W and Cmd+T.
-- Notifications aren't shown, and widgets are treated as hidden. A pane that
-  finished or asked for permission meanwhile still has its badge when you
-  leave.
+- Panels and widgets stay on screen and keep updating, but they can't be
+  clicked or focused, and a widget's secret prompt waits until you leave.
+- Notifications aren't shown. A pane that finished or asked for permission
+  meanwhile still has its badge when you leave.
 
 Keys that macOS handles itself still work in kiosk mode, such as the volume
 and brightness keys, Spotlight, and the power button. Kiosk mode covers only
