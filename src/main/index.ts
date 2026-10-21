@@ -11,7 +11,9 @@ import {
   session,
   shell,
   type IpcMainEvent,
-  type IpcMainInvokeEvent
+  type IpcMainInvokeEvent,
+  type WebContents,
+  type WebPreferences
 } from 'electron'
 import {
   migrateConfig,
@@ -35,6 +37,7 @@ import type { SaveResult } from '@shared/commands'
 import type { PrList } from '@shared/prs'
 import { BUILT_IN_LAYOUTS, layoutChoices } from '@shared/layouts'
 import { resolveTheme, type ResolvedTheme } from '@shared/theme'
+import { canOpenExternally, isWebUrl, WEB_PARTITION } from '@shared/web'
 import { AgentMonitor } from './agents/monitor'
 import { serveAssets } from './assets'
 import { ConfigStore } from './config'
@@ -302,7 +305,9 @@ function createWindow(): void {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
-      webSecurity: true
+      webSecurity: true,
+      // Web panes. will-attach-webview below decides what each one gets.
+      webviewTag: true
     }
   })
   mainWindow = win
@@ -456,6 +461,11 @@ function registerIpc(): void {
       void shell.openExternal(url)
     }
   })
+  ipcMain.on(IPC.openWeb, (e, url: unknown) => {
+    if (trusted(e) && typeof url === 'string' && canOpenExternally(url)) {
+      void shell.openExternal(url)
+    }
+  })
   ipcMain.handle(IPC.filesExisting, async (e, paneId: unknown, paths: unknown) => {
     if (!trusted(e) || typeof paneId !== 'string' || !Array.isArray(paths)) return []
     const cwd = await paneCwd(paneId)
@@ -553,6 +563,51 @@ async function cutRendererNetwork(): Promise<void> {
   })
 }
 
+/**
+ * A web pane is a <webview> in the chrome. Whatever the chrome asked for, it
+ * gets no preload and no Node, runs sandboxed, and browses in its own
+ * partition: the default session's dead proxy and permission rules are the
+ * chrome's, and its cookies stay apart from everything else.
+ */
+function hardenWebPane(prefs: WebPreferences, params: Record<string, string>): void {
+  delete prefs.preload
+  prefs.nodeIntegration = false
+  prefs.nodeIntegrationInSubFrames = false
+  prefs.contextIsolation = true
+  prefs.sandbox = true
+  prefs.webSecurity = true
+  prefs.allowRunningInsecureContent = false
+  params.partition = WEB_PARTITION
+  delete params.allowpopups
+}
+
+/** Keep a web pane on web pages, and send popups and shortcuts where they belong. */
+function guardWebPane(contents: WebContents): void {
+  // New windows go to the browser, like links in the terminals.
+  contents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:\/\//.test(url)) void shell.openExternal(url)
+    return { action: 'deny' }
+  })
+  const stay = (ev: { url: string; preventDefault: () => void }): void => {
+    if (!isWebUrl(ev.url)) ev.preventDefault()
+  }
+  contents.on('will-navigate', stay)
+  contents.on('will-redirect', stay)
+  contents.on('will-frame-navigate', stay)
+  // The page has the keyboard, so the chrome never sees its shortcuts. Pass
+  // Cmd chords on, as WidgetHost does for widgets.
+  contents.on('before-input-event', (_e, input) => {
+    if (input.type !== 'keyDown' || !input.meta) return
+    mainWindow?.webContents.send(IPC.appKey, {
+      code: input.code,
+      metaKey: input.meta,
+      ctrlKey: input.control,
+      altKey: input.alt,
+      shiftKey: input.shift
+    })
+  })
+}
+
 /** Everything that needs the app to be ready. */
 async function startup(): Promise<void> {
   // Unpackaged, the Dock shows Electron's icon until this runs.
@@ -560,7 +615,14 @@ async function startup(): Promise<void> {
   // Chrome needs no browser permissions; widgets get theirs through the broker.
   app.on('web-contents-created', (_e, contents) => {
     contents.session.setPermissionRequestHandler((_wc, _perm, cb) => cb(false))
-    contents.on('will-attach-webview', (ev) => ev.preventDefault())
+    contents.on('will-attach-webview', (ev, prefs, params) => {
+      if (contents !== mainWindow?.webContents || !isWebUrl(params.src ?? '')) {
+        ev.preventDefault()
+        return
+      }
+      hardenWebPane(prefs, params)
+    })
+    if (contents.getType() === 'webview') guardWebPane(contents)
   })
   // Permission checks (as opposed to requests) keep their default for the
   // chrome; widget frames are refused everything, devices included.

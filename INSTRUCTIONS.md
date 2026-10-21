@@ -700,6 +700,29 @@ Next: M5 (optional).
   command through the dialog and running it. Not verified: the needs-input
   fix against a live Claude session, and saving from a real Activity log.
 
+### Web panes (added 2026-10-21, not in the original plan)
+
+- A pane with `url` (and the page's `title`) shows a web page in a
+  `<webview>` instead of a terminal. Cmd+L or Web in the toolbar asks for a
+  URL, host, or absolute file path (`toWebUrl` in `src/shared/web.ts`) and
+  opens it in a new tab or, with Shift+Enter, split right. Navigation updates
+  the pane's `url`, so restore reopens the page it was on.
+- Security: the window has `webviewTag` on, and `will-attach-webview` only
+  lets the chrome attach one with an http/https/file URL. Main strips the
+  preload, forces sandbox, context isolation, no Node, and puts it in the
+  `persist:web` partition (its own cookies, and the normal network rather than
+  the default session's dead proxy). Guests can't navigate to other schemes,
+  popups go to the browser, permission requests are denied, and Cmd chords
+  are forwarded to the chrome like widgets' are.
+- Web panes aren't sessions: they don't appear in the session list or the
+  toolbar's focused pane.
+- Verified in the built app with a scratch COCKPIT_HOME: the rubric-talk deck
+  (file://, Google Fonts load), arrow keys move its slides, example.com split
+  beside it, Cmd+L from inside a page opens the dialog, the page has no
+  `require`/`process`/`window.cockpit`, and the saved layout keeps both URLs.
+  Playwright's page screenshots draw webview content offset after a resize;
+  `webContents.capturePage()` shows it correctly.
+
 ### Clickable file paths (added 2026-10-21, not in the original plan)
 
 - Terminals underline text that looks like a path (`~/x`, `/x`, `a/b`,

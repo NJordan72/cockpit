@@ -28,6 +28,11 @@ export function makePane(presetId: string, cwd: string): PaneNode {
   return { type: 'pane', id: newId('pane'), presetId, cwd }
 }
 
+/** A pane showing a web page. `cwd` is where a split or shell opened from it starts. */
+export function makeWebPane(url: string, cwd: string): PaneNode {
+  return { ...makePane('shell', cwd), url }
+}
+
 export function findPane(node: LayoutNode, id: string): PaneNode | null {
   if (node.type === 'pane') return node.id === id ? node : null
   for (const c of node.children) {
