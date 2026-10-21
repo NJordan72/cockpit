@@ -90,7 +90,8 @@ button:hover {
 .sc-query[hidden] {
   display: none;
 }
-.sc-query input {
+.sc-query input,
+.sc-search {
   font: inherit;
   font-size: 0.9em;
   color: var(--fg);
@@ -101,7 +102,8 @@ button:hover {
   outline: none;
   min-width: 0;
 }
-.sc-query input:focus {
+.sc-query input:focus,
+.sc-search:focus {
   border-color: var(--accent);
 }
 .sc-query-row {
