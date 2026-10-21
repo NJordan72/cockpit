@@ -62,10 +62,19 @@ relaunch. Processes and scrollback are not restored; each pane starts its
 preset fresh in the directory it was last in. When a pane's process exits, the
 pane shows the exit status; press `Enter` to restart it.
 
+A pane can also show a web page: Cmd+L (or Web in the toolbar) takes a URL, a
+bare host (`example.com`, `localhost:5173`), or a file path
+(`/Users/me/deck/dist/index.html`). The pane has back, forward, reload, an
+address field, and ↗ to open the page in your browser. Pages run sandboxed
+with no access to Cockpit, keep their cookies in their own partition, open
+new windows in the browser, and are reopened on restore at the page they were
+on.
+
 | Key (default)       | Action                                     |
 | ------------------- | ------------------------------------------ |
 | Cmd+T               | New tab (picker)                           |
 | Cmd+Shift+T         | New shell tab, no agent, in the same dir   |
+| Cmd+L               | Open a web page (new tab, or ⇧⏎ to split)  |
 | Cmd+D / Cmd+Shift+D | Split right / down (picker)                |
 | Cmd+W               | Close pane (last pane: tab)                |
 | Cmd+Shift+Backspace | Clear pane: restart its preset fresh       |

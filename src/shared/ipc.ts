@@ -55,6 +55,7 @@ export const IPC = {
   commandsDelete: 'commands:delete',
   menuPopup: 'menu:popup',
   openGitHub: 'open:github',
+  openWeb: 'open:web',
   appKey: 'app:key',
   kidsGet: 'kids:get',
   kidsSet: 'kids:set',
@@ -241,6 +242,10 @@ export interface CockpitApi {
     save(paneId: string | null, req: Omit<SaveCommand, 'cwd'>): Promise<SaveResult>
     delete(paneId: string | null, name: string, scope: CommandScope): Promise<boolean>
   }
+  web: {
+    /** Opens a web pane's page in the default browser. */
+    openExternal(url: string): void
+  }
   /** Shows a native context menu at the pointer. */
   menu(items: MenuItem[]): Promise<string | null>
   activity: {
@@ -251,7 +256,7 @@ export interface CockpitApi {
     /** The pane's repository, or null when its directory isn't in one. */
     git(paneId: string): Promise<GitStatus | null>
   }
-  /** App shortcuts pressed while a widget had keyboard focus. */
+  /** App shortcuts pressed while a widget or a web pane had keyboard focus. */
   onAppKey(cb: (key: AppKey) => void): () => void
   kids: {
     /** Whether kids mode is on. It stays on if the chrome reloads. */

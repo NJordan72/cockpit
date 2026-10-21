@@ -37,12 +37,14 @@ import { slotName } from './frame/layout'
 import { Monitor } from './frame/Monitor'
 import { KidsMode } from './kids/KidsMode'
 import { actionFor, compileKeymap } from './keybindings'
-import { findPane, makePane } from './layout/model'
+import { findPane, makePane, makeWebPane } from './layout/model'
 import { CommandsPanel } from './panels/CommandsPanel'
 import { PrPanel, type RunWhere } from './panels/PrPanel'
 import { activeTab, layoutReducer } from './layout/reducer'
 import { terminals } from './terminal/registry'
 import { applyTheme } from './theme'
+import { OpenUrlDialog, type OpenWhere } from './web/OpenUrlDialog'
+import { webPanes } from './web/registry'
 import { setWidgetTheme, startWidgetHost } from './widgets/host'
 import { WidgetFrame } from './widgets/WidgetFrame'
 
@@ -69,6 +71,13 @@ const PICKER_TITLES: Record<PickerState['mode'], string> = {
 
 const SAVE_DELAY_MS = 150
 
+/** Give a pane the keyboard, whether it's a terminal or a web page. */
+function focusPane(paneId: string): void {
+  const term = terminals.get(paneId)
+  if (term) term.focus()
+  else webPanes.get(paneId)?.focus()
+}
+
 export function App(): React.JSX.Element {
   const api = window.cockpit
   const [config, setConfig] = useState<CockpitConfig | null>(null)
@@ -91,6 +100,8 @@ export function App(): React.JSX.Element {
   const [saving, setSaving] = useState<{ prompt: string; paneId: string | null } | null>(null)
   /** Bumped when a command is saved, so the Commands panel reads its list again. */
   const [commandsRevision, setCommandsRevision] = useState(0)
+  /** The Open web page dialog is up. */
+  const [openingUrl, setOpeningUrl] = useState(false)
   const loaded = useRef(false)
   /** The appearance main has on disk, as JSON, so it isn't saved back to it. */
   const savedAppearance = useRef<string | null>(null)
@@ -159,6 +170,7 @@ export function App(): React.JSX.Element {
   const savingRef = useRef(saving)
   const sessionsRef = useRef(sessions)
   const kidsRef = useRef(kids)
+  const openingUrlRef = useRef(openingUrl)
   useEffect(() => {
     configRef.current = config
     layoutRef.current = layout
@@ -167,6 +179,7 @@ export function App(): React.JSX.Element {
     savingRef.current = saving
     sessionsRef.current = sessions
     kidsRef.current = kids
+    openingUrlRef.current = openingUrl
   })
 
   // Pane statuses from the main process, for the tab badges and the session list.
@@ -332,7 +345,7 @@ export function App(): React.JSX.Element {
   /** Give the keyboard to the active terminal, or to the start screen when no tab is open. */
   const focusWorkspace = useCallback(() => {
     const tab = activeTab(layoutRef.current)
-    if (tab) terminals.get(tab.activePaneId)?.focus()
+    if (tab) focusPane(tab.activePaneId)
     else launcherInput.current?.focus()
   }, [])
 
@@ -412,6 +425,10 @@ export function App(): React.JSX.Element {
         case 'newShell':
           void openShell()
           return
+        case 'openUrl':
+          setPicker(null)
+          setOpeningUrl(true)
+          return
         case 'splitRight':
           void openPicker('row')
           return
@@ -464,7 +481,14 @@ export function App(): React.JSX.Element {
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
       // Kids mode takes every key itself; no shortcut may close or open anything.
-      if (kidsRef.current || pickerRef.current || promptRef.current || savingRef.current) return
+      if (
+        kidsRef.current ||
+        pickerRef.current ||
+        promptRef.current ||
+        savingRef.current ||
+        openingUrlRef.current
+      )
+        return
       const action = actionFor(keymap, e)
       if (!action) return
       e.preventDefault()
@@ -475,7 +499,14 @@ export function App(): React.JSX.Element {
     // Keys pressed while a widget has focus never reach this window; the
     // main process forwards Cmd chords instead.
     const offAppKey = api.onAppKey((key) => {
-      if (kidsRef.current || pickerRef.current || promptRef.current || savingRef.current) return
+      if (
+        kidsRef.current ||
+        pickerRef.current ||
+        promptRef.current ||
+        savingRef.current ||
+        openingUrlRef.current
+      )
+        return
       const action = actionFor(keymap, key)
       if (action) runAction(action)
     })
@@ -489,7 +520,7 @@ export function App(): React.JSX.Element {
   const revealPane = useCallback((paneId: string) => {
     setPicker(null)
     dispatch({ type: 'focusPane', paneId })
-    requestAnimationFrame(() => terminals.get(paneId)?.focus())
+    requestAnimationFrame(() => focusPane(paneId))
   }, [])
 
   useEffect(() => api.sessions.onFocusRequest(revealPane), [api, revealPane])
@@ -501,7 +532,14 @@ export function App(): React.JSX.Element {
   useEffect(() => {
     const onFocus = (): void => {
       requestAnimationFrame(() => {
-        if (kidsRef.current || pickerRef.current || promptRef.current || savingRef.current) return
+        if (
+          kidsRef.current ||
+          pickerRef.current ||
+          promptRef.current ||
+          savingRef.current ||
+          openingUrlRef.current
+        )
+          return
         const el = document.activeElement
         if (!el || el === document.body || el.tagName === 'BUTTON') focusWorkspace()
       })
@@ -581,6 +619,22 @@ export function App(): React.JSX.Element {
 
   const savePrompt = useCallback(
     (prompt: string) => setSaving({ prompt, paneId: focused?.id ?? null }),
+    [focused]
+  )
+
+  /** A web page in a new tab, or beside the focused pane. */
+  const openUrl = useCallback(
+    (url: string, where: OpenWhere) => {
+      setOpeningUrl(false)
+      setRestorable(null)
+      const tab = activeTab(layoutRef.current)
+      const pane = makeWebPane(url, focused?.cwd ?? '~')
+      if (where === 'row' && tab) {
+        dispatch({ type: 'split', paneId: tab.activePaneId, direction: 'row', pane })
+      } else {
+        dispatch({ type: 'newTab', pane })
+      }
+    },
     [focused]
   )
 
@@ -781,6 +835,16 @@ export function App(): React.JSX.Element {
             else if (picker.paneId)
               dispatch({ type: 'split', paneId: picker.paneId, direction: picker.mode, pane })
             setPicker(null)
+          }}
+        />
+      )}
+      {openingUrl && (
+        <OpenUrlDialog
+          canSplit={layout.tabs.length > 0}
+          onOpen={openUrl}
+          onCancel={() => {
+            setOpeningUrl(false)
+            requestAnimationFrame(focusWorkspace)
           }}
         />
       )}

@@ -4,6 +4,7 @@ import { ACTIVITY_TABS, type ActivityTab } from './activity'
 import { readFrame, type FrameNode } from './frame'
 import { builtInLayout, classicFromSidebar, DEFAULT_LAYOUT_ID } from './layouts'
 import { DEFAULT_THEME_ID, readTokens, type ThemeOverrides } from './theme'
+import { isWebUrl } from './web'
 
 export { ACTIVITY_TABS, type ActivityTab }
 
@@ -21,6 +22,7 @@ export interface Preset {
 export type Action =
   | 'newTab'
   | 'newShell'
+  | 'openUrl'
   | 'splitRight'
   | 'splitDown'
   | 'closePane'
@@ -55,6 +57,10 @@ export interface PaneNode {
   resume?: boolean
   /** The agent's first prompt. Dropped once the pane has started. */
   prompt?: string
+  /** A web page shown instead of a terminal (http, https, or file). */
+  url?: string
+  /** The web page's title, for the tab. */
+  title?: string
 }
 
 export interface SplitNode {
@@ -191,6 +197,7 @@ export const DEFAULT_PRESETS: Preset[] = [
 export const DEFAULT_KEYBINDINGS: Keybindings = {
   newTab: 'Cmd+T',
   newShell: 'Cmd+Shift+T',
+  openUrl: 'Cmd+L',
   splitRight: 'Cmd+D',
   splitDown: 'Cmd+Shift+D',
   closePane: 'Cmd+W',
@@ -286,12 +293,24 @@ function readPreset(v: unknown): Preset | null {
   return preset
 }
 
+const MAX_TITLE = 200
+
 function readNode(v: unknown, seen: Set<string>): LayoutNode | null {
   if (!isObj(v) || !nonEmpty(v.id) || seen.has(v.id)) return null
   seen.add(v.id)
   if (v.type === 'pane') {
     if (!nonEmpty(v.presetId)) return null
-    return { type: 'pane', id: v.id, presetId: v.presetId, cwd: nonEmpty(v.cwd) ? v.cwd : '~' }
+    const pane: PaneNode = {
+      type: 'pane',
+      id: v.id,
+      presetId: v.presetId,
+      cwd: nonEmpty(v.cwd) ? v.cwd : '~'
+    }
+    if (nonEmpty(v.url) && isWebUrl(v.url)) {
+      pane.url = v.url
+      if (nonEmpty(v.title)) pane.title = v.title.slice(0, MAX_TITLE)
+    }
+    return pane
   }
   if (v.type === 'split') {
     if (v.direction !== 'row' && v.direction !== 'column') return null

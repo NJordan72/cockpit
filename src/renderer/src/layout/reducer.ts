@@ -28,6 +28,7 @@ export type LayoutAction =
   | { type: 'cycleTab'; delta: number }
   | { type: 'resize'; splitId: string; sizes: number[] }
   | { type: 'setCwd'; paneId: string; cwd: string }
+  | { type: 'setPage'; paneId: string; url: string; title?: string }
 
 export function activeTab(layout: Layout): Tab | null {
   return layout.tabs.find((t) => t.id === layout.activeTabId) ?? null
@@ -163,6 +164,18 @@ export function layoutReducer(layout: Layout, action: LayoutAction): Layout {
           resume: undefined,
           prompt: undefined
         })
+      }))
+    }
+
+    case 'setPage': {
+      // A web pane went to another page; a relaunch reopens it there.
+      const tab = tabOfPane(layout, action.paneId)
+      const pane = tab && findPane(tab.root, action.paneId)
+      if (!tab || !pane?.url) return layout
+      if (pane.url === action.url && pane.title === action.title) return layout
+      return mapTab(layout, tab.id, (t) => ({
+        ...t,
+        root: updatePane(t.root, action.paneId, { url: action.url, title: action.title })
       }))
     }
   }
