@@ -429,6 +429,9 @@ export function App(): React.JSX.Element {
           setPicker(null)
           setOpeningUrl(true)
           return
+        case 'reloadPage':
+          if (tab) webPanes.get(tab.activePaneId)?.reload()
+          return
         case 'splitRight':
           void openPicker('row')
           return

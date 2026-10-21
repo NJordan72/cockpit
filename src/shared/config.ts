@@ -23,6 +23,7 @@ export type Action =
   | 'newTab'
   | 'newShell'
   | 'openUrl'
+  | 'reloadPage'
   | 'splitRight'
   | 'splitDown'
   | 'closePane'
@@ -198,6 +199,7 @@ export const DEFAULT_KEYBINDINGS: Keybindings = {
   newTab: 'Cmd+T',
   newShell: 'Cmd+Shift+T',
   openUrl: 'Cmd+L',
+  reloadPage: 'Cmd+R',
   splitRight: 'Cmd+D',
   splitDown: 'Cmd+Shift+D',
   closePane: 'Cmd+W',

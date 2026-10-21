@@ -68,13 +68,14 @@ bare host (`example.com`, `localhost:5173`), or a file path
 address field, and ↗ to open the page in your browser. Pages run sandboxed
 with no access to Cockpit, keep their cookies in their own partition, open
 new windows in the browser, and are reopened on restore at the page they were
-on.
+on. Cmd+R reloads the focused page.
 
 | Key (default)       | Action                                     |
 | ------------------- | ------------------------------------------ |
 | Cmd+T               | New tab (picker)                           |
 | Cmd+Shift+T         | New shell tab, no agent, in the same dir   |
 | Cmd+L               | Open a web page (new tab, or ⇧⏎ to split)  |
+| Cmd+R               | Reload the focused web page                |
 | Cmd+D / Cmd+Shift+D | Split right / down (picker)                |
 | Cmd+W               | Close pane (last pane: tab)                |
 | Cmd+Shift+Backspace | Clear pane: restart its preset fresh       |

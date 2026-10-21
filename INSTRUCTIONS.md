@@ -707,6 +707,8 @@ Next: M5 (optional).
   URL, host, or absolute file path (`toWebUrl` in `src/shared/web.ts`) and
   opens it in a new tab or, with Shift+Enter, split right. Navigation updates
   the pane's `url`, so restore reopens the page it was on.
+- Cmd+R (`reloadPage`) reloads the focused pane when it's a web page and does
+  nothing in a terminal, which ignores Cmd+R anyway.
 - Security: the window has `webviewTag` on, and `will-attach-webview` only
   lets the chrome attach one with an http/https/file URL. Main strips the
   preload, forces sandbox, context isolation, no Node, and puts it in the

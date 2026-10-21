@@ -49,6 +49,11 @@ describe('actionFor', () => {
     expect(actionFor(keymap, ev('Digit3', { meta: true }))).toBe('goToTab3')
   })
 
+  it('keeps Cmd+R and Cmd+Shift+R apart', () => {
+    expect(actionFor(keymap, ev('KeyR', { meta: true }))).toBe('reloadPage')
+    expect(actionFor(keymap, ev('KeyR', { meta: true, shift: true }))).toBe('resumePane')
+  })
+
   it('requires an exact modifier match', () => {
     expect(actionFor(keymap, ev('KeyT', { meta: true, alt: true }))).toBeNull()
     expect(actionFor(keymap, ev('KeyT'))).toBeNull()

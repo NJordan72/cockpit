@@ -87,7 +87,12 @@ export function WebPane({ pane, focused, visible, onFocus, onPage }: Props): Rea
     view.addEventListener('did-fail-load', onFail)
     // Clicks inside the page never reach this document; focus does.
     view.addEventListener('focus', () => callbacks.current.onFocus())
-    webPanes.set(id, { focus: () => view.focus() })
+    webPanes.set(id, {
+      focus: () => view.focus(),
+      reload: () => {
+        if (ready.current) view.reload()
+      }
+    })
     return () => {
       webPanes.delete(id)
       view.removeEventListener('dom-ready', onReady)
