@@ -5,7 +5,7 @@ import { WebglAddon } from '@xterm/addon-webgl'
 import { Unicode11Addon } from '@xterm/addon-unicode11'
 import { SearchAddon } from '@xterm/addon-search'
 import { WebLinksAddon } from '@xterm/addon-web-links'
-import type { PaneNode, TerminalSettings } from '@shared/config'
+import { terminalFontStack, type PaneNode, type TerminalSettings } from '@shared/config'
 import type { PtyExitInfo } from '@shared/ipc'
 import { classifyKey } from './keys'
 import { openHyperlink, pathLinkProvider } from './pathLinks'
@@ -68,7 +68,7 @@ export function TerminalPane({
     const api = window.cockpit
 
     const term = new Terminal({
-      fontFamily: settings.fontFamily,
+      fontFamily: terminalFontStack(settings.fontFamily),
       fontSize: settings.fontSize,
       lineHeight: 1.1,
       cursorBlink: true,
@@ -229,12 +229,10 @@ export function TerminalPane({
   useEffect(() => {
     const term = termRef.current
     if (!term) return
-    if (
-      term.options.fontFamily === settings.fontFamily &&
-      term.options.fontSize === settings.fontSize
-    )
+    const fontFamily = terminalFontStack(settings.fontFamily)
+    if (term.options.fontFamily === fontFamily && term.options.fontSize === settings.fontSize)
       return
-    term.options.fontFamily = settings.fontFamily
+    term.options.fontFamily = fontFamily
     term.options.fontSize = settings.fontSize
     // New cell size means a new grid size; hidden panes refit when shown.
     if (visible) fitRef.current?.fit()

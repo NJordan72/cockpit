@@ -241,6 +241,15 @@ export const DEFAULT_TERMINAL: TerminalSettings = {
   fontSize: 13
 }
 
+/**
+ * The font stack a terminal renders with: the configured one, then the Nerd
+ * Font symbols, so prompt icons show up in a font that wasn't patched.
+ */
+export function terminalFontStack(fontFamily: string): string {
+  if (/symbols nerd font/i.test(fontFamily)) return fontFamily
+  return `${fontFamily}, "Symbols Nerd Font Mono"`
+}
+
 export const DEFAULT_KIDS: KidsSettings = {
   name: '',
   exitWord: 'grownup',
