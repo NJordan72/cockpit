@@ -55,6 +55,8 @@ export const IPC = {
   commandsDelete: 'commands:delete',
   menuPopup: 'menu:popup',
   openGitHub: 'open:github',
+  filesExisting: 'files:existing',
+  filesOpen: 'files:open',
   appKey: 'app:key',
   kidsGet: 'kids:get',
   kidsSet: 'kids:set',
@@ -233,6 +235,12 @@ export interface CockpitApi {
     list(paneId: string): Promise<PrList>
     /** Opens a https://github.com/ URL in the browser. */
     open(url: string): void
+  }
+  files: {
+    /** Which of these paths exist, relative to the pane's directory. */
+    existing(paneId: string, paths: string[]): Promise<string[]>
+    /** Opens a path from the pane's terminal in its default app. */
+    open(paneId: string, path: string): void
   }
   commands: {
     /** Saved commands for the pane's repository and everywhere. */

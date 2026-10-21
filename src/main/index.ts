@@ -40,6 +40,7 @@ import { serveAssets } from './assets'
 import { ConfigStore } from './config'
 import { listDirs, processCwd, processCwdSync, resolveCwd } from './dirs'
 import { deleteCommand, listCommands, saveCommand } from './commands'
+import { existingPaths, resolveIn } from './files'
 import { gitStatus } from './git'
 import { listCharacters } from './kids'
 import { buildKidsMenu, buildMenu, menuTemplate } from './menu'
@@ -454,6 +455,26 @@ function registerIpc(): void {
     if (trusted(e) && typeof url === 'string' && url.startsWith('https://github.com/')) {
       void shell.openExternal(url)
     }
+  })
+  ipcMain.handle(IPC.filesExisting, async (e, paneId: unknown, paths: unknown) => {
+    if (!trusted(e) || typeof paneId !== 'string' || !Array.isArray(paths)) return []
+    const cwd = await paneCwd(paneId)
+    if (!cwd) return []
+    return existingPaths(
+      cwd,
+      paths.filter((p): p is string => typeof p === 'string')
+    )
+  })
+  ipcMain.on(IPC.filesOpen, (e, paneId: unknown, p: unknown) => {
+    if (!trusted(e) || typeof paneId !== 'string' || typeof p !== 'string') return
+    void (async () => {
+      const cwd = await paneCwd(paneId)
+      if (!cwd) return
+      const [found] = await existingPaths(cwd, [p])
+      if (!found) return
+      const err = await shell.openPath(resolveIn(cwd, found))
+      if (err) console.warn(`could not open ${found}: ${err}`)
+    })()
   })
   ipcMain.handle(IPC.commandsList, async (e, paneId: unknown) => {
     if (!trusted(e)) throw new Error('untrusted sender')

@@ -132,6 +132,10 @@ const api: CockpitApi = {
     list: (paneId) => ipcRenderer.invoke(IPC.prsList, paneId),
     open: (url) => ipcRenderer.send(IPC.openGitHub, url)
   },
+  files: {
+    existing: (paneId, paths) => ipcRenderer.invoke(IPC.filesExisting, paneId, paths),
+    open: (paneId, path) => ipcRenderer.send(IPC.filesOpen, paneId, path)
+  },
   commands: {
     list: (paneId) => ipcRenderer.invoke(IPC.commandsList, paneId),
     save: (paneId, req) => ipcRenderer.invoke(IPC.commandsSave, paneId, req),

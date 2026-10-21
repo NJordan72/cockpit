@@ -386,6 +386,11 @@ Set `COCKPIT_HOME` to use a different directory than `~/.cockpit`.
 | Cmd+C / Cmd+V | Copy selection / paste (bracketed paste when enabled)     |
 | Cmd+K         | Clear the screen and scrollback                           |
 
+Click a URL to open it in the browser. Click a file path (`~/deck/index.html`,
+`/etc/hosts`, `src/app.ts:12`, `slides/`) to open it in its default app, or a
+folder in Finder. Relative paths resolve against the pane's current directory,
+and only paths that exist get underlined.
+
 ## Checks
 
 ```sh

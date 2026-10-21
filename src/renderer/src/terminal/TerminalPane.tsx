@@ -8,6 +8,7 @@ import { WebLinksAddon } from '@xterm/addon-web-links'
 import type { PaneNode, TerminalSettings } from '@shared/config'
 import type { PtyExitInfo } from '@shared/ipc'
 import { classifyKey } from './keys'
+import { openHyperlink, pathLinkProvider } from './pathLinks'
 import { terminals } from './registry'
 
 interface Props {
@@ -75,7 +76,11 @@ export function TerminalPane({
       macOptionClickForcesSelection: true,
       allowProposedApi: true,
       scrollback: 10_000,
-      theme
+      theme,
+      linkHandler: {
+        activate: (_event, uri) => openHyperlink(id, uri),
+        allowNonHttpProtocols: true
+      }
     })
     termRef.current = term
 
@@ -91,6 +96,7 @@ export function TerminalPane({
         window.open(uri, '_blank')
       })
     )
+    const pathLinks = term.registerLinkProvider(pathLinkProvider(term, id))
 
     term.open(host)
     terminals.set(id, term)
@@ -207,6 +213,7 @@ export function TerminalPane({
       onInput.dispose()
       onBinary.dispose()
       onResize.dispose()
+      pathLinks.dispose()
       offData()
       offExit()
       api.pty.kill(id)
