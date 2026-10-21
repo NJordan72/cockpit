@@ -722,3 +722,18 @@ Next: M5 (optional).
   `require`/`process`/`window.cockpit`, and the saved layout keeps both URLs.
   Playwright's page screenshots draw webview content offset after a resize;
   `webContents.capturePage()` shows it correctly.
+
+### Clickable file paths (added 2026-10-21, not in the original plan)
+
+- Terminals underline text that looks like a path (`~/x`, `/x`, `a/b`,
+  `name.ext`, with any `:line:col` dropped) when it exists, resolved against
+  the pane's cwd (`paneCwd`). Clicking opens it with `shell.openPath`. The
+  renderer finds candidates (`terminal/paths.ts`) over soft-wrapped lines;
+  main checks them (`files:existing`) and checks again before opening
+  (`files:open`), so the renderer can't open a path that doesn't exist. OSC 8
+  hyperlinks go the same way: `file://` to `files:open`, http(s) to the
+  browser.
+- Verified in the built app with a zsh pane and `shell.openPath` stubbed:
+  `slides/`, `index.html` (relative, after a `cd`), and `~/Desktop` get a
+  pointer and underline and open the right absolute path; `missing.md` isn't
+  linked. Not verified: OSC 8 links from a real agent.
