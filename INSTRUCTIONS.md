@@ -707,6 +707,13 @@ Next: M5 (optional).
   URL, host, or absolute file path (`toWebUrl` in `src/shared/web.ts`) and
   opens it in a new tab or, with Shift+Enter, split right. Navigation updates
   the pane's `url`, so restore reopens the page it was on.
+- Cmd+R (`reloadPage`) reloads the focused pane when it's a web page and does
+  nothing in a terminal, which ignores Cmd+R anyway.
+- Main records every page that loads in a web pane (not in-page navigations)
+  in `recentPages`, newest first, capped at 20, with the title the page sets.
+  The new-tab and split pickers have a Web option after the presets that lists
+  them (`rankPages`), filters by title then URL, and offers a typed address
+  first. The picker fetches the list over IPC when it opens, as it does dirs.
 - Security: the window has `webviewTag` on, and `will-attach-webview` only
   lets the chrome attach one with an http/https/file URL. Main strips the
   preload, forces sandbox, context isolation, no Node, and puts it in the

@@ -10,6 +10,7 @@ import {
   migrateConfig,
   normalizeSizes,
   pushRecentDir,
+  pushRecentPage,
   readSidebar,
   SIDEBAR_MAX_WIDTH,
   type RecentDir
@@ -175,6 +176,23 @@ describe('pushRecentDir', () => {
   })
 })
 
+describe('pushRecentPage', () => {
+  it('moves a page to the front, keeping its title when it comes back without one', () => {
+    const pages = [
+      { url: 'https://a.test/', title: 'A', at: 1 },
+      { url: 'https://b.test/', at: 1 }
+    ]
+    expect(pushRecentPage(pages, { url: 'https://b.test/', at: 9 })[0]).toEqual({
+      url: 'https://b.test/',
+      at: 9
+    })
+    expect(pushRecentPage(pages, { url: 'https://a.test/', at: 9 })).toEqual([
+      { url: 'https://a.test/', title: 'A', at: 9 },
+      { url: 'https://b.test/', at: 1 }
+    ])
+  })
+})
+
 describe('migrateConfig: recent dirs and launcher', () => {
   it('upgrades version 1 paths to entries with no time', () => {
     const c = migrateConfig({ version: 1, recentDirs: ['~/dev/a', '~/dev/b', '~/dev/a', 3] })
@@ -196,6 +214,22 @@ describe('migrateConfig: recent dirs and launcher', () => {
       { path: '~/dev/a', presetId: 'codex', at: 5 },
       { path: '~/dev/b', at: 0 }
     ])
+  })
+
+  it('keeps recent pages that are web URLs, once each', () => {
+    const c = migrateConfig({
+      recentPages: [
+        { url: 'https://a.test/', title: 'A', at: 5 },
+        { url: 'javascript:alert(1)', at: 4 },
+        { url: 'https://a.test/', at: 3 },
+        { url: 'file:///tmp/x.html', title: '', at: -1 }
+      ]
+    })
+    expect(c.recentPages).toEqual([
+      { url: 'https://a.test/', title: 'A', at: 5 },
+      { url: 'file:///tmp/x.html', at: 0 }
+    ])
+    expect(migrateConfig({}).recentPages).toEqual([])
   })
 
   it('remembers the launcher agent, defaulting to Claude Code', () => {

@@ -4,7 +4,8 @@ import {
   type Action,
   type AppearanceSettings,
   type CockpitConfig,
-  type Layout
+  type Layout,
+  type PaneNode
 } from '@shared/config'
 import {
   edges,
@@ -429,6 +430,9 @@ export function App(): React.JSX.Element {
           setPicker(null)
           setOpeningUrl(true)
           return
+        case 'reloadPage':
+          if (tab) webPanes.get(tab.activePaneId)?.reload()
+          return
         case 'splitRight':
           void openPicker('row')
           return
@@ -638,6 +642,15 @@ export function App(): React.JSX.Element {
     [focused]
   )
 
+  /** Where the picker was asked to put a new pane: a new tab, or split beside a pane. */
+  const placePicked = useCallback((picked: PickerState, pane: PaneNode) => {
+    setRestorable(null)
+    if (picked.mode === 'tab') dispatch({ type: 'newTab', pane })
+    else if (picked.paneId)
+      dispatch({ type: 'split', paneId: picked.paneId, direction: picked.mode, pane })
+    setPicker(null)
+  }, [])
+
   const restore = useCallback(() => {
     if (restorable) dispatch({ type: 'replace', layout: restorable })
     setRestorable(null)
@@ -828,14 +841,8 @@ export function App(): React.JSX.Element {
           initialPresetId={picker.presetId}
           currentDir={picker.currentDir}
           onCancel={closePicker}
-          onSubmit={(presetId, cwd) => {
-            const pane = makePane(presetId, cwd)
-            setRestorable(null)
-            if (picker.mode === 'tab') dispatch({ type: 'newTab', pane })
-            else if (picker.paneId)
-              dispatch({ type: 'split', paneId: picker.paneId, direction: picker.mode, pane })
-            setPicker(null)
-          }}
+          onSubmit={(presetId, cwd) => placePicked(picker, makePane(presetId, cwd))}
+          onOpenPage={(url) => placePicked(picker, makeWebPane(url, picker.currentDir ?? '~'))}
         />
       )}
       {openingUrl && (

@@ -1,7 +1,13 @@
 // IPC channel names and payload types shared by main, preload, and renderer.
 import type { ActivityUpdate, GitStatus, PaneActivity } from './activity'
 import type { CommandList, CommandScope, SaveCommand, SaveResult } from './commands'
-import type { AppearanceSettings, CockpitConfig, LauncherSettings, Layout } from './config'
+import type {
+  AppearanceSettings,
+  CockpitConfig,
+  LauncherSettings,
+  Layout,
+  RecentPage
+} from './config'
 import type { PrList } from './prs'
 import type { ThemeDefinition } from './theme'
 import type {
@@ -56,6 +62,7 @@ export const IPC = {
   menuPopup: 'menu:popup',
   openGitHub: 'open:github',
   openWeb: 'open:web',
+  webRecent: 'web:recent',
   filesExisting: 'files:existing',
   filesOpen: 'files:open',
   appKey: 'app:key',
@@ -253,6 +260,8 @@ export interface CockpitApi {
   web: {
     /** Opens a web pane's page in the default browser. */
     openExternal(url: string): void
+    /** Pages most recently loaded in web panes, newest first. */
+    recent(): Promise<RecentPage[]>
   }
   /** Shows a native context menu at the pointer. */
   menu(items: MenuItem[]): Promise<string | null>
