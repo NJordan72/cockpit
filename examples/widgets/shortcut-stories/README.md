@@ -31,6 +31,16 @@ Paste it once; Cockpit keeps it encrypted and the widget reads it from then on.
   are left out unless the text mentions `is:archived`. The search runs once
   you pause typing, or at once on Enter, and Escape clears it and goes back
   to the tab you were on.
+- **🎰** in the header spins a wheel of the stories in the tab you're on
+  (search results included) and starts the one it lands on, by sending
+  `/start-story sc-<id>` to a new agent session, the same as right-click >
+  Start story. Blocked stories are left off the wheel, so it never picks one,
+  and the button is disabled when every story in the tab is blocked. The pick
+  is random and made before the wheel spins. The winner
+  shows for a moment first, and Escape or × during the spin or that moment
+  stops it without starting anything. The panels show story numbers, and the
+  title of the one under the pointer shows below the wheel. The wheel clicks
+  quietly as it turns, and with Reduce motion on in macOS it lands at once.
 - Click a story to open it in your browser. The ▸ on the right of a row shows
   its full title, type, and when it was last updated, without opening it.
 - The gear edits the Shortcut search query, and Enter (or save) applies it
