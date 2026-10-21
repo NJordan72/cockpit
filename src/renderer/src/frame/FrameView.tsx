@@ -11,6 +11,7 @@ import {
   type FrameContainer,
   type FrameNode,
   type FramePanel,
+  type PanelKind,
   type FrameState,
   type FrameTabs
 } from '@shared/frame'
@@ -53,6 +54,9 @@ export interface FrameViewProps {
 }
 
 const NO_EDGES: Edges = { top: false, left: false }
+
+/** Panels that get the frame's title row, unless they sit in a tab group. */
+const TITLED: readonly PanelKind[] = ['monitor', 'prs', 'commands']
 
 const edgeClass = (e: Edges | undefined): string =>
   `${e?.top ? ' at-top' : ''}${e?.left ? ' at-left' : ''}`
@@ -309,7 +313,7 @@ function Panel(props: NodeProps & { node: FramePanel }): React.JSX.Element {
     canCollapse,
     toggleCollapsed: toggle
   }
-  const titled = node.panel === 'monitor' && !inTabs
+  const titled = TITLED.includes(node.panel) && !inTabs
   return (
     <section className={cls}>
       {titled && (

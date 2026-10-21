@@ -125,8 +125,19 @@ const api: CockpitApi = {
     list: () => ipcRenderer.invoke(IPC.sessionsList),
     onChange: (cb) => onSessionsChanged(cb),
     onFocusRequest: (cb) => onPaneFocus(cb),
+    send: (paneId, prompt) => ipcRenderer.invoke(IPC.sessionsSend, paneId, prompt),
     onOpenRequest: (cb) => onOpenSession(cb)
   },
+  prs: {
+    list: (paneId) => ipcRenderer.invoke(IPC.prsList, paneId),
+    open: (url) => ipcRenderer.send(IPC.openGitHub, url)
+  },
+  commands: {
+    list: (paneId) => ipcRenderer.invoke(IPC.commandsList, paneId),
+    save: (paneId, req) => ipcRenderer.invoke(IPC.commandsSave, paneId, req),
+    delete: (paneId, name, scope) => ipcRenderer.invoke(IPC.commandsDelete, paneId, name, scope)
+  },
+  menu: (items) => ipcRenderer.invoke(IPC.menuPopup, items),
   activity: {
     get: (paneId) => ipcRenderer.invoke(IPC.activityGet, paneId),
     onUpdate: (cb) => onActivityUpdate(cb),

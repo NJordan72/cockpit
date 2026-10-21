@@ -112,3 +112,31 @@ export function buildKidsMenu(handlers: { onAbout: () => void }): Menu {
     { label: app.name, submenu: [{ label: 'About Cockpit', click: handlers.onAbout }] }
   ])
 }
+
+/**
+ * A context menu the chrome asked for, rebuilt from plain fields so nothing
+ * but labels, ids, and nesting comes across IPC. Items without a string id
+ * and label are dropped; menus nest at most three deep.
+ */
+export function menuTemplate(
+  items: readonly unknown[],
+  choose: (id: string) => void,
+  depth = 0
+): MenuItemConstructorOptions[] {
+  const out: MenuItemConstructorOptions[] = []
+  for (const item of items.slice(0, 50)) {
+    if (typeof item !== 'object' || item === null) continue
+    const i = item as Record<string, unknown>
+    if (i.type === 'separator') {
+      out.push({ type: 'separator' })
+    } else if (typeof i.label !== 'string') {
+      continue
+    } else if (Array.isArray(i.submenu) && depth < 2) {
+      out.push({ label: i.label, submenu: menuTemplate(i.submenu, choose, depth + 1) })
+    } else if (typeof i.id === 'string') {
+      const id = i.id
+      out.push({ label: i.label, enabled: i.enabled !== false, click: () => choose(id) })
+    }
+  }
+  return out
+}

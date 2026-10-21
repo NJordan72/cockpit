@@ -13,7 +13,9 @@ export const PANEL_KINDS = [
   'widget',
   'clock',
   'image',
-  'monitor'
+  'monitor',
+  'prs',
+  'commands'
 ] as const
 
 export type PanelKind = (typeof PANEL_KINDS)[number]

@@ -1711,6 +1711,170 @@ button.icon:hover,
   opacity: 0.5;
 }
 
+/* ---- pull requests and commands panels ---- */
+
+.prs,
+.commands {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+}
+
+.prs-refresh {
+  margin-left: auto;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font-size: 13px;
+  padding: 0 2px;
+}
+
+.prs-refresh:hover {
+  color: var(--fg);
+}
+
+.prs-list,
+.commands-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  margin: 0;
+  padding: 2px 0 4px;
+  list-style: none;
+}
+
+.prs-row,
+.commands-row {
+  display: grid;
+  grid-template-columns: 8px 1fr;
+  column-gap: 7px;
+  align-items: baseline;
+  width: 100%;
+  padding: 3px 8px;
+  border: 0;
+  background: none;
+  color: var(--fg);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+}
+
+.prs-row:hover,
+.commands-row:hover {
+  background: var(--bg-hover);
+}
+
+.prs-row.draft .prs-title {
+  color: var(--muted);
+}
+
+.prs-checks {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  align-self: center;
+  background: var(--border);
+}
+
+.prs-checks.passing {
+  background: var(--green);
+}
+
+.prs-checks.failing {
+  background: var(--danger);
+}
+
+.prs-checks.pending {
+  background: var(--yellow);
+}
+
+.prs-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.prs-number {
+  font-family: var(--font-mono);
+  color: var(--muted);
+}
+
+.prs-meta,
+.commands-desc {
+  grid-column: 2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.commands-row {
+  grid-template-columns: 1fr auto;
+}
+
+.commands-name {
+  font-family: var(--font-mono);
+  color: var(--accent);
+}
+
+.commands-scope {
+  font-size: 10px;
+  letter-spacing: var(--header-tracking);
+  text-transform: var(--header-case);
+  color: var(--muted);
+}
+
+.commands-desc {
+  grid-column: 1 / -1;
+}
+
+.save-command {
+  width: min(560px, 92vw);
+}
+
+.save-command-name {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  font-family: var(--font-mono);
+}
+
+.save-command-name .picker-input {
+  flex: 1;
+}
+
+.save-command-optional {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.save-command-body {
+  resize: vertical;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.save-command-scope {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 12px;
+  font-size: 12px;
+}
+
+.save-command-scope code {
+  font-family: var(--font-mono);
+  color: var(--muted);
+}
+
+.save-command-error {
+  margin: 0 0 10px;
+  color: var(--danger);
+  font-size: 12px;
+}
+
 /* ---- kids mode ---- */
 
 /* Above everything, including dialogs, and no drag regions: nothing under it can be reached. */

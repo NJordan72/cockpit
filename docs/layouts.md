@@ -45,6 +45,8 @@ stacked (`"direction": "column"`).
 | `clock`     | The time and date, in the theme's accent.                                          | `seconds`, `date` (both default true), `hour12` (default: locale) |
 | `image`     | An image or animated GIF.                                                          | `src`, `fit` (`cover` or `contain`), `position`, `pixelated`      |
 | `monitor`   | CPU, memory, load averages, and uptime, read every 2 seconds while it's on screen. | –                                                                 |
+| `prs`       | Open pull requests of the focused pane's repository, through `gh`.                 | –                                                                 |
+| `commands`  | Claude Code slash commands for the focused pane's repository and everywhere.       | –                                                                 |
 
 An image's `src` is a file in `~/.cockpit/images/`, or `theme:<file>` for one
 in the current theme's folder. Without an extension, Cockpit tries `.gif`,

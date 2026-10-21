@@ -36,6 +36,8 @@ interface Props {
   canCollapse: boolean
   /** The panel is on screen. */
   visible: boolean
+  /** Open the save-as-command dialog with a prompt from the log. */
+  onSavePrompt: (prompt: string) => void
 }
 
 const TAB_LABEL: Record<ActivityTab, string> = {
@@ -59,7 +61,8 @@ export function ActivityPanel({
   settings,
   onChange,
   canCollapse,
-  visible
+  visible,
+  onSavePrompt
 }: Props): React.JSX.Element {
   const activity = usePaneActivity(session.id)
   const [logFilter, setLogFilter] = useState<LogFilter>({ events: true, tools: true })
@@ -120,6 +123,7 @@ export function ActivityPanel({
             activity={activity}
             filter={logFilter}
             onFilter={setLogFilter}
+            onSavePrompt={onSavePrompt}
           />
         ) : settings.tab === 'files' ? (
           <FilesView
@@ -192,12 +196,14 @@ function LogView({
   session,
   activity,
   filter,
-  onFilter
+  onFilter,
+  onSavePrompt
 }: {
   session: PaneSession
   activity: PaneActivity | null
   filter: LogFilter
   onFilter: (f: LogFilter) => void
+  onSavePrompt: (prompt: string) => void
 }): React.JSX.Element {
   const entries = useMemo(() => activity?.entries ?? [], [activity])
   const shown = useMemo(() => filterLog(entries, filter), [entries, filter])
@@ -229,6 +235,12 @@ function LogView({
                   entry={e}
                   open={openRow === key}
                   onToggle={() => setOpenRow(openRow === key ? null : key)}
+                  // Codex logs only that a turn started, not what was asked.
+                  onSavePrompt={
+                    e.kind === 'prompt' && !e.agent && session.agent === 'claude'
+                      ? () => onSavePrompt(e.detail ?? e.text)
+                      : undefined
+                  }
                 />
               )
             })}
@@ -248,11 +260,13 @@ function LogView({
 function LogRow({
   entry: e,
   open,
-  onToggle
+  onToggle,
+  onSavePrompt
 }: {
   entry: ActivityEntry
   open: boolean
   onToggle: () => void
+  onSavePrompt?: () => void
 }): React.JSX.Element {
   const when = new Date(e.at).toLocaleString()
   return (
@@ -261,8 +275,24 @@ function LogRow({
         type="button"
         tabIndex={-1}
         className={`log-row ${e.kind}${e.agent ? ' sub' : ''}${open ? ' open' : ''}`}
-        title={e.agent ? `${when} · in ${e.agent}` : when}
+        title={
+          (e.agent ? `${when} · in ${e.agent}` : when) +
+          (onSavePrompt ? '\nRight-click to save as a command' : '')
+        }
         onClick={onToggle}
+        onContextMenu={(ev) => {
+          if (!onSavePrompt) return
+          ev.preventDefault()
+          void window.cockpit
+            .menu([
+              { id: 'save', label: 'Save as command…' },
+              { id: 'copy', label: 'Copy prompt' }
+            ])
+            .then((chosen) => {
+              if (chosen === 'save') onSavePrompt()
+              else if (chosen === 'copy') window.cockpit.clipboard.writeText(e.detail ?? e.text)
+            })
+        }}
       >
         <span className="log-time">{formatClock(e.at)}</span>
         <span className="log-kind">{KIND_LABEL[e.kind]}</span>

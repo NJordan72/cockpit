@@ -24,6 +24,7 @@ import { ActivityPanel } from './activity/ActivityPanel'
 import { newSessionTarget } from './agentSessions'
 import { Launcher } from './components/Launcher'
 import { Picker } from './components/Picker'
+import { SaveCommandDialog } from './components/SaveCommandDialog'
 import { SecretPromptDialog } from './components/SecretPromptDialog'
 import { SessionList } from './components/SessionList'
 import { TabBar } from './components/TabBar'
@@ -37,6 +38,8 @@ import { Monitor } from './frame/Monitor'
 import { KidsMode } from './kids/KidsMode'
 import { actionFor, compileKeymap } from './keybindings'
 import { findPane, makePane } from './layout/model'
+import { CommandsPanel } from './panels/CommandsPanel'
+import { PrPanel, type RunWhere } from './panels/PrPanel'
 import { activeTab, layoutReducer } from './layout/reducer'
 import { terminals } from './terminal/registry'
 import { applyTheme } from './theme'
@@ -84,6 +87,10 @@ export function App(): React.JSX.Element {
   /** The layout saved last time, until a project is launched or it is restored. */
   const [restorable, setRestorable] = useState<Layout | null>(null)
   const [kids, setKids] = useState(false)
+  /** The prompt being saved as a command, and the pane it came from. */
+  const [saving, setSaving] = useState<{ prompt: string; paneId: string | null } | null>(null)
+  /** Bumped when a command is saved, so the Commands panel reads its list again. */
+  const [commandsRevision, setCommandsRevision] = useState(0)
   const loaded = useRef(false)
   /** The appearance main has on disk, as JSON, so it isn't saved back to it. */
   const savedAppearance = useRef<string | null>(null)
@@ -149,6 +156,7 @@ export function App(): React.JSX.Element {
   const layoutRef = useRef(layout)
   const pickerRef = useRef(picker)
   const promptRef = useRef(prompt)
+  const savingRef = useRef(saving)
   const sessionsRef = useRef(sessions)
   const kidsRef = useRef(kids)
   useEffect(() => {
@@ -156,6 +164,7 @@ export function App(): React.JSX.Element {
     layoutRef.current = layout
     pickerRef.current = picker
     promptRef.current = prompt
+    savingRef.current = saving
     sessionsRef.current = sessions
     kidsRef.current = kids
   })
@@ -455,7 +464,7 @@ export function App(): React.JSX.Element {
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
       // Kids mode takes every key itself; no shortcut may close or open anything.
-      if (kidsRef.current || pickerRef.current || promptRef.current) return
+      if (kidsRef.current || pickerRef.current || promptRef.current || savingRef.current) return
       const action = actionFor(keymap, e)
       if (!action) return
       e.preventDefault()
@@ -466,7 +475,7 @@ export function App(): React.JSX.Element {
     // Keys pressed while a widget has focus never reach this window; the
     // main process forwards Cmd chords instead.
     const offAppKey = api.onAppKey((key) => {
-      if (kidsRef.current || pickerRef.current || promptRef.current) return
+      if (kidsRef.current || pickerRef.current || promptRef.current || savingRef.current) return
       const action = actionFor(keymap, key)
       if (action) runAction(action)
     })
@@ -492,7 +501,7 @@ export function App(): React.JSX.Element {
   useEffect(() => {
     const onFocus = (): void => {
       requestAnimationFrame(() => {
-        if (kidsRef.current || pickerRef.current || promptRef.current) return
+        if (kidsRef.current || pickerRef.current || promptRef.current || savingRef.current) return
         const el = document.activeElement
         if (!el || el === document.body || el.tagName === 'BUTTON') focusWorkspace()
       })
@@ -550,7 +559,30 @@ export function App(): React.JSX.Element {
     [config, focused]
   )
 
+  /** Types `prompt` into a pane's agent and shows that pane. */
+  const sendPrompt = useCallback(
+    (paneId: string, prompt: string) => {
+      void api.sessions.send(paneId, prompt).then((ok) => {
+        if (ok) revealPane(paneId)
+      })
+    },
+    [api, revealPane]
+  )
+
   useEffect(() => api.sessions.onOpenRequest((req) => openSession(req.prompt)), [api, openSession])
+
+  const runPrompt = useCallback(
+    (prompt: string, where: RunWhere) => {
+      if (where === 'here' && focused?.agent) sendPrompt(focused.id, prompt)
+      else openSession(prompt)
+    },
+    [focused, sendPrompt, openSession]
+  )
+
+  const savePrompt = useCallback(
+    (prompt: string) => setSaving({ prompt, paneId: focused?.id ?? null }),
+    [focused]
+  )
 
   const restore = useCallback(() => {
     if (restorable) dispatch({ type: 'replace', layout: restorable })
@@ -619,8 +651,23 @@ export function App(): React.JSX.Element {
               )
             }}
             visible={widgetsVisible && place.visible}
+            onSavePrompt={savePrompt}
           />
         ) : null
+      case 'prs':
+        return (
+          <PrPanel session={focused} visible={widgetsVisible && place.visible} onRun={runPrompt} />
+        )
+      case 'commands':
+        return (
+          <CommandsPanel
+            session={focused}
+            visible={widgetsVisible && place.visible}
+            revision={commandsRevision}
+            onRun={runPrompt}
+            onSave={savePrompt}
+          />
+        )
       case 'clock':
         return <Clock panel={p} visible={widgetsVisible && place.visible} />
       case 'image':
@@ -742,6 +789,17 @@ export function App(): React.JSX.Element {
           key={prompt.promptId}
           prompt={prompt}
           onAnswer={(value) => answerPrompt(prompt, value)}
+        />
+      )}
+      {saving && (
+        <SaveCommandDialog
+          prompt={saving.prompt}
+          paneId={saving.paneId}
+          onClose={(saved) => {
+            setSaving(null)
+            if (saved) setCommandsRevision((r) => r + 1)
+            requestAnimationFrame(focusWorkspace)
+          }}
         />
       )}
       {kids && theme && (

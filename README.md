@@ -174,6 +174,43 @@ and folded state are saved with the layout (see [Themes and
 layouts](#themes-and-layouts)). When no widget below it takes up height, the
 panel fills its column.
 
+Right-click one of your prompts in the Log to save it as a slash command (see
+below).
+
+## Pull requests and commands
+
+Two panels share a tab group under Activity.
+
+**Pull requests** lists the open pull requests of the focused pane's
+repository, read with `gh pr list` every minute while it shows, so it uses your
+own `gh` login. The dot is the checks (green passing, yellow running, red
+failing), and the second line shows the author, draft, review state, and age.
+**All**, **Mine**, **To review** (you're a requested reviewer), **Others**,
+and **Bots** (authors gh marks as bots, or with `[bot]` or `app/` in the
+name) filter it. Click a pull request to open it on GitHub. Right-click it to
+run a skill on it, in a new agent tab or in the focused pane: Review
+(`/review-pr`), Prep review, Propose ship, Approve ship, or Ship. Each gets
+the PR's URL. The list is in `PR_ACTIONS` in `src/shared/prs.ts`.
+
+**Commands** lists Claude Code slash commands from the repository's
+`.claude/commands/` and from `~/.claude/commands/`. Click one to run it in the
+focused pane (or in a new tab, when the focused pane runs no agent);
+right-click for more. **+ Save a prompt** offers the focused pane's last dozen
+prompts. Saving opens a form for the name, an optional description (shown in
+Claude's `/` menu), the prompt itself, and where it goes: everywhere or just
+this repository. Cockpit writes an ordinary command file, so the command also
+works in Claude Code outside Cockpit. The Activity log keeps the first 4,000
+characters of a prompt, so a longer one is saved cut short.
+
+A new agent tab opens in the focused pane's directory with its preset when
+that pane runs an agent, and with the first Claude Code preset otherwise. It
+starts with the prompt already sent. Sending to an existing pane pastes the
+prompt and presses Enter.
+
+These panels came after the built-in layouts were saved, so a layout you've
+changed doesn't have them until View > Reset Layout (or until you add them by
+hand; see [docs/layouts.md](docs/layouts.md)).
+
 ## Widgets
 
 Widgets are small HTML pages, each in its own sandboxed iframe, that reach the network, secrets, and storage only through an

@@ -31,16 +31,20 @@ import {
   type PtyCreateOptions,
   type PtyCreated
 } from '@shared/ipc'
+import type { SaveResult } from '@shared/commands'
+import type { PrList } from '@shared/prs'
 import { BUILT_IN_LAYOUTS, layoutChoices } from '@shared/layouts'
 import { resolveTheme, type ResolvedTheme } from '@shared/theme'
 import { AgentMonitor } from './agents/monitor'
 import { serveAssets } from './assets'
 import { ConfigStore } from './config'
 import { listDirs, processCwd, processCwdSync, resolveCwd } from './dirs'
+import { deleteCommand, listCommands, saveCommand } from './commands'
 import { gitStatus } from './git'
 import { listCharacters } from './kids'
-import { buildKidsMenu, buildMenu } from './menu'
+import { buildKidsMenu, buildMenu, menuTemplate } from './menu'
 import { abbreviateHome, claudeHome, cockpitHome, codexHome, expandHome } from './paths'
+import { listPrs } from './prs'
 import { PtyManager } from './pty'
 import { registerSchemes } from './schemes'
 import { SystemMonitor } from './system'
@@ -117,6 +121,18 @@ function findPaneNode(id: string): PaneNode | null {
     if (pane) return pane
   }
   return null
+}
+
+/** Where a pane's agent runs now: as its hooks last said, else its process's cwd, else where it started. */
+async function paneCwd(paneId: string): Promise<string | null> {
+  const pane = findPaneNode(paneId)
+  if (!pane) return null
+  let cwd = agents.activity.cwd(pane.id)
+  if (!cwd) {
+    const pid = ptys.pid(pane.id)
+    cwd = pid === null ? null : await processCwd(pid)
+  }
+  return cwd ?? expandHome(pane.cwd)
 }
 
 /** Longest prompt a panel or widget may type into a pane. */
@@ -422,16 +438,63 @@ function registerIpc(): void {
   })
   ipcMain.handle(IPC.activityGit, async (e, paneId: unknown) => {
     if (!trusted(e) || typeof paneId !== 'string') return null
-    const pane = findPaneNode(paneId)
-    if (!pane) return null
-    // Where Claude's hooks say it runs; otherwise where the process is now
-    // (a shell may have cd'd); otherwise where the pane started.
-    let cwd = agents.activity.cwd(pane.id)
-    if (!cwd) {
-      const pid = ptys.pid(pane.id)
-      cwd = pid === null ? null : await processCwd(pid)
+    const cwd = await paneCwd(paneId)
+    return cwd ? gitStatus(cwd) : null
+  })
+  ipcMain.handle(IPC.sessionsSend, (e, paneId: unknown, prompt: unknown) => {
+    if (!trusted(e) || typeof paneId !== 'string' || typeof prompt !== 'string') return false
+    return sendPrompt(paneId, prompt)
+  })
+  ipcMain.handle(IPC.prsList, async (e, paneId: unknown): Promise<PrList> => {
+    if (!trusted(e) || typeof paneId !== 'string') return { ok: false, error: 'No pane' }
+    const cwd = await paneCwd(paneId)
+    return cwd ? listPrs(cwd) : { ok: false, error: 'No pane' }
+  })
+  ipcMain.on(IPC.openGitHub, (e, url: unknown) => {
+    if (trusted(e) && typeof url === 'string' && url.startsWith('https://github.com/')) {
+      void shell.openExternal(url)
     }
-    return gitStatus(cwd ?? expandHome(pane.cwd))
+  })
+  ipcMain.handle(IPC.commandsList, async (e, paneId: unknown) => {
+    if (!trusted(e)) throw new Error('untrusted sender')
+    return listCommands(typeof paneId === 'string' ? await paneCwd(paneId) : null)
+  })
+  ipcMain.handle(
+    IPC.commandsSave,
+    async (e, paneId: unknown, req: unknown): Promise<SaveResult> => {
+      if (!trusted(e) || typeof req !== 'object' || req === null) {
+        return { ok: false, error: 'untrusted sender' }
+      }
+      const r = req as Record<string, unknown>
+      if (typeof r.name !== 'string' || typeof r.body !== 'string') {
+        return { ok: false, error: 'A command needs a name and a prompt' }
+      }
+      const cwd = typeof paneId === 'string' ? await paneCwd(paneId) : null
+      return saveCommand({
+        name: r.name,
+        scope: r.scope === 'repo' ? 'repo' : 'global',
+        body: r.body,
+        description: typeof r.description === 'string' ? r.description : undefined,
+        overwrite: r.overwrite === true,
+        cwd: cwd ?? app.getPath('home')
+      })
+    }
+  )
+  ipcMain.handle(IPC.commandsDelete, async (e, paneId: unknown, name: unknown, scope: unknown) => {
+    if (!trusted(e) || typeof name !== 'string') return false
+    const cwd = typeof paneId === 'string' ? await paneCwd(paneId) : null
+    return deleteCommand(cwd, name, scope === 'repo' ? 'repo' : 'global')
+  })
+  ipcMain.handle(IPC.menuPopup, (e, items: unknown) => {
+    const win = BrowserWindow.fromWebContents(e.sender)
+    if (!trusted(e) || !win || !Array.isArray(items)) return null
+    return new Promise<string | null>((resolve) => {
+      let chosen: string | null = null
+      Menu.buildFromTemplate(menuTemplate(items, (id) => (chosen = id))).popup({
+        window: win,
+        callback: () => resolve(chosen)
+      })
+    })
   })
   ipcMain.on(IPC.systemWatch, (e, on: unknown) => {
     if (trusted(e)) system.set(on === true)

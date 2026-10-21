@@ -1,6 +1,8 @@
 // IPC channel names and payload types shared by main, preload, and renderer.
 import type { ActivityUpdate, GitStatus, PaneActivity } from './activity'
+import type { CommandList, CommandScope, SaveCommand, SaveResult } from './commands'
 import type { AppearanceSettings, CockpitConfig, LauncherSettings, Layout } from './config'
+import type { PrList } from './prs'
 import type { ThemeDefinition } from './theme'
 import type {
   SecretPrompt,
@@ -45,7 +47,14 @@ export const IPC = {
   activityGet: 'activity:get',
   activityUpdate: 'activity:update',
   activityGit: 'activity:git',
+  sessionsSend: 'sessions:send',
   sessionsOpen: 'sessions:open',
+  prsList: 'prs:list',
+  commandsList: 'commands:list',
+  commandsSave: 'commands:save',
+  commandsDelete: 'commands:delete',
+  menuPopup: 'menu:popup',
+  openGitHub: 'open:github',
   appKey: 'app:key',
   kidsGet: 'kids:get',
   kidsSet: 'kids:set',
@@ -80,6 +89,12 @@ export interface PtyCreateOptions {
 export interface OpenSessionRequest {
   prompt: string
 }
+
+/** A native context menu. The chosen item's id comes back, or null. */
+export type MenuItem =
+  | { id: string; label: string; enabled?: boolean }
+  | { type: 'separator' }
+  | { label: string; submenu: MenuItem[] }
 
 export interface PtyCreated {
   pid: number
@@ -208,9 +223,26 @@ export interface CockpitApi {
     onChange(cb: (sessions: PaneSession[]) => void): () => void
     /** The user clicked a notification about this pane. */
     onFocusRequest(cb: (paneId: string) => void): () => void
+    /** Type a prompt into an agent pane and submit it. False if it isn't running one. */
+    send(paneId: string, prompt: string): Promise<boolean>
     /** A widget asked for a new session. */
     onOpenRequest(cb: (req: OpenSessionRequest) => void): () => void
   }
+  prs: {
+    /** Open pull requests for the pane's repository, through gh. */
+    list(paneId: string): Promise<PrList>
+    /** Opens a https://github.com/ URL in the browser. */
+    open(url: string): void
+  }
+  commands: {
+    /** Saved commands for the pane's repository and everywhere. */
+    list(paneId: string | null): Promise<CommandList>
+    /** Saves a command; a repo command goes in the pane's repository. */
+    save(paneId: string | null, req: Omit<SaveCommand, 'cwd'>): Promise<SaveResult>
+    delete(paneId: string | null, name: string, scope: CommandScope): Promise<boolean>
+  }
+  /** Shows a native context menu at the pointer. */
+  menu(items: MenuItem[]): Promise<string | null>
   activity: {
     /** Everything kept about a pane's activity so far. */
     get(paneId: string): Promise<PaneActivity>

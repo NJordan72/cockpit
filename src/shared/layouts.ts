@@ -19,6 +19,15 @@ const widgetsGroup = (): FrameSplit => ({
   children: []
 })
 
+/** Pull requests and saved commands, one at a time. */
+const reposGroup = (size: number): FrameTabs => ({
+  type: 'tabs',
+  id: 'repo',
+  size,
+  active: 'prs',
+  children: [panel('prs'), panel('commands')]
+})
+
 /** Tab bar across the top, terminals, and a sidebar on the right. */
 const classic: FrameNode = {
   type: 'split',
@@ -40,6 +49,7 @@ const classic: FrameNode = {
           children: [
             panel('sessions', { max: 0.45 }),
             panel('activity', { size: 320, tab: 'log' }),
+            reposGroup(240),
             widgetsGroup()
           ]
         }
@@ -70,7 +80,13 @@ const cockpit: FrameNode = {
       id: 'main',
       direction: 'row',
       children: [
-        panel('activity', { size: 300, tab: 'log' }),
+        {
+          type: 'split',
+          id: 'left',
+          direction: 'column',
+          size: 300,
+          children: [panel('activity', { tab: 'log' }), reposGroup(260)]
+        },
         panel('workspace'),
         {
           type: 'split',

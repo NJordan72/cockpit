@@ -673,3 +673,29 @@ that request.
   migration of the v2 sidebar, cell sizing, and vm_stat parsing (328 total).
 
 Next: M5 (optional).
+
+### Clear, Resume, PRs, commands, story actions (added 2026-10-19, not in the original plan)
+
+- Toolbar Clear (Cmd+Shift+Backspace) gives the focused pane a new id, so its
+  terminal remounts and main forgets its status and activity. Resume
+  (Cmd+Shift+R) does the same with `claude --resume` or `codex resume`; the
+  pane's `resume` flag is dropped once it starts.
+- Needs-input fix: a number key alone now answers a dialog (Claude Code's
+  permission prompt acts on 1/2/3 without Enter, and no hook fires until the
+  tool finishes), and a `Notification` reminder that arrives after the user
+  answered is ignored.
+- New panes can start with a first prompt (`PaneNode.prompt`, passed last on
+  the agent's command line). Main can paste a prompt into an agent pane
+  (bracketed paste, then Enter after 150 ms).
+- Widgets: `"sessions": "prompt"` adds `cockpit.sessions.start(prompt)` and
+  `send(id, prompt)`. The Shortcut widget declares it, and right-clicking a
+  story runs `/start-story sc-<id>` in a new tab or an open agent pane.
+- Panels `prs` (gh pr list, filters, skills from `PR_ACTIONS`) and `commands`
+  (Claude Code command files, global or per repo, saved from Activity log
+  prompts). Both sit in a tab group in the built-in layouts. Chrome context
+  menus are native (`api.menu`, rebuilt in main by `menuTemplate`).
+- Verified in the built app with a scratch COCKPIT_HOME and a fake `claude`
+  script (so no real skill ran): the PR list from gh with a Dock-like PATH,
+  bot marking, PR and story actions in new and existing panes, saving a repo
+  command through the dialog and running it. Not verified: the needs-input
+  fix against a live Claude session, and saving from a real Activity log.
