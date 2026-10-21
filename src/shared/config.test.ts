@@ -13,6 +13,7 @@ import {
   pushRecentPage,
   readSidebar,
   SIDEBAR_MAX_WIDTH,
+  terminalFontStack,
   type RecentDir
 } from './config'
 import { findNode } from './frame'
@@ -407,5 +408,15 @@ describe('migrateConfig: kids mode', () => {
     for (const exitWord of ['bye', 'by e', 'cmd+q', '', 7, 'a'.repeat(33)]) {
       expect(migrateConfig({ kids: { exitWord } }).kids.exitWord).toBe(DEFAULT_KIDS.exitWord)
     }
+  })
+})
+
+describe('terminalFontStack', () => {
+  it('falls back to the Nerd Font symbols', () => {
+    expect(terminalFontStack('Menlo, monospace')).toBe('Menlo, monospace, "Symbols Nerd Font Mono"')
+  })
+  it('leaves a stack that already names them alone', () => {
+    const stack = '"Symbols Nerd Font", Menlo'
+    expect(terminalFontStack(stack)).toBe(stack)
   })
 })

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Terminal, type ITheme } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { Unicode11Addon } from '@xterm/addon-unicode11'
-import type { KidsSettings, TerminalSettings } from '@shared/config'
+import { terminalFontStack, type KidsSettings, type TerminalSettings } from '@shared/config'
 import type { KidsCharacter } from '@shared/ipc'
 import type { Theme } from '@shared/theme'
 import { KidsAudio } from './audio'
@@ -63,7 +63,7 @@ export function KidsMode({
     const { settings, terminal, theme, xtermTheme, onExit } = start.current
 
     const term = new Terminal({
-      fontFamily: terminal.fontFamily,
+      fontFamily: terminalFontStack(terminal.fontFamily),
       fontSize: Math.min(48, Math.round(terminal.fontSize * 2)),
       lineHeight: 1.1,
       cursorBlink: true,
