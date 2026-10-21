@@ -380,6 +380,10 @@ your login files (`.zprofile`, `.zshenv`), even when Cockpit is started from
 the Dock. Keybindings take `Cmd`, `Ctrl`, `Alt`/`Option`, `Shift` plus a key
 (`A`–`Z`, `0`–`9`, `F1`–`F20`, `Left`/`Right`/`Up`/`Down`, `Enter`, `Tab`,
 `Esc`, `[`, `]`, and other punctuation); an empty string unbinds an action.
+`terminal.fontFamily` is a CSS font stack. 0xProto Nerd Font Mono ships with
+the app and is the default, and Symbols Nerd Font Mono is added to the end of
+every stack, so Nerd Font prompt icons (Starship, Powerlevel10k) show up in
+whatever font you pick.
 `appearance.theme` picks a theme (also in View > Theme), and
 `appearance.overrides` changes single tokens of it (`bg`, `fg`, `accent`,
 `radius`, ...); see [docs/themes.md](docs/themes.md). `appearance.layout`

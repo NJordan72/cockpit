@@ -1,0 +1,31 @@
+/*
+ * Terminal fonts that ship with the app, from Nerd Fonts v3.5.1
+ * (github.com/ryanoasis/nerd-fonts), converted to WOFF2. 0xProto is the
+ * default terminal font; the symbols font is every terminal's last fallback,
+ * so prompt icons render in any font.
+ */
+@font-face {
+  font-family: '0xProto Nerd Font Mono';
+  src: url('./0xProtoNerdFontMono-Regular.woff2') format('woff2');
+  font-weight: normal;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: '0xProto Nerd Font Mono';
+  src: url('./0xProtoNerdFontMono-Bold.woff2') format('woff2');
+  font-weight: bold;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: '0xProto Nerd Font Mono';
+  src: url('./0xProtoNerdFontMono-Italic.woff2') format('woff2');
+  font-weight: normal;
+  font-style: italic;
+}
+
+@font-face {
+  font-family: 'Symbols Nerd Font Mono';
+  src: url('./SymbolsNerdFontMono-Regular.woff2') format('woff2');
+}
