@@ -21,6 +21,13 @@
     }
   ]
 
+  // The search box runs its text as a Shortcut search and lists the results in
+  // a Search tab, up to SEARCH_MAX_STORIES of them.
+  var SEARCH_VIEW = 'search'
+  var SEARCH_MAX_STORIES = 25
+  // Searching waits for a pause in typing this long.
+  var SEARCH_DEBOUNCE_MS = 400
+
   // What right-click > Start story sends to an agent. {id} is the story's number.
   var START_STORY = '/start-story sc-{id}'
 
@@ -133,16 +140,25 @@
     )
   }
 
+  // Workflow states by id, from the last sync. Searches reuse them.
+  var workflowStates = null
+
+  function readStates(workflows) {
+    var states = {}
+    workflows.forEach(function (wf) {
+      wf.states.forEach(function (s) {
+        states[s.id] = { name: s.name, type: s.type, position: s.position }
+      })
+    })
+    workflowStates = states
+    return states
+  }
+
   function fetchSync(token, prefs) {
     return Promise.all([api(token, '/api/v3/member'), api(token, '/api/v3/workflows')]).then(
       function (r) {
         var me = r[0]
-        var states = {}
-        r[1].forEach(function (wf) {
-          wf.states.forEach(function (s) {
-            states[s.id] = { name: s.name, type: s.type, position: s.position }
-          })
-        })
+        var states = readStates(r[1])
         var queryTemplate = (prefs.query || '').trim() || DEFAULT_QUERY
         var query = queryTemplate.split('{me}').join(me.mention_name)
         return Promise.all([
@@ -198,6 +214,7 @@
   var view = 'doing'
   var openIds = {}
   var renderedKey = null
+  var search = { text: '', pending: false, error: null, result: null } // the search box's
 
   var token = null
   var needToken = false // no token stored and the prompt was dismissed
@@ -277,6 +294,7 @@
           retryAfterMs = 0
           // A saved feed tab only exists once its feed has loaded.
           if (
+            view !== SEARCH_VIEW &&
             prefs.view &&
             allViews().some(function (v) {
               return v.id === prefs.view
@@ -346,11 +364,23 @@
   }
 
   function allViews() {
-    return VIEWS.concat(
+    var views = VIEWS.concat(
       feeds().map(function (f) {
         return { id: f.id, label: f.label, feed: f }
       })
     )
+    if (search.text) views.push({ id: SEARCH_VIEW, label: 'Search', search: true })
+    return views
+  }
+
+  // The tab to go back to when the search is cleared.
+  function savedView() {
+    var id = prefs.view
+    return allViews().some(function (v) {
+      return v.id === id && !v.search
+    })
+      ? id
+      : VIEWS[0].id
   }
 
   function currentView() {
@@ -363,6 +393,7 @@
   }
 
   function visibleStories(v) {
+    if (v.search) return search.result ? search.result.stories : []
     return v.feed ? v.feed.stories || [] : stories().filter(v.match)
   }
 
@@ -405,8 +436,8 @@
     }
     var syncedAt = Date.parse(sync.syncedAt)
     $('age').textContent = ago(sync.syncedAt)
-    var feed = currentView().feed
-    var total = feed ? feed.total : sync.total
+    var v = currentView()
+    var total = v.feed ? v.feed.total : v.search ? search.result && search.result.total : sync.total
     $('count').textContent = typeof total === 'number' ? String(total) : '--'
     if (sync.ok && !authFailed)
       dot.className += Date.now() - syncedAt > STALE_MS ? ' stale' : ' fresh'
@@ -417,19 +448,17 @@
     var tabs = $('tabs')
     tabs.textContent = ''
     allViews().forEach(function (v) {
-      var btn = h(
-        'button',
-        'sc-tab' + (v.id === view ? ' on' : ''),
-        v.label + ' ' + visibleStories(v).length
-      )
+      var count = v.search && search.pending ? '…' : visibleStories(v).length
+      var btn = h('button', 'sc-tab' + (v.id === view ? ' on' : ''), v.label + ' ' + count)
       btn.addEventListener('click', function () {
         if (view === v.id) return
         view = v.id
         listEl.scrollTop = 0
         render(true)
-        savePrefs({ view: view })
+        if (!v.search) savePrefs({ view: view })
       })
       if (v.feed) btn.title = v.feed.query
+      if (v.search) btn.title = searchQuery(search.text)
       tabs.appendChild(btn)
     })
   }
@@ -567,7 +596,7 @@
   })
   window.addEventListener('blur', closeMenu)
 
-  function renderEmpty() {
+  function renderEmpty(v) {
     if (needToken) {
       return h('div', 'sc-empty', [
         'Shortcut Stories needs a Shortcut API token.',
@@ -580,17 +609,23 @@
       ])
     }
     if (authFailed) return h('div', 'sc-empty', 'No stories yet.')
+    if (v.search) {
+      if (search.pending) return h('div', 'sc-empty', 'Searching...')
+      if (search.error) return h('div', 'sc-empty', 'Search failed: ' + search.error)
+      return h('div', 'sc-empty', 'No stories match.')
+    }
     if (!sync || !sync.syncedAt)
       return h('div', 'sc-empty', sync && !sync.ok ? 'No stories yet.' : 'Loading...')
     return h('div', 'sc-empty', 'Nothing here.')
   }
 
   function renderList() {
-    var visible = visibleStories(currentView())
+    var v = currentView()
+    var visible = visibleStories(v)
     var scroll = listEl.scrollTop
     listEl.textContent = ''
     if (!visible.length) {
-      listEl.appendChild(renderEmpty())
+      listEl.appendChild(renderEmpty(v))
       return
     }
     // Stories arrive sorted by state, so grouping is a single pass.
@@ -618,12 +653,98 @@
   function render(force) {
     renderStatus()
     // Rebuilding the list resets hover and can jump the scroll, so only do it when something changed.
-    var key = view + '|' + needToken + authFailed + '|' + JSON.stringify([stories(), feeds()])
+    var key =
+      view + '|' + needToken + authFailed + '|' + JSON.stringify([stories(), feeds(), search])
     if (!force && key === renderedKey) return
     renderedKey = key
     renderTabs()
     renderList()
   }
+
+  // ---- search ----
+
+  var searchInput = $('searchInput')
+  var searchTimer = null
+  // Bumped by every search and by clearing, so a slow answer to old text is dropped.
+  var searchSeq = 0
+
+  // {me} works here as in the gear's query. Archived stories are left out
+  // unless the text asks about them.
+  function searchQuery(text) {
+    var q = sync && sync.me ? text.split('{me}').join(sync.me) : text
+    return /is:archived/.test(q) ? q : q + ' !is:archived'
+  }
+
+  function loadStates(t) {
+    if (workflowStates) return Promise.resolve(workflowStates)
+    return api(t, '/api/v3/workflows').then(readStates)
+  }
+
+  function runSearch() {
+    clearTimeout(searchTimer)
+    var text = search.text
+    var seq = ++searchSeq
+    getToken(false)
+      .then(function (t) {
+        if (!t) throw new Error('no Shortcut token')
+        return Promise.all([loadStates(t), searchStories(t, searchQuery(text), SEARCH_MAX_STORIES)])
+      })
+      .then(
+        function (r) {
+          if (seq !== searchSeq) return
+          search.error = null
+          search.result = {
+            total: r[1].total,
+            stories: r[1].stories
+              .map(function (s) {
+                return toWidgetStory(s, r[0])
+              })
+              .sort(compareStories)
+          }
+        },
+        function (err) {
+          if (seq !== searchSeq) return
+          search.error = err.message
+          search.result = null
+        }
+      )
+      .then(function () {
+        if (seq !== searchSeq) return
+        search.pending = false
+        render(true)
+      })
+  }
+
+  // Typing shows the Search tab and searches after a pause; clearing the box
+  // goes back to the tab you were on.
+  function setSearch(value) {
+    var text = value.trim()
+    if (text === search.text) return
+    clearTimeout(searchTimer)
+    if (!text) {
+      searchSeq++
+      search = { text: '', pending: false, error: null, result: null }
+      if (view === SEARCH_VIEW) view = savedView()
+    } else {
+      search.text = text
+      search.pending = true
+      if (view !== SEARCH_VIEW) listEl.scrollTop = 0
+      view = SEARCH_VIEW
+      searchTimer = setTimeout(runSearch, SEARCH_DEBOUNCE_MS)
+    }
+    render(true)
+  }
+
+  searchInput.addEventListener('input', function () {
+    setSearch(searchInput.value)
+  })
+  searchInput.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' && search.text) runSearch()
+    if (e.key === 'Escape') {
+      searchInput.value = ''
+      setSearch('')
+    }
+  })
 
   // ---- query editor ----
 

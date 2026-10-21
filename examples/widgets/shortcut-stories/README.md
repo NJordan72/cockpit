@@ -24,6 +24,13 @@ Paste it once; Cockpit keeps it encrypted and the widget reads it from then on.
   (`team:frontend state:"Backlog: Defined" !is:archived`), so the gear's query
   doesn't affect it. To add or change tabs like this, edit `FEEDS` in
   `shortcut.js`.
+- **Search** appears when you type in the search box. The text runs as a
+  Shortcut search across every story you can see, not just the ones in the
+  other tabs, and the first 25 results are grouped by state like the rest.
+  Search operators and `{me}` work as in the gear's query. Archived stories
+  are left out unless the text mentions `is:archived`. The search runs once
+  you pause typing, or at once on Enter, and Escape clears it and goes back
+  to the tab you were on.
 - Click a story to open it in your browser. The ▸ on the right of a row shows
   its full title, type, and when it was last updated, without opening it.
 - The gear edits the Shortcut search query, and Enter (or save) applies it
