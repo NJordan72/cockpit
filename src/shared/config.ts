@@ -53,6 +53,8 @@ export interface PaneNode {
   cwd: string
   /** Start the agent at its own session picker. Dropped once the pane has started. */
   resume?: boolean
+  /** The agent's first prompt. Dropped once the pane has started. */
+  prompt?: string
 }
 
 export interface SplitNode {

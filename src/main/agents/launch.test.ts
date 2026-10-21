@@ -43,13 +43,20 @@ describe('agentLaunch', () => {
   })
 
   it('opens the session picker when resuming', () => {
-    expect(agentLaunch('claude --model opus', files, true).command).toBe(
+    expect(agentLaunch('claude --model opus', files, { resume: true }).command).toBe(
       `claude --resume --settings ${files.claudeSettings} --model opus`
     )
-    expect(agentLaunch('codex --search', files, true).command).toBe(
+    expect(agentLaunch('codex --search', files, { resume: true }).command).toBe(
       `codex ${CODEX_SETTINGS.map((s) => `-c ${shQuote(s)}`).join(' ')} resume --search`
     )
-    expect(agentLaunch('htop', files, true)).toEqual({ command: 'htop', agent: null })
+    expect(agentLaunch('htop', files, { resume: true })).toEqual({ command: 'htop', agent: null })
+  })
+
+  it('passes a first prompt last, quoted', () => {
+    expect(agentLaunch('claude', files, { prompt: "/start-story sc-12 it's" }).command).toBe(
+      `claude --settings ${files.claudeSettings} '/start-story sc-12 it'\\''s'`
+    )
+    expect(agentLaunch('htop', files, { prompt: 'hi' }).command).toBe('htop')
   })
 
   it('runs anything else unchanged', () => {

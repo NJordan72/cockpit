@@ -21,6 +21,7 @@ import { resolveTheme, themeVars, type ResolvedTheme, type ThemeDefinition } fro
 import type { AppearanceCommand, PaneSession } from '@shared/ipc'
 import type { SecretPrompt, SessionStatus, WidgetInfo } from '@shared/widgets'
 import { ActivityPanel } from './activity/ActivityPanel'
+import { newSessionTarget } from './agentSessions'
 import { Launcher } from './components/Launcher'
 import { Picker } from './components/Picker'
 import { SecretPromptDialog } from './components/SecretPromptDialog'
@@ -536,6 +537,20 @@ export function App(): React.JSX.Element {
     },
     [api]
   )
+
+  /** A new tab running an agent that starts with `prompt`. */
+  const openSession = useCallback(
+    (prompt: string) => {
+      const target = config && newSessionTarget(config.presets, focused)
+      if (!target) return
+      setPicker(null)
+      setRestorable(null)
+      dispatch({ type: 'newTab', pane: { ...makePane(target.presetId, target.cwd), prompt } })
+    },
+    [config, focused]
+  )
+
+  useEffect(() => api.sessions.onOpenRequest((req) => openSession(req.prompt)), [api, openSession])
 
   const restore = useCallback(() => {
     if (restorable) dispatch({ type: 'replace', layout: restorable })

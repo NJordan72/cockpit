@@ -49,20 +49,27 @@ const widgets = {
     storage: true,
     sessions: 'read'
   }),
-  bare: widget('bare', {})
+  bare: widget('bare', {}),
+  prompter: widget('prompter', { sessions: 'prompt' })
 }
+let started: string[]
+let sent: [string, string][]
 
 beforeEach(() => {
   dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cockpit-broker-'))
   secrets = new MemorySecrets()
   prompt = vi.fn(() => Promise.resolve<string | null>('typed-in'))
   opened = []
+  started = []
+  sent = []
   broker = new WidgetBroker({
     widget: (id) => widgets[id as keyof typeof widgets],
     storage: new WidgetStorage(dir, () => undefined),
     secrets: secrets as unknown as SecretStore,
     promptSecret: (w, name) => prompt(w, name),
     sessions: () => [],
+    startSession: (p) => (started.push(p), true),
+    sendPrompt: (id, p) => (sent.push([id, p]), id === 'agent'),
     openExternal: (url) => {
       opened.push(url)
       return Promise.resolve()
@@ -93,13 +100,39 @@ describe('WidgetBroker', () => {
       ['secrets.set', { name: 'token', value: 'x' }],
       ['secrets.delete', { name: 'token' }],
       ['openExternal', { url: 'https://app.example.com/' }],
-      ['sessions.list', {}]
+      ['sessions.list', {}],
+      ['sessions.start', { prompt: 'hi' }],
+      ['sessions.send', { id: 'agent', prompt: 'hi' }]
     ]
     for (const [method, params] of calls) {
       expect(errorCode(await broker.call('bare', method, params)), method).toBe('permission_denied')
     }
     expect(opened).toEqual([])
     expect(prompt).not.toHaveBeenCalled()
+  })
+
+  it('prompts sessions only with "prompt", which also reads them', async () => {
+    expect(errorCode(await broker.call('full', 'sessions.start', { prompt: 'hi' }))).toBe(
+      'permission_denied'
+    )
+    expect(await broker.call('prompter', 'sessions.list', {})).toEqual({ ok: true, value: [] })
+    expect(await broker.call('prompter', 'sessions.start', { prompt: '/start-story 1' })).toEqual({
+      ok: true,
+      value: null
+    })
+    expect(await broker.call('prompter', 'sessions.send', { id: 'agent', prompt: 'go' })).toEqual({
+      ok: true,
+      value: null
+    })
+    expect(
+      errorCode(await broker.call('prompter', 'sessions.send', { id: 'shell', prompt: 'go' }))
+    ).toBe('invalid_argument')
+    expect(errorCode(await broker.call('prompter', 'sessions.start', {}))).toBe('invalid_argument')
+    expect(started).toEqual(['/start-story 1'])
+    expect(sent).toEqual([
+      ['agent', 'go'],
+      ['shell', 'go']
+    ])
   })
 
   it('keeps storage separate per widget', async () => {

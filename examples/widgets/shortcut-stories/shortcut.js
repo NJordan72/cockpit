@@ -21,6 +21,9 @@
     }
   ]
 
+  // What right-click > Start story sends to an agent. {id} is the story's number.
+  var START_STORY = '/start-story sc-{id}'
+
   var POLL_MS = 60 * 1000
   // While the widget can't be seen, poll this rarely; showing it refreshes at once if stale.
   var HIDDEN_POLL_MS = 15 * 60 * 1000
@@ -464,7 +467,17 @@
       h('div', 'sc-body', [h('div', 'sc-name', s.name || 'untitled'), h('div', 'sc-meta', meta)]),
       more
     ])
-    row.title = s.name + '\n' + s.state + ' - ' + s.type + '\nClick to open in Shortcut'
+    row.title =
+      s.name +
+      '\n' +
+      s.state +
+      ' - ' +
+      s.type +
+      '\nClick to open in Shortcut; right-click to start it'
+    row.addEventListener('contextmenu', function (e) {
+      e.preventDefault()
+      showStoryMenu(s, e.clientX, e.clientY)
+    })
     row.addEventListener('click', function () {
       if (!s.url) return
       cockpit.openExternal(s.url).catch(function (err) {
@@ -473,6 +486,86 @@
     })
     return row
   }
+
+  // ---- right-click: start a story in an agent session ----
+
+  // Panes running Claude Code or Codex, from cockpit.sessions.
+  var agentSessions = []
+
+  function setSessions(list) {
+    agentSessions = (list || []).filter(function (x) {
+      return x.agent && x.status !== 'exited'
+    })
+  }
+
+  var menuEl = null
+
+  function closeMenu() {
+    if (menuEl) menuEl.remove()
+    menuEl = null
+  }
+
+  function menuItem(label, onPick, hint) {
+    var b = h('button', 'sc-menu-item', [label])
+    b.type = 'button'
+    if (hint) b.appendChild(h('span', 'sc-menu-hint', hint))
+    b.addEventListener('click', function (e) {
+      e.stopPropagation()
+      closeMenu()
+      onPick()
+    })
+    return b
+  }
+
+  // Shown in the error line until the next status update clears it.
+  function failed(err) {
+    var errEl = $('error')
+    errEl.textContent = 'Could not start the story: ' + String((err && err.message) || err)
+    errEl.hidden = false
+  }
+
+  function showStoryMenu(s, x, y) {
+    closeMenu()
+    var prompt = START_STORY.replace('{id}', String(s.id))
+    var items = [
+      menuItem('Start story in a new session', function () {
+        cockpit.sessions.start(prompt).catch(failed)
+      })
+    ]
+    if (agentSessions.length) {
+      items.push(h('div', 'sc-menu-label', 'Start story in'))
+      agentSessions.forEach(function (x) {
+        items.push(
+          menuItem(
+            x.title || x.name,
+            function () {
+              cockpit.sessions.send(x.id, prompt).catch(failed)
+            },
+            x.status + (x.focused ? ' · focused' : '')
+          )
+        )
+      })
+    }
+    items.push(h('div', 'sc-menu-sep'))
+    items.push(
+      menuItem('Open in Shortcut', function () {
+        if (s.url) cockpit.openExternal(s.url).catch(failed)
+      })
+    )
+    menuEl = h('div', 'sc-menu', items)
+    menuEl.setAttribute('role', 'menu')
+    document.body.appendChild(menuEl)
+    // Keep it inside the widget.
+    var r = menuEl.getBoundingClientRect()
+    menuEl.style.left = Math.max(4, Math.min(x, window.innerWidth - r.width - 4)) + 'px'
+    menuEl.style.top = Math.max(4, Math.min(y, window.innerHeight - r.height - 4)) + 'px'
+  }
+
+  document.addEventListener('click', closeMenu)
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') closeMenu()
+  })
+  window.addEventListener('blur', closeMenu)
 
   function renderEmpty() {
     if (needToken) {
@@ -586,8 +679,11 @@
 
   setInterval(renderStatus, 30 * 1000)
 
+  cockpit.sessions.subscribe(setSessions)
+
   cockpit.ready
     .then(function () {
+      cockpit.sessions.list().then(setSessions, function () {})
       return Promise.all([cockpit.storage.get('sync'), cockpit.storage.get('prefs')])
     })
     .then(function (saved) {

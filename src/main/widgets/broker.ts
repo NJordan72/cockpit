@@ -21,6 +21,10 @@ export interface BrokerDeps {
   /** Ask the user for a secret in the host's own UI. null if they cancel. */
   promptSecret: (widget: LoadedWidget, name: string) => Promise<string | null>
   sessions: () => SessionInfo[]
+  /** Open a new agent session that starts with the prompt. False if it couldn't. */
+  startSession: (prompt: string) => boolean
+  /** Type a prompt into an agent pane. False if the pane runs no agent. */
+  sendPrompt: (paneId: string, prompt: string) => boolean
   openExternal: (url: string) => Promise<void>
 }
 
@@ -146,10 +150,31 @@ export class WidgetBroker {
       }
 
       case 'sessions.list':
-        if (permissions.sessions !== 'read') {
+        if (!permissions.sessions) {
           throw denied('sessions are not allowed: set "permissions.sessions": "read"')
         }
         return this.deps.sessions()
+
+      case 'sessions.start':
+      case 'sessions.send': {
+        if (permissions.sessions !== 'prompt') {
+          throw denied('prompting sessions is not allowed: set "permissions.sessions": "prompt"')
+        }
+        const prompt = str(params, 'prompt')
+        const ok =
+          method === 'sessions.start'
+            ? this.deps.startSession(prompt)
+            : this.deps.sendPrompt(str(params, 'id'), prompt)
+        if (!ok) {
+          throw new WidgetCallError(
+            'invalid_argument',
+            method === 'sessions.start'
+              ? 'could not start a session'
+              : 'that session is not running Claude Code or Codex'
+          )
+        }
+        return null
+      }
     }
   }
 }

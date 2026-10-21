@@ -13,7 +13,11 @@ export interface WidgetPermissions {
   /** Secret names this widget may read and write. */
   secrets: string[]
   storage: boolean
-  sessions: 'read' | null
+  /**
+   * "read": list sessions and follow their status. "prompt": that, and start
+   * a new agent session with a prompt or type one into an existing agent pane.
+   */
+  sessions: 'read' | 'prompt' | null
 }
 
 export interface WidgetManifest {
@@ -122,6 +126,8 @@ export interface WidgetMethods {
   'secrets.delete': { name: string }
   openExternal: { url: string }
   'sessions.list': Record<string, never>
+  'sessions.start': { prompt: string }
+  'sessions.send': { id: string; prompt: string }
 }
 
 export type WidgetMethod = keyof WidgetMethods
@@ -135,7 +141,9 @@ export const WIDGET_METHODS: readonly WidgetMethod[] = [
   'secrets.set',
   'secrets.delete',
   'openExternal',
-  'sessions.list'
+  'sessions.list',
+  'sessions.start',
+  'sessions.send'
 ]
 
 /** Events the host pushes into a widget. */

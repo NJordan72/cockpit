@@ -94,7 +94,10 @@ separate values.
 
 **`storage`**: `true` to use `cockpit.storage`.
 
-**`sessions`**: `"read"` to use `cockpit.sessions`.
+**`sessions`**: `"read"` to use `cockpit.sessions.list` and `subscribe`.
+`"prompt"` allows those too, plus `cockpit.sessions.start` and `send`, which
+type into Claude Code or Codex. An agent can run commands, so give `"prompt"`
+only to widgets you trust as much as the terminal.
 
 ## What the sandbox allows
 
@@ -240,6 +243,19 @@ Opens the URL in the default browser if it matches a pattern in
 
 `list()` resolves with one entry per terminal pane, in tab order;
 `subscribe(cb)` calls `cb` with the full list whenever it changes.
+
+With `"sessions": "prompt"`:
+
+- `start(prompt)` opens a new agent tab in the focused pane's directory that
+  starts with `prompt`. It uses the focused pane's preset if that runs an
+  agent, and otherwise the first Claude Code preset.
+- `send(id, prompt)` pastes `prompt` into the pane `id` and presses Enter. It
+  rejects with `invalid_argument` if that pane isn't running Claude Code or
+  Codex.
+
+```js
+await cockpit.sessions.start('/start-story sc-1234')
+```
 
 ```js
 {

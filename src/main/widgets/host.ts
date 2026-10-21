@@ -37,6 +37,8 @@ export interface WidgetHostOptions {
   home: string
   theme: () => Theme
   sessions: () => SessionInfo[]
+  startSession: (prompt: string) => boolean
+  sendPrompt: (paneId: string, prompt: string) => boolean
   /** Only accept IPC from the chrome's own top-level frame. */
   trusted: (e: IpcMainEvent | IpcMainInvokeEvent) => boolean
 }
@@ -70,6 +72,8 @@ export class WidgetHost {
       secrets: this.secrets,
       promptSecret: (w, name) => this.promptSecret(w, name),
       sessions: opts.sessions,
+      startSession: opts.startSession,
+      sendPrompt: opts.sendPrompt,
       openExternal: (url) => shell.openExternal(url)
     })
   }
@@ -135,7 +139,7 @@ export class WidgetHost {
     if (json === this.lastSessions) return
     this.lastSessions = json
     for (const info of this.registry.list()) {
-      if (info.manifest?.permissions.sessions === 'read') this.sendEvent(info.id, 'sessions', list)
+      if (info.manifest?.permissions.sessions) this.sendEvent(info.id, 'sessions', list)
     }
   }
 

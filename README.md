@@ -189,7 +189,8 @@ examples/widgets/install.sh shortcut-stories   # just one
 `hello` calls every API and is the place to start a new widget.
 `shortcut-stories` lists your Shortcut stories. The first time it runs,
 Cockpit asks for a Shortcut API token and keeps it encrypted; see
-[its README](examples/widgets/shortcut-stories/README.md).
+[its README](examples/widgets/shortcut-stories/README.md). Right-click a story
+to run `/start-story` on it in a new agent tab or in any open agent pane.
 
 New widgets go into the layout's Widgets group, stacked by default. Each one
 collapses from its header, and the line between two widgets drags to resize

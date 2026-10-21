@@ -49,16 +49,24 @@ export interface AgentLaunch {
   agent: AgentKind | null
 }
 
+export interface LaunchOptions {
+  /** Open the agent's own picker of past sessions in the directory. */
+  resume?: boolean
+  /** The first prompt of a new session. */
+  prompt?: string
+}
+
 /**
  * The preset command with the flags its agent needs to report to Cockpit.
  * With `resume`, the agent opens its own picker of past sessions in the
  * directory: `claude --resume` (first, so its optional value can't take the
- * next word) or `codex resume`. Other commands run as they are.
+ * next word) or `codex resume`. A `prompt` goes last, as the agent's first
+ * message. Other commands run as they are.
  */
 export function agentLaunch(
   command: string | undefined,
   files: { claudeSettings: string },
-  resume = false
+  { resume = false, prompt }: LaunchOptions = {}
 ): AgentLaunch {
   const found = detectAgent(command)
   if (!command || !found) return { command, agent: null }
@@ -67,8 +75,9 @@ export function agentLaunch(
       ? [...(resume ? ['--resume'] : []), '--settings', files.claudeSettings]
       : [...CODEX_SETTINGS.flatMap((s) => ['-c', s]), ...(resume ? ['resume'] : [])]
   const inserted = flags.map(shQuote).join(' ')
+  const first = prompt?.trim() && !resume ? ` ${shQuote(prompt.trim())}` : ''
   return {
-    command: `${command.slice(0, found.end)} ${inserted}${command.slice(found.end)}`,
+    command: `${command.slice(0, found.end)} ${inserted}${command.slice(found.end)}${first}`,
     agent: found.agent
   }
 }

@@ -45,6 +45,7 @@ export const IPC = {
   activityGet: 'activity:get',
   activityUpdate: 'activity:update',
   activityGit: 'activity:git',
+  sessionsOpen: 'sessions:open',
   appKey: 'app:key',
   kidsGet: 'kids:get',
   kidsSet: 'kids:set',
@@ -71,6 +72,13 @@ export interface PtyCreateOptions {
   cwd?: string
   /** Open the agent's session picker instead of a new session. */
   resume?: boolean
+  /** The agent's first prompt, for a new session. */
+  prompt?: string
+}
+
+/** A widget asks for a new agent session that starts with a prompt. */
+export interface OpenSessionRequest {
+  prompt: string
 }
 
 export interface PtyCreated {
@@ -200,6 +208,8 @@ export interface CockpitApi {
     onChange(cb: (sessions: PaneSession[]) => void): () => void
     /** The user clicked a notification about this pane. */
     onFocusRequest(cb: (paneId: string) => void): () => void
+    /** A widget asked for a new session. */
+    onOpenRequest(cb: (req: OpenSessionRequest) => void): () => void
   }
   activity: {
     /** Everything kept about a pane's activity so far. */

@@ -155,10 +155,14 @@ export function layoutReducer(layout: Layout, action: LayoutAction): Layout {
       // The pane has started, so a restart from here opens a new session.
       const tab = tabOfPane(layout, action.paneId)
       const pane = tab && findPane(tab.root, action.paneId)
-      if (!tab || !pane || (pane.cwd === action.cwd && !pane.resume)) return layout
+      if (!tab || !pane || (pane.cwd === action.cwd && !pane.resume && !pane.prompt)) return layout
       return mapTab(layout, tab.id, (t) => ({
         ...t,
-        root: updatePane(t.root, action.paneId, { cwd: action.cwd, resume: undefined })
+        root: updatePane(t.root, action.paneId, {
+          cwd: action.cwd,
+          resume: undefined,
+          prompt: undefined
+        })
       }))
     }
   }

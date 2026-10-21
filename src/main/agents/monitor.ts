@@ -10,7 +10,7 @@ import { ActivityLog } from './activity'
 import { CodexWatcher } from './codex'
 import { parseClaudeHook, type AgentSignal } from './events'
 import { installAgentFiles, type AgentFiles } from './files'
-import { agentLaunch, type AgentLaunch } from './launch'
+import { agentLaunch, type AgentLaunch, type LaunchOptions } from './launch'
 import { Notifier, type NotifierDeps } from './notifier'
 import { EventServer, socketPath, type IncomingEvent } from './server'
 import { StatusTracker, type PaneStatus } from './tracker'
@@ -91,8 +91,8 @@ export class AgentMonitor {
   }
 
   /** The command to run for a preset, with whatever its agent needs to report here. */
-  launch(command: string | undefined, resume = false): AgentLaunch {
-    return agentLaunch(command, this.files, resume)
+  launch(command: string | undefined, opts: LaunchOptions = {}): AgentLaunch {
+    return agentLaunch(command, this.files, opts)
   }
 
   /** A pane's process is about to start. Returns the env vars that tie its events to it. */

@@ -265,7 +265,15 @@ import type {
     sessions: Object.freeze({
       list: async (): Promise<SessionInfo[]> =>
         (await call('sessions.list', {}, 10_000)) as SessionInfo[],
-      subscribe: (cb: Listener<'sessions'>) => subscribe('sessions', cb)
+      subscribe: (cb: Listener<'sessions'>) => subscribe('sessions', cb),
+      /** Opens a new agent tab in the focused pane's directory, starting with `prompt`. */
+      async start(prompt: string): Promise<void> {
+        await call('sessions.start', { prompt }, 10_000)
+      },
+      /** Types `prompt` into a session running Claude Code or Codex, and submits it. */
+      async send(id: string, prompt: string): Promise<void> {
+        await call('sessions.send', { id, prompt }, 10_000)
+      }
     }),
 
     theme: Object.freeze({

@@ -119,6 +119,34 @@ function findPaneNode(id: string): PaneNode | null {
   return null
 }
 
+/** Longest prompt a panel or widget may type into a pane. */
+const MAX_PROMPT = 20_000
+
+/**
+ * Types a prompt into a pane running Claude Code or Codex, as a bracketed
+ * paste so newlines stay in the prompt, then presses Enter. The pause lets
+ * the agent finish taking the paste, or it reads the Enter as part of it.
+ */
+function sendPrompt(paneId: string, prompt: string): boolean {
+  const status = agents.status(paneId)
+  const text = prompt.trim()
+  if (!status?.agent || status.status === 'exited' || !text || text.length > MAX_PROMPT) {
+    return false
+  }
+  // An ESC in the text could end the paste early, so none go through.
+  ptys.write(paneId, `\x1b[200~${text.replaceAll('\x1b', '')}\x1b[201~`)
+  setTimeout(() => ptys.write(paneId, '\r'), 150)
+  return true
+}
+
+/** Asks the chrome to open a new agent session that starts with `prompt`. */
+function openSession(prompt: string): boolean {
+  const text = prompt.trim()
+  if (!mainWindow || !text || text.length > MAX_PROMPT) return false
+  mainWindow.webContents.send(IPC.sessionsOpen, { prompt: text })
+  return true
+}
+
 /** Tell the monitor which pane the user is looking at, so a finished turn counts as seen. */
 function updateFocus(): void {
   const win = mainWindow
@@ -319,7 +347,10 @@ function registerIpc(): void {
     const preset = config.get().presets.find((p) => p.id === opts.presetId)
     if (!preset) throw new Error(`unknown preset: ${opts.presetId}`)
     const cwd = await resolveCwd(opts.cwd, preset.cwd)
-    const launch = agents.launch(preset.command, opts.resume === true)
+    const launch = agents.launch(preset.command, {
+      resume: opts.resume === true,
+      prompt: opts.prompt
+    })
     const env = agents.spawn(opts.id, launch.agent)
     let pid: number
     try {
@@ -487,7 +518,9 @@ async function startup(): Promise<void> {
     home: cockpitHome(),
     trusted,
     theme: () => currentTheme().tokens,
-    sessions: () => sessions().map(widgetSession)
+    sessions: () => sessions().map(widgetSession),
+    startSession: openSession,
+    sendPrompt
   })
   widgets.start()
 

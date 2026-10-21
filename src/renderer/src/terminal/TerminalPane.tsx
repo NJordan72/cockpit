@@ -43,6 +43,7 @@ export function TerminalPane({
     presetId: pane.presetId,
     cwd: pane.cwd,
     resume: pane.resume === true,
+    prompt: pane.prompt,
     onFocus,
     onStarted
   })
@@ -52,6 +53,7 @@ export function TerminalPane({
       presetId: pane.presetId,
       cwd: pane.cwd,
       resume: pane.resume === true,
+      prompt: pane.prompt,
       onFocus,
       onStarted
     }
@@ -109,9 +111,9 @@ export function TerminalPane({
     const start = (): void => {
       setExit(null)
       fit.fit()
-      const { presetId, cwd, resume } = spawnArgs.current
+      const { presetId, cwd, resume, prompt } = spawnArgs.current
       api.pty
-        .create({ id, cols: term.cols, rows: term.rows, presetId, cwd, resume })
+        .create({ id, cols: term.cols, rows: term.rows, presetId, cwd, resume, prompt })
         .then((created) => {
           if (!disposed) spawnArgs.current.onStarted(created.cwd)
         })

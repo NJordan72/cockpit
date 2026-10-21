@@ -9,6 +9,7 @@
     "network": ["api.app.shortcut.com"],
     "openExternal": ["https://app.shortcut.com/*"],
     "secrets": ["shortcut-token"],
-    "storage": true
+    "storage": true,
+    "sessions": "prompt"
   }
 }

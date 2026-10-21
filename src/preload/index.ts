@@ -5,6 +5,7 @@ import {
   IPC,
   type AppearanceCommand,
   type AppKey,
+  type OpenSessionRequest,
   type CockpitApi,
   type PaneSession,
   type PtyCreateOptions,
@@ -54,6 +55,7 @@ const onSecretPrompt: Subscribe<[SecretPrompt]> = channel(IPC.secretPrompt)
 const onAppKey: Subscribe<[AppKey]> = channel(IPC.appKey)
 const onSessionsChanged: Subscribe<[PaneSession[]]> = channel(IPC.sessionsChanged)
 const onPaneFocus: Subscribe<[string]> = channel(IPC.paneFocus)
+const onOpenSession: Subscribe<[OpenSessionRequest]> = channel(IPC.sessionsOpen)
 const onActivityUpdate: Subscribe<[ActivityUpdate]> = channel(IPC.activityUpdate)
 const onKidsChanged: Subscribe<[boolean]> = channel(IPC.kidsChanged)
 const onAppearanceCommand: Subscribe<[AppearanceCommand]> = channel(IPC.appearanceCommand)
@@ -122,7 +124,8 @@ const api: CockpitApi = {
   sessions: {
     list: () => ipcRenderer.invoke(IPC.sessionsList),
     onChange: (cb) => onSessionsChanged(cb),
-    onFocusRequest: (cb) => onPaneFocus(cb)
+    onFocusRequest: (cb) => onPaneFocus(cb),
+    onOpenRequest: (cb) => onOpenSession(cb)
   },
   activity: {
     get: (paneId) => ipcRenderer.invoke(IPC.activityGet, paneId),

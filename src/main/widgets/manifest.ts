@@ -92,8 +92,13 @@ export function parseManifest(raw: unknown, folder: string): ParsedManifest {
   if (perms.storage !== undefined && typeof perms.storage !== 'boolean') {
     throw new Error('"permissions.storage" must be true or false')
   }
-  if (perms.sessions !== undefined && perms.sessions !== 'read' && perms.sessions !== false) {
-    throw new Error('"permissions.sessions" must be "read" or false')
+  if (
+    perms.sessions !== undefined &&
+    perms.sessions !== 'read' &&
+    perms.sessions !== 'prompt' &&
+    perms.sessions !== false
+  ) {
+    throw new Error('"permissions.sessions" must be "read", "prompt", or false')
   }
 
   const permissions: WidgetPermissions = {
@@ -101,7 +106,7 @@ export function parseManifest(raw: unknown, folder: string): ParsedManifest {
     openExternal: externalList,
     secrets: [...new Set(secrets)],
     storage: perms.storage === true,
-    sessions: perms.sessions === 'read' ? 'read' : null
+    sessions: perms.sessions === 'read' || perms.sessions === 'prompt' ? perms.sessions : null
   }
 
   return {
