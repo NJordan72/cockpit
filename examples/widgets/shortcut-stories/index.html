@@ -13,6 +13,14 @@
         <span class="sc-spacer"></span>
         <span class="sc-age" id="age" title="Sync now">...</span>
         <span class="sc-dot" id="dot"></span>
+        <button
+          class="sc-gear"
+          id="spin"
+          title="Spin the wheel: start a random story from this tab in a new session"
+          disabled
+        >
+          &#127920;
+        </button>
         <button class="sc-gear" id="gear" title="Search query">&#9881;</button>
       </header>
 
@@ -36,6 +44,35 @@
       <nav class="sc-tabs" id="tabs"></nav>
       <div class="sc-error" id="error" hidden></div>
       <div class="sc-list" id="list"><div class="sc-empty">...</div></div>
+
+      <div class="wh" id="wheel" hidden>
+        <div class="wh-head">
+          <span class="wh-eyebrow">COME ON DOWN.</span>
+          <button type="button" class="wh-close" id="wheelClose" title="Stop (Esc)">&times;</button>
+        </div>
+        <div class="wh-stage" id="wheelStage">
+          <div class="wh-object" id="wheelObject">
+            <div class="wh-shadow"></div>
+            <div class="wh-stand"></div>
+            <div class="wh-foot"></div>
+            <div class="wh-scene">
+              <div class="wh-camera">
+                <div class="wh-wheel" id="drum">
+                  <div class="wh-panels" id="panels"></div>
+                  <div class="wh-side wh-side-back"></div>
+                  <div class="wh-rim wh-rim-left"></div>
+                  <div class="wh-rim"></div>
+                  <div class="wh-side"><div class="wh-hub" id="hub"></div></div>
+                </div>
+              </div>
+            </div>
+            <div class="wh-highlight"></div>
+            <div class="wh-pointer" id="pointer"></div>
+          </div>
+        </div>
+        <div class="wh-caption" id="wheelStatus"></div>
+        <div class="wh-story" id="wheelStory"></div>
+      </div>
     </div>
     <script src="shortcut.js"></script>
   </body>

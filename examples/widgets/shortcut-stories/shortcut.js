@@ -31,6 +31,18 @@
   // What right-click > Start story sends to an agent. {id} is the story's number.
   var START_STORY = '/start-story sc-{id}'
 
+  // The wheel (🎰) picks a story from the tab and starts it. Its panels are
+  // filled from the tab's stories: repeated when there are fewer, a random
+  // sample when there are more. style.css lays out 20 panels, 18° apart.
+  var WHEEL_SEGMENTS = 20
+  var WHEEL_TURNS = 4
+  // The box style.css draws the wheel in, before it's scaled to fit.
+  var WHEEL_WIDTH = 580
+  var WHEEL_HEIGHT = 650
+  var SPIN_MS = 5000
+  // How long the winner shows before its session starts.
+  var REVEAL_MS = 1800
+
   var POLL_MS = 60 * 1000
   // While the widget can't be seen, poll this rarely; showing it refreshes at once if stale.
   var HIDDEN_POLL_MS = 15 * 60 * 1000
@@ -553,9 +565,13 @@
     errEl.hidden = false
   }
 
+  function startPrompt(s) {
+    return START_STORY.replace('{id}', String(s.id))
+  }
+
   function showStoryMenu(s, x, y) {
     closeMenu()
-    var prompt = START_STORY.replace('{id}', String(s.id))
+    var prompt = startPrompt(s)
     var items = [
       menuItem('Start story in a new session', function () {
         cockpit.sessions.start(prompt).catch(failed)
@@ -592,9 +608,197 @@
 
   document.addEventListener('click', closeMenu)
   document.addEventListener('keydown', function (e) {
-    if (e.key === 'Escape') closeMenu()
+    if (e.key !== 'Escape') return
+    closeMenu()
+    closeWheel()
   })
   window.addEventListener('blur', closeMenu)
+
+  // ---- the wheel: spin for a random story and start it ----
+
+  var wheelEl = $('wheel')
+  var drumEl = $('drum')
+  var panelsEl = $('panels')
+  var pointerEl = $('pointer')
+  var wheelStatus = $('wheelStatus')
+  var wheelStory = $('wheelStory')
+  var wheel = null // the spin on screen: { frame, timer }
+  var audio = null
+  var reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)')
+
+  // The side plate's spokes and bulbs, which turn with the wheel.
+  function addToSide(cls, count) {
+    var hub = $('hub')
+    for (var i = 0; i < count; i++) {
+      var el = h('i', cls)
+      el.style.setProperty('--i', String(i))
+      hub.parentNode.insertBefore(el, hub)
+    }
+  }
+  addToSide('wh-spoke', WHEEL_SEGMENTS)
+  addToSide('wh-bulb', 40)
+
+  function randomIndex(n) {
+    return Math.floor(Math.random() * n)
+  }
+
+  function shuffle(list) {
+    var a = list.slice()
+    for (var i = a.length - 1; i > 0; i--) {
+      var j = randomIndex(i + 1)
+      var t = a[i]
+      a[i] = a[j]
+      a[j] = t
+    }
+    return a
+  }
+
+  // A story for each face, with the winner on at least one.
+  function wheelFaces(pool, winner) {
+    var picks = shuffle(pool)
+    var faces = []
+    for (var i = 0; i < WHEEL_SEGMENTS; i++) faces.push(picks[i % picks.length])
+    if (faces.indexOf(winner) < 0) faces[randomIndex(WHEEL_SEGMENTS)] = winner
+    return faces
+  }
+
+  // A short clack each time a pin passes the pointer.
+  function clack() {
+    try {
+      audio = audio || new AudioContext()
+      var t = audio.currentTime
+      var osc = audio.createOscillator()
+      var gain = audio.createGain()
+      osc.type = 'triangle'
+      osc.frequency.setValueAtTime(1400, t)
+      osc.frequency.exponentialRampToValueAtTime(300, t + 0.03)
+      gain.gain.setValueAtTime(0.05, t)
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.04)
+      osc.connect(gain)
+      gain.connect(audio.destination)
+      osc.start(t)
+      osc.stop(t + 0.04)
+    } catch (err) {
+      audio = null
+    }
+  }
+
+  // Blocked stories never go on the wheel.
+  function wheelPool(v) {
+    return visibleStories(v).filter(function (s) {
+      return !s.blocked
+    })
+  }
+
+  function updateSpinButton() {
+    $('spin').disabled = !wheelPool(currentView()).length
+  }
+
+  function closeWheel() {
+    if (!wheel) return
+    cancelAnimationFrame(wheel.frame)
+    clearTimeout(wheel.timer)
+    wheel = null
+    wheelEl.hidden = true
+  }
+
+  // The story on the panel under the pointer.
+  function showStory(s) {
+    wheelStory.textContent = ''
+    wheelStory.appendChild(h('b', null, '#' + s.id))
+    wheelStory.appendChild(document.createTextNode(s.name || 'untitled'))
+  }
+
+  // The wheel turns downward, the way a contestant pulls it, so the next
+  // panels come in from the top.
+  function spinWheel() {
+    var v = currentView()
+    var pool = wheelPool(v)
+    var blocked = visibleStories(v).length - pool.length
+    if (wheel || !pool.length) return
+    closeMenu()
+    var winner = pool[randomIndex(pool.length)]
+    var faces = wheelFaces(pool, winner)
+    var landings = []
+    faces.forEach(function (s, i) {
+      if (s === winner) landings.push(i)
+    })
+    var land = landings[randomIndex(landings.length)]
+
+    wheel = { frame: 0, timer: 0 }
+    wheelEl.hidden = false
+    wheelEl.className = 'wh spinning'
+    wheelStatus.textContent =
+      'Picking from ' +
+      pool.length +
+      (pool.length === 1 ? ' story' : ' stories') +
+      ' in ' +
+      v.label +
+      (blocked ? ', leaving out ' + blocked + ' blocked' : '')
+    showStory(faces[0])
+
+    var stage = $('wheelStage')
+    var scale = Math.min(stage.clientWidth / WHEEL_WIDTH, stage.clientHeight / WHEEL_HEIGHT)
+    $('wheelObject').style.transform = 'translate(-50%, -50%) scale(' + scale + ')'
+
+    var seg = 360 / WHEEL_SEGMENTS
+    panelsEl.textContent = ''
+    faces.forEach(function (s, i) {
+      // Colored like the show's wheel: one red panel with a green one either side.
+      var color = i === 0 ? ' red' : i === 1 || i === WHEEL_SEGMENTS - 1 ? ' green' : ''
+      var panel = h('div', 'wh-panel' + color, [
+        h('span', null, String(s.id)),
+        h('i', 'wh-pin wh-pin-left'),
+        h('i', 'wh-pin wh-pin-right')
+      ])
+      panel.style.setProperty('--i', String(i))
+      panelsEl.appendChild(panel)
+    })
+
+    // Land somewhere inside the panel, not dead center, the way a real wheel stops.
+    var target = WHEEL_TURNS * 360 + land * seg + (Math.random() - 0.5) * seg * 0.6
+    var duration = reducedMotion.matches ? 0 : SPIN_MS
+    var pegs = 0
+    // Timed from the first frame: a frame's timestamp can be earlier than
+    // performance.now() here, which would turn the wheel backward at first.
+    var started = null
+
+    function turn(now) {
+      if (started === null) started = now
+      var t = duration ? Math.min(1, (now - started) / duration) : 1
+      var angle = target * (1 - Math.pow(1 - t, 3))
+      drumEl.style.transform = 'rotateX(' + -angle + 'deg)'
+      // Pins sit between panels. The pointer kicks down as one passes and falls back.
+      var passed = Math.floor((angle + seg / 2) / seg)
+      var since = (angle + seg / 2) / seg - passed
+      pointerEl.style.setProperty('--kick', Math.max(0, 1 - since * 4) * 16 + 'deg')
+      if (passed !== pegs) {
+        pegs = passed
+        showStory(faces[passed % WHEEL_SEGMENTS])
+        if (duration) clack()
+      }
+      if (t < 1) wheel.frame = requestAnimationFrame(turn)
+      else landed(winner, panelsEl.children[land])
+    }
+    wheel.frame = requestAnimationFrame(turn)
+  }
+
+  function landed(winner, panel) {
+    wheelEl.className = 'wh won'
+    panel.classList.add('win')
+    showStory(winner)
+    wheelStatus.textContent = 'Starting a session · Esc to stop'
+    wheel.timer = setTimeout(function () {
+      closeWheel()
+      cockpit.sessions.start(startPrompt(winner)).catch(failed)
+    }, REVEAL_MS)
+  }
+
+  $('spin').addEventListener('click', function (e) {
+    e.stopPropagation()
+    spinWheel()
+  })
+  $('wheelClose').addEventListener('click', closeWheel)
 
   function renderEmpty(v) {
     if (needToken) {
@@ -659,6 +863,7 @@
     renderedKey = key
     renderTabs()
     renderList()
+    updateSpinButton()
   }
 
   // ---- search ----
@@ -794,7 +999,8 @@
       dueInMs: timer ? Math.max(0, lastAttempt + nextDelay() - Date.now()) : null,
       failures: failures,
       needToken: needToken,
-      authFailed: authFailed
+      authFailed: authFailed,
+      spinning: !!wheel
     }
   }
 
