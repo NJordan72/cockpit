@@ -82,6 +82,7 @@ address.
 | Cmd+W               | Close pane (last pane: tab)                |
 | Cmd+Shift+Backspace | Clear pane: restart its preset fresh       |
 | Cmd+Shift+R         | Resume: pick an old session for the pane   |
+| Cmd+Shift+E         | Open the pane's project in your editor     |
 | Cmd+Alt+Arrow       | Move focus between panes                   |
 | Cmd+Shift+] / [     | Next / previous tab                        |
 | Cmd+1 … Cmd+9       | Go to tab                                  |
@@ -96,7 +97,9 @@ the same directory, with a new terminal and an empty status, activity log, and
 file list; the old conversation stays in Claude Code's or Codex's own history.
 Resume does the same, but starts the agent at its own list of past sessions
 in that directory (`claude --resume`, `codex resume`) so you can pick one up again.
-Hover a button to see its shortcut. The toolbar stays put
+Editor opens the focused pane's project, which is its git repository or, outside
+one, its directory, with the `editor` command from `config.json` (see
+[Config](#config)). Hover a button to see its shortcut. The toolbar stays put
 when Cmd+B hides the panels, so the Panels button can bring them back.
 
 ## Agent awareness
@@ -401,10 +404,10 @@ picks a layout, and `appearance.layouts` holds the ones you changed or wrote;
 see [docs/layouts.md](docs/layouts.md). A config from before version 3 is kept
 as `config.v2.json` when Cockpit first rewrites it; its sidebar settings become
 your copy of the Classic layout.
-`editor` is the command that opens files from the Activity panel (`zed`,
-`code -g`, `cursor`). It runs through the login shell like a preset command,
-with the path added at the end. Leave it `null` (the default) to open files in
-their default app.
+`editor` is the command that opens files and projects from the Activity panel
+and the toolbar (`zed`, `code -g`, `cursor`). It runs through the login shell
+like a preset command, with the path added at the end. Leave it `null` (the
+default) to open files in their default app and projects in Finder.
 Set `COCKPIT_HOME` to use a different directory than `~/.cockpit`.
 
 ## Terminal keys

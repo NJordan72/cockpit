@@ -66,6 +66,7 @@ export const IPC = {
   filesExisting: 'files:existing',
   filesOpen: 'files:open',
   editorFile: 'editor:file',
+  editorProject: 'editor:project',
   appKey: 'app:key',
   kidsGet: 'kids:get',
   kidsSet: 'kids:set',
@@ -256,6 +257,8 @@ export interface CockpitApi {
   editor: {
     /** Opens an absolute path in config.json's editor. */
     openFile(path: string): void
+    /** Opens the pane's repository, or its directory outside one, in config.json's editor. */
+    openProject(paneId: string): void
   }
   commands: {
     /** Saved commands for the pane's repository and everywhere. */

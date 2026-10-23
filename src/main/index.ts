@@ -47,7 +47,7 @@ import { listDirs, processCwd, processCwdSync, resolveCwd } from './dirs'
 import { deleteCommand, listCommands, saveCommand } from './commands'
 import { existingPaths, resolveIn } from './files'
 import { editorCommand, openInEditor } from './editor'
-import { gitStatus } from './git'
+import { gitRoot, gitStatus } from './git'
 import { listCharacters } from './kids'
 import { buildKidsMenu, buildMenu, menuTemplate } from './menu'
 import { abbreviateHome, claudeHome, cockpitHome, codexHome, expandHome } from './paths'
@@ -516,6 +516,14 @@ function registerIpc(): void {
   })
   ipcMain.on(IPC.editorFile, (e, p: unknown) => {
     if (trusted(e) && typeof p === 'string' && isAbsolute(p)) void openEditor(p)
+  })
+  // The repository the pane is in, or its directory when it isn't in one.
+  ipcMain.on(IPC.editorProject, (e, paneId: unknown) => {
+    if (!trusted(e) || typeof paneId !== 'string') return
+    void (async () => {
+      const cwd = await paneCwd(paneId)
+      if (cwd) await openEditor((await gitRoot(cwd)) ?? cwd)
+    })()
   })
   ipcMain.handle(IPC.commandsList, async (e, paneId: unknown) => {
     if (!trusted(e)) throw new Error('untrusted sender')

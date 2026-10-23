@@ -103,6 +103,11 @@ export function parseLog(out: string): GitCommit[] {
     }))
 }
 
+/** The top level of the directory's repository, or null when it isn't in one. */
+export async function gitRoot(cwd: string): Promise<string | null> {
+  return (await git(cwd, ['rev-parse', '--show-toplevel']))?.trim() ?? null
+}
+
 /** The directory's repository, or null when it isn't in one (or git isn't installed). */
 export async function gitStatus(cwd: string): Promise<GitStatus | null> {
   const [root, status, log] = await Promise.all([
