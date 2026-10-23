@@ -370,6 +370,10 @@ function registerIpc(): void {
     const preset = config.get().presets.find((p) => p.id === opts.presetId)
     if (!preset) throw new Error(`unknown preset: ${opts.presetId}`)
     const cwd = await resolveCwd(opts.cwd, preset.cwd)
+    // A command meant for that directory mustn't run anywhere else.
+    if (opts.strictCwd && cwd !== expandHome(opts.cwd ?? '')) {
+      throw new Error(`not a directory: ${opts.cwd ?? '(none)'}`)
+    }
     const launch = agents.launch(preset.command, {
       resume: opts.resume === true,
       prompt: opts.prompt

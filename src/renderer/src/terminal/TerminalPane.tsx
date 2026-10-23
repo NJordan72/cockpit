@@ -10,6 +10,7 @@ import type { PtyExitInfo } from '@shared/ipc'
 import { classifyKey } from './keys'
 import { openHyperlink, pathLinkProvider } from './pathLinks'
 import { terminals } from './registry'
+import { runWhenReady, takeRun } from './run'
 
 interface Props {
   pane: PaneNode
@@ -114,17 +115,39 @@ export function TerminalPane({
     }
 
     let disposed = false
+    // A command from the Activity log, for the first start only.
+    let pending = takeRun(id)
+    let typing: { dispose: () => void } | null = null
     const start = (): void => {
       setExit(null)
       fit.fit()
       const { presetId, cwd, resume, prompt } = spawnArgs.current
+      const run = pending
+      pending = undefined
+      typing?.dispose()
+      // Watching starts before the PTY does, so the shell's first output is seen.
+      typing = run
+        ? runWhenReady(term, run.text, () => {
+            api.pty.write(id, '\r')
+          })
+        : null
       api.pty
-        .create({ id, cols: term.cols, rows: term.rows, presetId, cwd, resume, prompt })
+        .create({
+          id,
+          cols: term.cols,
+          rows: term.rows,
+          presetId,
+          cwd,
+          resume,
+          prompt,
+          strictCwd: run?.strictCwd
+        })
         .then((created) => {
           if (!disposed) spawnArgs.current.onStarted(created.cwd)
         })
         .catch((err: unknown) => {
           if (disposed) return
+          typing?.dispose()
           term.write(`\r\n\x1b[31m[could not start: ${String(err)}]\x1b[0m\r\n`)
           setExit({ exitCode: -1 })
         })
@@ -207,6 +230,7 @@ export function TerminalPane({
 
     return () => {
       disposed = true
+      typing?.dispose()
       observer.disconnect()
       cancelAnimationFrame(frame)
       term.textarea?.removeEventListener('focus', onFocusIn)

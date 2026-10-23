@@ -89,6 +89,8 @@ export interface PtyCreateOptions {
   presetId: string
   /** Working directory; falls back to the preset's, then home. */
   cwd?: string
+  /** Fail instead of falling back when `cwd` isn't a directory. */
+  strictCwd?: boolean
   /** Open the agent's session picker instead of a new session. */
   resume?: boolean
   /** The agent's first prompt, for a new session. */

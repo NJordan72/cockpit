@@ -385,6 +385,24 @@ describe('ActivityLog', () => {
     ])
   })
 
+  it('keeps Bash commands whole, with the directory they ran in', () => {
+    const script = `cat <<'EOF' > notes.txt\n${'x'.repeat(5000)}\nEOF`
+    hook('PreToolUse', { tool_name: 'Bash', tool_input: { command: script } })
+    hook('PermissionRequest', {
+      tool_name: 'Bash',
+      cwd: `${CWD}/web`,
+      tool_input: { command: 'rm -rf dist' }
+    })
+    hook('PreToolUse', { tool_name: 'Bash', tool_input: { command: 'y'.repeat(20_001) } })
+    hook('PreToolUse', { tool_name: 'Bash', tool_input: { command: '  ' } })
+    expect(log.snapshot('p1').entries.map((e) => e.command)).toEqual([
+      { text: script, cwd: CWD },
+      { text: 'rm -rf dist', cwd: `${CWD}/web` },
+      null,
+      null
+    ])
+  })
+
   it('copes with a payload too large to read', () => {
     log.claude('p1', 'PreToolUse', null)
     log.claude('p1', 'PostToolUse', null)

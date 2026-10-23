@@ -186,8 +186,13 @@ and folded state are saved with the layout (see [Themes and
 layouts](#themes-and-layouts)). When no widget below it takes up height, the
 panel fills its column.
 
-Right-click one of your prompts in the Log to save it as a slash command (see
-below).
+Right-click a line in the Log for what you can do with it:
+
+- A Bash call: **Copy command** copies the whole command. **Run in a new
+  terminal** opens a Shell tab in the directory Claude ran it in and runs it
+  there, as if you had pasted it at the prompt. If that directory is gone, the
+  tab says so and runs nothing.
+- One of your prompts: save it as a slash command (see below), or copy it.
 
 ## Pull requests and commands
 
