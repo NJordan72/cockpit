@@ -192,6 +192,8 @@ Right-click a line in the Log for what you can do with it:
   terminal** opens a Shell tab in the directory Claude ran it in and runs it
   there, as if you had pasted it at the prompt. If that directory is gone, the
   tab says so and runs nothing.
+- A Read, Edit, or Write call: **Open in editor** or **Copy path**. Files in the
+  Files tab have the same menu.
 - One of your prompts: save it as a slash command (see below), or copy it.
 
 ## Pull requests and commands
@@ -378,7 +380,8 @@ to `config.json.broken-<time>` before being replaced.
   },
   "projectsDir": "~/dev",
   "launcher": { "presetId": "claude" },
-  "kids": { "name": "", "exitWord": "grownup", "volume": 0.6, "sound": "songs", "speak": true }
+  "kids": { "name": "", "exitWord": "grownup", "volume": 0.6, "sound": "songs", "speak": true },
+  "editor": "zed"
 }
 ```
 
@@ -398,6 +401,10 @@ picks a layout, and `appearance.layouts` holds the ones you changed or wrote;
 see [docs/layouts.md](docs/layouts.md). A config from before version 3 is kept
 as `config.v2.json` when Cockpit first rewrites it; its sidebar settings become
 your copy of the Classic layout.
+`editor` is the command that opens files from the Activity panel (`zed`,
+`code -g`, `cursor`). It runs through the login shell like a preset command,
+with the path added at the end. Leave it `null` (the default) to open files in
+their default app.
 Set `COCKPIT_HOME` to use a different directory than `~/.cockpit`.
 
 ## Terminal keys

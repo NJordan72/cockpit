@@ -1,5 +1,6 @@
 import { realpathSync } from 'node:fs'
-import { basename, join } from 'node:path'
+import { stat } from 'node:fs/promises'
+import { basename, isAbsolute, join } from 'node:path'
 import {
   app,
   BrowserWindow,
@@ -45,6 +46,7 @@ import { ConfigStore } from './config'
 import { listDirs, processCwd, processCwdSync, resolveCwd } from './dirs'
 import { deleteCommand, listCommands, saveCommand } from './commands'
 import { existingPaths, resolveIn } from './files'
+import { editorCommand, openInEditor } from './editor'
 import { gitStatus } from './git'
 import { listCharacters } from './kids'
 import { buildKidsMenu, buildMenu, menuTemplate } from './menu'
@@ -259,6 +261,27 @@ function showAbout(): void {
     icon: nativeImage.createFromPath(iconPath),
     message: 'Cockpit',
     detail: `Version ${app.getVersion()}\nElectron ${process.versions.electron}`,
+    buttons: ['OK']
+  }
+  const win = mainWindow
+  void (win && !win.isDestroyed()
+    ? dialog.showMessageBox(win, options)
+    : dialog.showMessageBox(options))
+}
+
+/** Opens a file or folder in config.json's editor, and says so when that fails. */
+async function openEditor(target: string): Promise<void> {
+  const { editor } = config.get()
+  const found = await stat(target).then(
+    () => true,
+    () => false
+  )
+  const err = found ? await openInEditor(editor, target) : 'It no longer exists.'
+  if (!err) return
+  const options = {
+    type: 'warning' as const,
+    message: `Could not open ${abbreviateHome(target)}`,
+    detail: editor && found ? `${editorCommand(editor, target)}\n\n${err}` : err,
     buttons: ['OK']
   }
   const win = mainWindow
@@ -490,6 +513,9 @@ function registerIpc(): void {
       const err = await shell.openPath(resolveIn(cwd, found))
       if (err) console.warn(`could not open ${found}: ${err}`)
     })()
+  })
+  ipcMain.on(IPC.editorFile, (e, p: unknown) => {
+    if (trusted(e) && typeof p === 'string' && isAbsolute(p)) void openEditor(p)
   })
   ipcMain.handle(IPC.commandsList, async (e, paneId: unknown) => {
     if (!trusted(e)) throw new Error('untrusted sender')

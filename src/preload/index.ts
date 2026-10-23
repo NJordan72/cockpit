@@ -136,6 +136,9 @@ const api: CockpitApi = {
     existing: (paneId, paths) => ipcRenderer.invoke(IPC.filesExisting, paneId, paths),
     open: (paneId, path) => ipcRenderer.send(IPC.filesOpen, paneId, path)
   },
+  editor: {
+    openFile: (path) => ipcRenderer.send(IPC.editorFile, path)
+  },
   commands: {
     list: (paneId) => ipcRenderer.invoke(IPC.commandsList, paneId),
     save: (paneId, req) => ipcRenderer.invoke(IPC.commandsSave, paneId, req),

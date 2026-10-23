@@ -33,6 +33,8 @@ export interface ActivityEntry {
   agent: string | null
   /** For a Bash call, what it ran and where, so it can be copied or run again. */
   command: BashCommand | null
+  /** For a call that reads or changes a file, its absolute path. */
+  file: string | null
 }
 
 export interface BashCommand {

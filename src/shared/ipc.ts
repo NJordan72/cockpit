@@ -65,6 +65,7 @@ export const IPC = {
   webRecent: 'web:recent',
   filesExisting: 'files:existing',
   filesOpen: 'files:open',
+  editorFile: 'editor:file',
   appKey: 'app:key',
   kidsGet: 'kids:get',
   kidsSet: 'kids:set',
@@ -251,6 +252,10 @@ export interface CockpitApi {
     existing(paneId: string, paths: string[]): Promise<string[]>
     /** Opens a path from the pane's terminal in its default app. */
     open(paneId: string, path: string): void
+  }
+  editor: {
+    /** Opens an absolute path in config.json's editor. */
+    openFile(path: string): void
   }
   commands: {
     /** Saved commands for the pane's repository and everywhere. */

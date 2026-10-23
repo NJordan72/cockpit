@@ -184,6 +184,16 @@ async function commandMenu(c: BashCommand, onRun: (c: BashCommand) => void): Pro
   else if (chosen === 'run') onRun(c)
 }
 
+async function fileMenu(file: string): Promise<void> {
+  const api = window.cockpit
+  const chosen = await api.menu([
+    { id: 'edit', label: 'Open in editor' },
+    { id: 'copy', label: 'Copy path' }
+  ])
+  if (chosen === 'edit') api.editor.openFile(file)
+  else if (chosen === 'copy') api.clipboard.writeText(file)
+}
+
 async function promptMenu(prompt: string, onSave: () => void): Promise<void> {
   const api = window.cockpit
   const chosen = await api.menu([
@@ -245,13 +255,14 @@ function LogView({
   const onScroll = useStickyScroll(scrollRef, shown.at(-1)?.seq, session.id)
 
   const menuFor = (e: ActivityEntry): RowMenu | undefined => {
-    const { command } = e
+    const { command, file } = e
     if (command) {
       return {
         hint: 'Right-click to copy or run the command',
         open: () => void commandMenu(command, onRunCommand)
       }
     }
+    if (file) return { hint: 'Right-click to open the file', open: () => void fileMenu(file) }
     // Codex logs only that a turn started, not what was asked.
     if (e.kind === 'prompt' && !e.agent && session.agent === 'claude') {
       const prompt = e.detail ?? e.text
@@ -384,7 +395,11 @@ function FilesView({
                 <li
                   key={f.path}
                   className="file-row"
-                  title={`${f.path}\n${times.filter(Boolean).join(', ')}`}
+                  title={`${f.path}\n${times.filter(Boolean).join(', ')}\nRight-click to open`}
+                  onContextMenu={(e) => {
+                    e.preventDefault()
+                    void fileMenu(f.path)
+                  }}
                 >
                   <span className={`file-change ${f.change}`}>{CHANGE_LETTER[f.change]}</span>
                   <span className="file-path">

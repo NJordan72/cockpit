@@ -87,16 +87,29 @@ function firstString(input: Obj): string | null {
 
 const SPAWN_TOOLS = new Set(['Agent', 'Task'])
 
-/** What the log can do with a call: copy or rerun a Bash command. */
+/** Tools whose input names one file, and the field it's in. */
+const FILE_INPUTS = new Map([
+  ['Read', 'file_path'],
+  ['Edit', 'file_path'],
+  ['MultiEdit', 'file_path'],
+  ['Write', 'file_path'],
+  ['NotebookEdit', 'notebook_path'],
+  ['NotebookRead', 'notebook_path']
+])
+
+/** What the log can do with a call: copy or rerun a Bash command, open a file. */
 export function actionable(
   tool: string,
   input: unknown,
   cwd: string | null
-): Pick<ActivityEntry, 'command'> {
+): Pick<ActivityEntry, 'command' | 'file'> {
   const i = isObj(input) ? input : {}
   const command = tool === 'Bash' && typeof i.command === 'string' ? i.command : ''
+  const field = FILE_INPUTS.get(tool)
+  const file = field ? str(i[field]) : null
   return {
-    command: command.trim() && command.length <= MAX_COMMAND ? { text: command, cwd } : null
+    command: command.trim() && command.length <= MAX_COMMAND ? { text: command, cwd } : null,
+    file: file && path.isAbsolute(file) ? file : null
   }
 }
 
@@ -245,8 +258,8 @@ interface PaneLog {
   agentsDirty: boolean
 }
 
-type NewEntry = Omit<ActivityEntry, 'seq' | 'at' | 'detail' | 'agent' | 'command'> &
-  Partial<Pick<ActivityEntry, 'detail' | 'agent' | 'command'>>
+type NewEntry = Omit<ActivityEntry, 'seq' | 'at' | 'detail' | 'agent' | 'command' | 'file'> &
+  Partial<Pick<ActivityEntry, 'detail' | 'agent' | 'command' | 'file'>>
 
 export class ActivityLog {
   private panes = new Map<string, PaneLog>()
@@ -476,7 +489,8 @@ export class ActivityLog {
       text: e.text,
       detail: e.detail ?? null,
       agent: e.agent ?? null,
-      command: e.command ?? null
+      command: e.command ?? null,
+      file: e.file ?? null
     }
     pane.entries.push(entry)
     if (pane.entries.length > MAX_ENTRIES) pane.entries.splice(0, pane.entries.length - MAX_ENTRIES)
