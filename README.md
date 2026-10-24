@@ -363,7 +363,7 @@ to `config.json.broken-<time>` before being replaced.
     { "id": "codex", "name": "Codex", "command": "codex", "cwd": "~/dev" }
   ],
   "keybindings": { "newTab": "Cmd+T", "splitRight": "Cmd+D" /* ... */ },
-  "terminal": { "fontFamily": "...", "fontSize": 13 },
+  "terminal": { "fontFamily": "...", "fontSize": 13, "scrollback": 5000 },
   "appearance": {
     "theme": "midnight",
     "overrides": { "accent": "#ff9e64" },

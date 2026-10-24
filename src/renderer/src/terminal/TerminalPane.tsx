@@ -81,7 +81,7 @@ export function TerminalPane({
       macOptionIsMeta: true,
       macOptionClickForcesSelection: true,
       allowProposedApi: true,
-      scrollback: 10_000,
+      scrollback: settings.scrollback,
       theme,
       linkHandler: {
         activate: (_event, uri) => openHyperlink(id, uri),
@@ -274,6 +274,14 @@ export function TerminalPane({
     // New cell size means a new grid size; hidden panes refit when shown.
     if (visible) fitRef.current?.fit()
   }, [settings.fontFamily, settings.fontSize, visible])
+
+  useEffect(() => {
+    const term = termRef.current
+    // Lowering it drops the oldest lines past the new limit.
+    if (term && term.options.scrollback !== settings.scrollback) {
+      term.options.scrollback = settings.scrollback
+    }
+  }, [settings.scrollback])
 
   useEffect(() => {
     const term = termRef.current
