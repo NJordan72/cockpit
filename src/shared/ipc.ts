@@ -65,6 +65,8 @@ export const IPC = {
   webRecent: 'web:recent',
   filesExisting: 'files:existing',
   filesOpen: 'files:open',
+  editorFile: 'editor:file',
+  editorProject: 'editor:project',
   appKey: 'app:key',
   kidsGet: 'kids:get',
   kidsSet: 'kids:set',
@@ -89,6 +91,8 @@ export interface PtyCreateOptions {
   presetId: string
   /** Working directory; falls back to the preset's, then home. */
   cwd?: string
+  /** Fail instead of falling back when `cwd` isn't a directory. */
+  strictCwd?: boolean
   /** Open the agent's session picker instead of a new session. */
   resume?: boolean
   /** The agent's first prompt, for a new session. */
@@ -249,6 +253,12 @@ export interface CockpitApi {
     existing(paneId: string, paths: string[]): Promise<string[]>
     /** Opens a path from the pane's terminal in its default app. */
     open(paneId: string, path: string): void
+  }
+  editor: {
+    /** Opens an absolute path in config.json's editor. */
+    openFile(path: string): void
+    /** Opens the pane's repository, or its directory outside one, in config.json's editor. */
+    openProject(paneId: string): void
   }
   commands: {
     /** Saved commands for the pane's repository and everywhere. */

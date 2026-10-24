@@ -31,6 +31,17 @@ export interface ActivityEntry {
   detail: string | null
   /** The type of subagent this happened in ("Explore"), or null for the main thread. */
   agent: string | null
+  /** For a Bash call, what it ran and where, so it can be copied or run again. */
+  command: BashCommand | null
+  /** For a call that reads or changes a file, its absolute path. */
+  file: string | null
+}
+
+export interface BashCommand {
+  /** The whole command, uncut. */
+  text: string
+  /** Absolute. null when no hook has said where the session is. */
+  cwd: string | null
 }
 
 /** created beats edited beats read. */

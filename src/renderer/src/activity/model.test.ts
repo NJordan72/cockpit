@@ -17,7 +17,9 @@ const entry = (seq: number, kind: ActivityEntry['kind'] = 'tool'): ActivityEntry
   label: '',
   text: String(seq),
   detail: null,
-  agent: null
+  agent: null,
+  command: null,
+  file: null
 })
 
 const empty = (paneId = 'p1'): PaneActivity => ({ paneId, entries: [], files: [], agents: [] })

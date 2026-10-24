@@ -788,3 +788,46 @@ Next: M5 (optional).
   chrome reload; and after the exit word, the tab bar, the shell's keyboard,
   and a shell screen with none of the typed letters. No console errors beyond
   the missing banner image in the scratch home.
+
+### Copy and run Bash commands, open in editor (added 2026-10-23, not in the original plan)
+
+- Log entries carry `command` (a Bash call's whole command, up to 20,000
+  characters, and the hook's `cwd`) and `file` (the absolute path a Read,
+  Edit, MultiEdit, Write, or notebook call names). `detail` is still cut at
+  4,000, so copying and running use `command`, never the row's text.
+- Right-click a Bash row for Copy command or Run in a new terminal. Running
+  opens a Shell tab in that `cwd` and pastes the command at the prompt, then
+  presses Enter. The command is queued in the renderer (`terminal/run.ts`),
+  not in the layout, so a relaunch can't run it again, and only the pane's
+  first start takes it.
+  - The cue that the shell is reading a line is it turning on bracketed paste
+    (zsh, bash 5.1+, fish). Text sent before that is echoed above the prompt.
+    A shell that never turns it on gets the command 2 s after its output goes
+    quiet. xterm's `paste` does the bracketing, so a multi-line command goes
+    in as one paste.
+  - `pty.create` takes `strictCwd`: when the directory is gone, the pane fails
+    to start and says so, instead of `resolveCwd` falling back to home and
+    the command running there.
+- `config.json` `editor` (a command, null by default) opens files and
+  projects: `$SHELL -l -c "<editor> '<path>'"`, the same login shell presets
+  use, so a Dock launch finds `/opt/homebrew/bin/zed`. Unset, files open in
+  their default app (which isn't Zed on this Mac) and folders in Finder. A
+  failure, or a file that's gone, shows a dialog with the command and its
+  stderr.
+- Read/Edit/Write rows and Files tab rows have Open in editor and Copy path.
+  The toolbar's Editor button and Cmd+Shift+E (`openEditor`) open the focused
+  pane's project: `git rev-parse --show-toplevel` of its directory (from the
+  hooks, then `lsof`), or the directory outside a repo.
+- Verified in the built app with a scratch COCKPIT_HOME, a scratch repo, fake
+  hooks sent through `cockpit-hook` from a shell pane, a fake editor that logs
+  its arguments, and main's menu, dialog, and clipboard stubbed from the
+  driver: the menus' items; Copy command giving the whole three-line command;
+  Run opening a tab in `proj/web` that ran it as one paste (`pwd`, `one-42`,
+  `two words`) with nothing echoed above the prompt; a command from a missing
+  directory not running, and Enter restarting that pane as a plain shell in
+  `~`; Open in editor from the log and the Files tab; Copy path; the button
+  and Cmd+Shift+E opening the repo root from `proj/web`; and the dialogs for
+  an editor that isn't installed and a deleted file. The login shell finds
+  `zed`, but no real Zed window was opened.
+- Not covered: Codex rows (Codex doesn't report its commands or files), and
+  bash 3.2's quiet-output fallback, which is only unit tested.

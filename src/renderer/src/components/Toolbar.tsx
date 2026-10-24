@@ -24,7 +24,13 @@ const BUTTONS: { action: Action; label: string; title: string; needsPane: boolea
   { action: 'splitRight', label: '◫ Right', title: 'Split right', needsPane: true },
   { action: 'splitDown', label: '⊟ Down', title: 'Split down', needsPane: true },
   { action: 'clearPane', label: '⟲ Clear', title: 'Clear session', needsPane: true },
-  { action: 'resumePane', label: '↺ Resume', title: 'Open an old session', needsPane: true }
+  { action: 'resumePane', label: '↺ Resume', title: 'Open an old session', needsPane: true },
+  {
+    action: 'openEditor',
+    label: '✎ Editor',
+    title: "Open the pane's project in your editor",
+    needsPane: true
+  }
 ]
 
 /** The bar along the bottom of the window: the focused pane, and the actions most used on it. */

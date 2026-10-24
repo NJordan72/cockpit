@@ -26,6 +26,8 @@ const MAX_SPAWNS = 50
 const MAX_TEXT = 300
 /** A long command or message is kept whole in an entry's detail up to this length. */
 const MAX_DETAIL = 4000
+/** A Bash command longer than this can't be copied or run from the log. */
+const MAX_COMMAND = 20_000
 /** Updates are batched, so a burst of parallel tool calls goes out as one. */
 export const FLUSH_MS = 100
 
@@ -84,6 +86,32 @@ function firstString(input: Obj): string | null {
 }
 
 const SPAWN_TOOLS = new Set(['Agent', 'Task'])
+
+/** Tools whose input names one file, and the field it's in. */
+const FILE_INPUTS = new Map([
+  ['Read', 'file_path'],
+  ['Edit', 'file_path'],
+  ['MultiEdit', 'file_path'],
+  ['Write', 'file_path'],
+  ['NotebookEdit', 'notebook_path'],
+  ['NotebookRead', 'notebook_path']
+])
+
+/** What the log can do with a call: copy or rerun a Bash command, open a file. */
+export function actionable(
+  tool: string,
+  input: unknown,
+  cwd: string | null
+): Pick<ActivityEntry, 'command' | 'file'> {
+  const i = isObj(input) ? input : {}
+  const command = tool === 'Bash' && typeof i.command === 'string' ? i.command : ''
+  const field = FILE_INPUTS.get(tool)
+  const file = field ? str(i[field]) : null
+  return {
+    command: command.trim() && command.length <= MAX_COMMAND ? { text: command, cwd } : null,
+    file: file && path.isAbsolute(file) ? file : null
+  }
+}
 
 /** What a tool call is about, in a line: "Bash" and its command, "Edit" and its file. */
 export function describeTool(
@@ -230,8 +258,8 @@ interface PaneLog {
   agentsDirty: boolean
 }
 
-type NewEntry = Omit<ActivityEntry, 'seq' | 'at' | 'detail' | 'agent'> &
-  Partial<Pick<ActivityEntry, 'detail' | 'agent'>>
+type NewEntry = Omit<ActivityEntry, 'seq' | 'at' | 'detail' | 'agent' | 'command' | 'file'> &
+  Partial<Pick<ActivityEntry, 'detail' | 'agent' | 'command' | 'file'>>
 
 export class ActivityLog {
   private panes = new Map<string, PaneLog>()
@@ -287,8 +315,10 @@ export class ActivityLog {
     if (cwd && !agentId) pane.cwd = cwd
     const where = cwd ?? pane.cwd
     const tool = str(p.tool_name) ?? '?'
-    const call = (): ReturnType<typeof describeTool> =>
-      describeTool(tool, p.tool_input, where, this.home)
+    const call = (): ReturnType<typeof describeTool> & ReturnType<typeof actionable> => ({
+      ...describeTool(tool, p.tool_input, where, this.home),
+      ...actionable(tool, p.tool_input, where)
+    })
 
     switch (name) {
       case 'SessionStart': {
@@ -458,7 +488,9 @@ export class ActivityLog {
       label: e.label,
       text: e.text,
       detail: e.detail ?? null,
-      agent: e.agent ?? null
+      agent: e.agent ?? null,
+      command: e.command ?? null,
+      file: e.file ?? null
     }
     pane.entries.push(entry)
     if (pane.entries.length > MAX_ENTRIES) pane.entries.splice(0, pane.entries.length - MAX_ENTRIES)

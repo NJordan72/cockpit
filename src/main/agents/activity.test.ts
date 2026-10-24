@@ -385,6 +385,44 @@ describe('ActivityLog', () => {
     ])
   })
 
+  it('keeps Bash commands whole, with the directory they ran in', () => {
+    const script = `cat <<'EOF' > notes.txt\n${'x'.repeat(5000)}\nEOF`
+    hook('PreToolUse', { tool_name: 'Bash', tool_input: { command: script } })
+    hook('PermissionRequest', {
+      tool_name: 'Bash',
+      cwd: `${CWD}/web`,
+      tool_input: { command: 'rm -rf dist' }
+    })
+    hook('PreToolUse', { tool_name: 'Bash', tool_input: { command: 'y'.repeat(20_001) } })
+    hook('PreToolUse', { tool_name: 'Bash', tool_input: { command: '  ' } })
+    expect(log.snapshot('p1').entries.map((e) => e.command)).toEqual([
+      { text: script, cwd: CWD },
+      { text: 'rm -rf dist', cwd: `${CWD}/web` },
+      null,
+      null
+    ])
+  })
+
+  it('keeps the absolute path of the file a call reads or changes', () => {
+    hook('PreToolUse', { tool_name: 'Edit', tool_input: { file_path: `${CWD}/a.ts` } })
+    hook('PermissionRequest', { tool_name: 'Write', tool_input: { file_path: '/etc/hosts' } })
+    hook('PreToolUse', {
+      tool_name: 'NotebookEdit',
+      tool_input: { notebook_path: `${CWD}/n.ipynb` }
+    })
+    hook('PreToolUse', { tool_name: 'Read', tool_input: { file_path: 'relative.ts' } })
+    hook('PreToolUse', { tool_name: 'Grep', tool_input: { pattern: 'x', path: CWD } })
+    hook('PreToolUse', { tool_name: 'Bash', tool_input: { command: 'ls' } })
+    expect(log.snapshot('p1').entries.map((e) => e.file)).toEqual([
+      `${CWD}/a.ts`,
+      '/etc/hosts',
+      `${CWD}/n.ipynb`,
+      null,
+      null,
+      null
+    ])
+  })
+
   it('copes with a payload too large to read', () => {
     log.claude('p1', 'PreToolUse', null)
     log.claude('p1', 'PostToolUse', null)

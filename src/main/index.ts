@@ -1,5 +1,6 @@
 import { realpathSync } from 'node:fs'
-import { basename, join } from 'node:path'
+import { stat } from 'node:fs/promises'
+import { basename, isAbsolute, join } from 'node:path'
 import {
   app,
   BrowserWindow,
@@ -45,7 +46,8 @@ import { ConfigStore } from './config'
 import { listDirs, processCwd, processCwdSync, resolveCwd } from './dirs'
 import { deleteCommand, listCommands, saveCommand } from './commands'
 import { existingPaths, resolveIn } from './files'
-import { gitStatus } from './git'
+import { editorCommand, openInEditor } from './editor'
+import { gitRoot, gitStatus } from './git'
 import { listCharacters } from './kids'
 import { buildKidsMenu, buildMenu, menuTemplate } from './menu'
 import { abbreviateHome, claudeHome, cockpitHome, codexHome, expandHome } from './paths'
@@ -267,6 +269,27 @@ function showAbout(): void {
     : dialog.showMessageBox(options))
 }
 
+/** Opens a file or folder in config.json's editor, and says so when that fails. */
+async function openEditor(target: string): Promise<void> {
+  const { editor } = config.get()
+  const found = await stat(target).then(
+    () => true,
+    () => false
+  )
+  const err = found ? await openInEditor(editor, target) : 'It no longer exists.'
+  if (!err) return
+  const options = {
+    type: 'warning' as const,
+    message: `Could not open ${abbreviateHome(target)}`,
+    detail: editor && found ? `${editorCommand(editor, target)}\n\n${err}` : err,
+    buttons: ['OK']
+  }
+  const win = mainWindow
+  void (win && !win.isDestroyed()
+    ? dialog.showMessageBox(win, options)
+    : dialog.showMessageBox(options))
+}
+
 function setKids(active: boolean): void {
   if (active === kidsActive) return
   kidsActive = active
@@ -370,6 +393,10 @@ function registerIpc(): void {
     const preset = config.get().presets.find((p) => p.id === opts.presetId)
     if (!preset) throw new Error(`unknown preset: ${opts.presetId}`)
     const cwd = await resolveCwd(opts.cwd, preset.cwd)
+    // A command meant for that directory mustn't run anywhere else.
+    if (opts.strictCwd && cwd !== expandHome(opts.cwd ?? '')) {
+      throw new Error(`not a directory: ${opts.cwd ?? '(none)'}`)
+    }
     const launch = agents.launch(preset.command, {
       resume: opts.resume === true,
       prompt: opts.prompt
@@ -485,6 +512,17 @@ function registerIpc(): void {
       if (!found) return
       const err = await shell.openPath(resolveIn(cwd, found))
       if (err) console.warn(`could not open ${found}: ${err}`)
+    })()
+  })
+  ipcMain.on(IPC.editorFile, (e, p: unknown) => {
+    if (trusted(e) && typeof p === 'string' && isAbsolute(p)) void openEditor(p)
+  })
+  // The repository the pane is in, or its directory when it isn't in one.
+  ipcMain.on(IPC.editorProject, (e, paneId: unknown) => {
+    if (!trusted(e) || typeof paneId !== 'string') return
+    void (async () => {
+      const cwd = await paneCwd(paneId)
+      if (cwd) await openEditor((await gitRoot(cwd)) ?? cwd)
     })()
   })
   ipcMain.handle(IPC.commandsList, async (e, paneId: unknown) => {
