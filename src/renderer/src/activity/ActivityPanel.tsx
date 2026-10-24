@@ -1,4 +1,4 @@
-import { useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type {
   ActivityEntry,
   FileTouch,
@@ -208,6 +208,17 @@ function LogView({
   const entries = useMemo(() => activity?.entries ?? [], [activity])
   const shown = useMemo(() => filterLog(entries, filter), [entries, filter])
   const [openRow, setOpenRow] = useState<string | null>(null)
+  // Stable, so a new entry re-renders only its own row and not the whole log.
+  const toggleRow = useCallback((key: string) => {
+    setOpenRow((open) => (open === key ? null : key))
+  }, [])
+  const onSavePromptRef = useRef(onSavePrompt)
+  useLayoutEffect(() => {
+    onSavePromptRef.current = onSavePrompt
+  })
+  const savePrompt = useCallback((prompt: string) => {
+    onSavePromptRef.current(prompt)
+  }, [])
   const scrollRef = useRef<HTMLDivElement>(null)
   const onScroll = useStickyScroll(scrollRef, shown.at(-1)?.seq, session.id)
 
@@ -232,13 +243,14 @@ function LogView({
               return (
                 <LogRow
                   key={e.seq}
+                  rowKey={key}
                   entry={e}
                   open={openRow === key}
-                  onToggle={() => setOpenRow(openRow === key ? null : key)}
+                  onToggle={toggleRow}
                   // Codex logs only that a turn started, not what was asked.
                   onSavePrompt={
                     e.kind === 'prompt' && !e.agent && session.agent === 'claude'
-                      ? () => onSavePrompt(e.detail ?? e.text)
+                      ? savePrompt
                       : undefined
                   }
                 />
@@ -257,16 +269,18 @@ function LogView({
   )
 }
 
-function LogRow({
+const LogRow = memo(function LogRow({
+  rowKey,
   entry: e,
   open,
   onToggle,
   onSavePrompt
 }: {
+  rowKey: string
   entry: ActivityEntry
   open: boolean
-  onToggle: () => void
-  onSavePrompt?: () => void
+  onToggle: (rowKey: string) => void
+  onSavePrompt?: (prompt: string) => void
 }): React.JSX.Element {
   const when = new Date(e.at).toLocaleString()
   return (
@@ -279,7 +293,7 @@ function LogRow({
           (e.agent ? `${when} · in ${e.agent}` : when) +
           (onSavePrompt ? '\nRight-click to save as a command' : '')
         }
-        onClick={onToggle}
+        onClick={() => onToggle(rowKey)}
         onContextMenu={(ev) => {
           if (!onSavePrompt) return
           ev.preventDefault()
@@ -289,7 +303,7 @@ function LogRow({
               { id: 'copy', label: 'Copy prompt' }
             ])
             .then((chosen) => {
-              if (chosen === 'save') onSavePrompt()
+              if (chosen === 'save') onSavePrompt(e.detail ?? e.text)
               else if (chosen === 'copy') window.cockpit.clipboard.writeText(e.detail ?? e.text)
             })
         }}
@@ -305,7 +319,7 @@ function LogRow({
       </button>
     </li>
   )
-}
+})
 
 const CHANGE_LETTER: Record<FileTouch['change'], string> = { created: 'A', edited: 'M', read: 'R' }
 
