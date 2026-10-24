@@ -244,6 +244,13 @@ describe('migrateConfig: recent dirs and launcher', () => {
     })
     expect(migrateConfig({ launcher: { presetId: 7 } }).launcher).toEqual({ presetId: 'claude' })
   })
+
+  it('keeps an editor command, defaulting to none', () => {
+    expect(migrateConfig({}).editor).toBeNull()
+    expect(migrateConfig({ editor: ' code -g ' }).editor).toBe('code -g')
+    expect(migrateConfig({ editor: '  ' }).editor).toBeNull()
+    expect(migrateConfig({ editor: ['zed'] }).editor).toBeNull()
+  })
 })
 
 describe('migrateConfig: appearance', () => {

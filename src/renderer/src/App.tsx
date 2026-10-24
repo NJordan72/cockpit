@@ -19,6 +19,7 @@ import {
 } from '@shared/frame'
 import { builtInLayout, layoutChoices } from '@shared/layouts'
 import { resolveTheme, themeVars, type ResolvedTheme, type ThemeDefinition } from '@shared/theme'
+import type { BashCommand } from '@shared/activity'
 import type { AppearanceCommand, PaneSession } from '@shared/ipc'
 import type { SecretPrompt, SessionStatus, WidgetInfo } from '@shared/widgets'
 import { ActivityPanel } from './activity/ActivityPanel'
@@ -43,6 +44,7 @@ import { CommandsPanel } from './panels/CommandsPanel'
 import { PrPanel, type RunWhere } from './panels/PrPanel'
 import { activeTab, layoutReducer } from './layout/reducer'
 import { terminals } from './terminal/registry'
+import { queueRun } from './terminal/run'
 import { applyTheme } from './theme'
 import { OpenUrlDialog, type OpenWhere } from './web/OpenUrlDialog'
 import { webPanes } from './web/registry'
@@ -417,6 +419,23 @@ export function App(): React.JSX.Element {
     dispatch({ type: 'newTab', pane: makePane(preset.id, live ?? pane?.cwd ?? preset.cwd) })
   }, [api])
 
+  /**
+   * A new shell tab that runs a command from the Activity log, in the
+   * directory it ran in there. If that directory is gone, the pane says so
+   * instead of running it somewhere else.
+   */
+  const runCommand = useCallback((command: BashCommand) => {
+    const preset = configRef.current?.presets.find((p) => !p.command)
+    if (!preset) return
+    const tab = activeTab(layoutRef.current)
+    const from = tab ? findPane(tab.root, tab.activePaneId) : null
+    const pane = makePane(preset.id, command.cwd ?? from?.cwd ?? preset.cwd)
+    queueRun(pane.id, { text: command.text, strictCwd: command.cwd !== null })
+    setPicker(null)
+    setRestorable(null)
+    dispatch({ type: 'newTab', pane })
+  }, [])
+
   const runAction = useCallback(
     (action: Action) => {
       const tab = activeTab(layoutRef.current)
@@ -448,6 +467,9 @@ export function App(): React.JSX.Element {
           return
         case 'resumePane':
           if (tab) dispatch({ type: 'clearPane', paneId: tab.activePaneId, resume: true })
+          return
+        case 'openEditor':
+          if (tab) api.editor.openProject(tab.activePaneId)
           return
         case 'focusLeft':
           dispatch({ type: 'focusDirection', direction: 'left' })
@@ -734,6 +756,7 @@ export function App(): React.JSX.Element {
             }}
             visible={windowVisible && place.visible}
             onSavePrompt={savePrompt}
+            onRunCommand={runCommand}
           />
         ) : null
       case 'prs':

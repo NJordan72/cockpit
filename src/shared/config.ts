@@ -29,6 +29,7 @@ export type Action =
   | 'closePane'
   | 'clearPane'
   | 'resumePane'
+  | 'openEditor'
   | 'focusLeft'
   | 'focusRight'
   | 'focusUp'
@@ -199,6 +200,11 @@ export interface CockpitConfig {
   recentPages: RecentPage[]
   launcher: LauncherSettings
   kids: KidsSettings
+  /**
+   * Command that opens files and projects ("zed", "code -g"), run through the
+   * login shell with the path added. null opens them in their default app.
+   */
+  editor: string | null
   layout: Layout
 }
 
@@ -218,6 +224,7 @@ export const DEFAULT_KEYBINDINGS: Keybindings = {
   closePane: 'Cmd+W',
   clearPane: 'Cmd+Shift+Backspace',
   resumePane: 'Cmd+Shift+R',
+  openEditor: 'Cmd+Shift+E',
   focusLeft: 'Cmd+Alt+Left',
   focusRight: 'Cmd+Alt+Right',
   focusUp: 'Cmd+Alt+Up',
@@ -301,6 +308,7 @@ export function defaultConfig(): CockpitConfig {
     recentPages: [],
     launcher: { presetId: 'claude' },
     kids: { ...DEFAULT_KIDS },
+    editor: null,
     layout: { tabs: [], activeTabId: null }
   }
 }
@@ -611,6 +619,7 @@ export function migrateConfig(raw: unknown): CockpitConfig {
           : def.launcher.presetId
     },
     kids: readKids(raw.kids),
+    editor: isStr(raw.editor) && raw.editor.trim() ? raw.editor.trim() : null,
     layout: readLayout(raw.layout, new Set(presets.map((p) => p.id)))
   }
 }

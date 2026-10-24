@@ -1,6 +1,7 @@
 import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type {
   ActivityEntry,
+  BashCommand,
   FileTouch,
   GitStatus,
   PaneActivity,
@@ -38,6 +39,8 @@ interface Props {
   visible: boolean
   /** Open the save-as-command dialog with a prompt from the log. */
   onSavePrompt: (prompt: string) => void
+  /** Run a Bash command from the log in a new shell tab. */
+  onRunCommand: (command: BashCommand) => void
 }
 
 const TAB_LABEL: Record<ActivityTab, string> = {
@@ -62,7 +65,8 @@ export function ActivityPanel({
   onChange,
   canCollapse,
   visible,
-  onSavePrompt
+  onSavePrompt,
+  onRunCommand
 }: Props): React.JSX.Element {
   const activity = usePaneActivity(session.id)
   const [logFilter, setLogFilter] = useState<LogFilter>({ events: true, tools: true })
@@ -124,6 +128,7 @@ export function ActivityPanel({
             filter={logFilter}
             onFilter={setLogFilter}
             onSavePrompt={onSavePrompt}
+            onRunCommand={onRunCommand}
           />
         ) : settings.tab === 'files' ? (
           <FilesView
@@ -163,6 +168,67 @@ function Chip({
   )
 }
 
+/** A log row's right-click menu, and the line its tooltip adds about it. */
+interface RowMenu {
+  hint: string
+  open: () => void
+}
+
+async function commandMenu(c: BashCommand, onRun: (c: BashCommand) => void): Promise<void> {
+  const api = window.cockpit
+  const chosen = await api.menu([
+    { id: 'copy', label: 'Copy command' },
+    { id: 'run', label: 'Run in a new terminal' }
+  ])
+  if (chosen === 'copy') api.clipboard.writeText(c.text)
+  else if (chosen === 'run') onRun(c)
+}
+
+async function fileMenu(file: string): Promise<void> {
+  const api = window.cockpit
+  const chosen = await api.menu([
+    { id: 'edit', label: 'Open in editor' },
+    { id: 'copy', label: 'Copy path' }
+  ])
+  if (chosen === 'edit') api.editor.openFile(file)
+  else if (chosen === 'copy') api.clipboard.writeText(file)
+}
+
+async function promptMenu(prompt: string, onSave: () => void): Promise<void> {
+  const api = window.cockpit
+  const chosen = await api.menu([
+    { id: 'save', label: 'Save as command…' },
+    { id: 'copy', label: 'Copy prompt' }
+  ])
+  if (chosen === 'save') onSave()
+  else if (chosen === 'copy') api.clipboard.writeText(prompt)
+}
+
+/** The right-click menu for a log entry, if it has one. */
+function rowMenu(
+  e: ActivityEntry,
+  promptsSavable: boolean,
+  onSavePrompt: (prompt: string) => void,
+  onRunCommand: (command: BashCommand) => void
+): RowMenu | undefined {
+  const { command, file } = e
+  if (command) {
+    return {
+      hint: 'Right-click to copy or run the command',
+      open: () => void commandMenu(command, onRunCommand)
+    }
+  }
+  if (file) return { hint: 'Right-click to open the file', open: () => void fileMenu(file) }
+  if (e.kind === 'prompt' && !e.agent && promptsSavable) {
+    const prompt = e.detail ?? e.text
+    return {
+      hint: 'Right-click to save as a command',
+      open: () => void promptMenu(prompt, () => onSavePrompt(prompt))
+    }
+  }
+  return undefined
+}
+
 function Empty({ children }: { children: React.ReactNode }): React.JSX.Element {
   return <p className="activity-empty">{children}</p>
 }
@@ -197,30 +263,36 @@ function LogView({
   activity,
   filter,
   onFilter,
-  onSavePrompt
+  onSavePrompt,
+  onRunCommand
 }: {
   session: PaneSession
   activity: PaneActivity | null
   filter: LogFilter
   onFilter: (f: LogFilter) => void
   onSavePrompt: (prompt: string) => void
+  onRunCommand: (command: BashCommand) => void
 }): React.JSX.Element {
   const entries = useMemo(() => activity?.entries ?? [], [activity])
   const shown = useMemo(() => filterLog(entries, filter), [entries, filter])
   const [openRow, setOpenRow] = useState<string | null>(null)
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const onScroll = useStickyScroll(scrollRef, shown.at(-1)?.seq, session.id)
+
   // Stable, so a new entry re-renders only its own row and not the whole log.
   const toggleRow = useCallback((key: string) => {
     setOpenRow((open) => (open === key ? null : key))
   }, [])
-  const onSavePromptRef = useRef(onSavePrompt)
+  const callbacks = useRef({ onSavePrompt, onRunCommand })
   useLayoutEffect(() => {
-    onSavePromptRef.current = onSavePrompt
+    callbacks.current = { onSavePrompt, onRunCommand }
   })
   const savePrompt = useCallback((prompt: string) => {
-    onSavePromptRef.current(prompt)
+    callbacks.current.onSavePrompt(prompt)
   }, [])
-  const scrollRef = useRef<HTMLDivElement>(null)
-  const onScroll = useStickyScroll(scrollRef, shown.at(-1)?.seq, session.id)
+  const runCommand = useCallback((command: BashCommand) => {
+    callbacks.current.onRunCommand(command)
+  }, [])
 
   return (
     <>
@@ -248,11 +320,9 @@ function LogView({
                   open={openRow === key}
                   onToggle={toggleRow}
                   // Codex logs only that a turn started, not what was asked.
-                  onSavePrompt={
-                    e.kind === 'prompt' && !e.agent && session.agent === 'claude'
-                      ? savePrompt
-                      : undefined
-                  }
+                  promptsSavable={session.agent === 'claude'}
+                  onSavePrompt={savePrompt}
+                  onRunCommand={runCommand}
                 />
               )
             })}
@@ -274,38 +344,32 @@ const LogRow = memo(function LogRow({
   entry: e,
   open,
   onToggle,
-  onSavePrompt
+  promptsSavable,
+  onSavePrompt,
+  onRunCommand
 }: {
   rowKey: string
   entry: ActivityEntry
   open: boolean
   onToggle: (rowKey: string) => void
-  onSavePrompt?: (prompt: string) => void
+  promptsSavable: boolean
+  onSavePrompt: (prompt: string) => void
+  onRunCommand: (command: BashCommand) => void
 }): React.JSX.Element {
   const when = new Date(e.at).toLocaleString()
+  const menu = rowMenu(e, promptsSavable, onSavePrompt, onRunCommand)
   return (
     <li>
       <button
         type="button"
         tabIndex={-1}
         className={`log-row ${e.kind}${e.agent ? ' sub' : ''}${open ? ' open' : ''}`}
-        title={
-          (e.agent ? `${when} · in ${e.agent}` : when) +
-          (onSavePrompt ? '\nRight-click to save as a command' : '')
-        }
+        title={(e.agent ? `${when} · in ${e.agent}` : when) + (menu ? `\n${menu.hint}` : '')}
         onClick={() => onToggle(rowKey)}
         onContextMenu={(ev) => {
-          if (!onSavePrompt) return
+          if (!menu) return
           ev.preventDefault()
-          void window.cockpit
-            .menu([
-              { id: 'save', label: 'Save as command…' },
-              { id: 'copy', label: 'Copy prompt' }
-            ])
-            .then((chosen) => {
-              if (chosen === 'save') onSavePrompt(e.detail ?? e.text)
-              else if (chosen === 'copy') window.cockpit.clipboard.writeText(e.detail ?? e.text)
-            })
+          menu.open()
         }}
       >
         <span className="log-time">{formatClock(e.at)}</span>
@@ -362,7 +426,11 @@ function FilesView({
                 <li
                   key={f.path}
                   className="file-row"
-                  title={`${f.path}\n${times.filter(Boolean).join(', ')}`}
+                  title={`${f.path}\n${times.filter(Boolean).join(', ')}\nRight-click to open`}
+                  onContextMenu={(e) => {
+                    e.preventDefault()
+                    void fileMenu(f.path)
+                  }}
                 >
                   <span className={`file-change ${f.change}`}>{CHANGE_LETTER[f.change]}</span>
                   <span className="file-path">
