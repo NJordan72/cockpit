@@ -27,6 +27,7 @@ export const IPC = {
   ptyCwd: 'pty:cwd',
   ptyData: 'pty:data',
   ptyExit: 'pty:exit',
+  ptyAck: 'pty:ack',
   clipboardRead: 'clipboard:read',
   clipboardWrite: 'clipboard:write',
   configGet: 'config:get',
@@ -121,6 +122,12 @@ export interface PtyExitInfo {
   signal?: number
 }
 
+/**
+ * A terminal acknowledges output in steps of this many characters once it
+ * has parsed it, so main can pause a PTY whose terminal is falling behind.
+ */
+export const PTY_ACK_CHARS = 5000
+
 export interface DirEntry {
   /** Path with ~ for home. */
   path: string
@@ -190,6 +197,8 @@ export interface CockpitApi {
     cwd(id: string): Promise<string | null>
     onData(id: string, cb: (data: string) => void): () => void
     onExit(id: string, cb: (info: PtyExitInfo) => void): () => void
+    /** The terminal is done with `chars` more characters of output (see PTY_ACK_CHARS). */
+    ack(id: string, chars: number): void
   }
   clipboard: {
     readText(): Promise<string>

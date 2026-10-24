@@ -7,10 +7,14 @@ import { SearchAddon } from '@xterm/addon-search'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import { terminalFontStack, type PaneNode, type TerminalSettings } from '@shared/config'
 import type { PtyExitInfo } from '@shared/ipc'
+import { OutputAcks } from './acks'
 import { classifyKey } from './keys'
 import { openHyperlink, pathLinkProvider } from './pathLinks'
 import { terminals } from './registry'
 import { runWhenReady, takeRun } from './run'
+
+/** How long a pane is hidden before it gives up its WebGL context. */
+const WEBGL_HIDDEN_MS = 30_000
 
 interface Props {
   pane: PaneNode
@@ -37,6 +41,8 @@ export function TerminalPane({
   const hostRef = useRef<HTMLDivElement>(null)
   const termRef = useRef<Terminal | null>(null)
   const fitRef = useRef<FitAddon | null>(null)
+  const webglRef = useRef<WebglAddon | null>(null)
+  const webglFailed = useRef(false)
   const [exit, setExit] = useState<PtyExitInfo | null>(null)
   const exitRef = useRef<PtyExitInfo | null>(null)
 
@@ -76,7 +82,7 @@ export function TerminalPane({
       macOptionIsMeta: true,
       macOptionClickForcesSelection: true,
       allowProposedApi: true,
-      scrollback: 10_000,
+      scrollback: settings.scrollback,
       theme,
       linkHandler: {
         activate: (_event, uri) => openHyperlink(id, uri),
@@ -101,18 +107,6 @@ export function TerminalPane({
 
     term.open(host)
     terminals.set(id, term)
-
-    // WebGL first; if it fails or the GPU context is lost, xterm falls back to
-    // its DOM renderer once the addon is disposed.
-    try {
-      const webgl = new WebglAddon()
-      webgl.onContextLoss(() => {
-        webgl.dispose()
-      })
-      term.loadAddon(webgl)
-    } catch (err) {
-      console.warn('WebGL renderer unavailable, using DOM renderer', err)
-    }
 
     let disposed = false
     // A command from the Activity log, for the first start only.
@@ -194,9 +188,16 @@ export function TerminalPane({
       }
     })
 
+    const acks = new OutputAcks((chars) => api.pty.ack(id, chars))
     const offData = api.pty.onData(id, (data) => {
-      term.write(data)
+      const parsed = acks.received(data.length, document.hidden)
+      if (parsed) term.write(data, parsed)
+      else term.write(data)
     })
+    const onVisibility = (): void => {
+      if (document.hidden) acks.releaseAll()
+    }
+    document.addEventListener('visibilitychange', onVisibility)
     const offExit = api.pty.onExit(id, (info) => {
       const how = info.signal ? `signal ${info.signal}` : `code ${info.exitCode}`
       term.write(`\r\n\x1b[2m[process exited with ${how}]\x1b[0m\r\n`)
@@ -240,15 +241,51 @@ export function TerminalPane({
       pathLinks.dispose()
       offData()
       offExit()
+      document.removeEventListener('visibilitychange', onVisibility)
       api.pty.kill(id)
       if (terminals.get(id) === term) terminals.delete(id)
       termRef.current = null
       fitRef.current = null
+      // Disposed along with the terminal.
+      webglRef.current = null
       term.dispose()
     }
     // The terminal lives as long as the pane id; settings changes are applied below.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id])
+
+  // WebGL while the pane is on screen. Chromium keeps only so many WebGL
+  // contexts per page and drops the oldest past that, so a pane that has been
+  // hidden a while gives its context back and draws with the DOM renderer
+  // until it's shown again. If WebGL fails or the context is lost, xterm falls
+  // back to the DOM renderer once the addon is disposed.
+  useEffect(() => {
+    const term = termRef.current
+    if (!term) return undefined
+    if (visible) {
+      if (webglRef.current || webglFailed.current) return undefined
+      try {
+        const webgl = new WebglAddon()
+        webgl.onContextLoss(() => {
+          webgl.dispose()
+          if (webglRef.current === webgl) webglRef.current = null
+        })
+        term.loadAddon(webgl)
+        webglRef.current = webgl
+      } catch (err) {
+        webglFailed.current = true
+        console.warn('WebGL renderer unavailable, using DOM renderer', err)
+      }
+      return undefined
+    }
+    const t = setTimeout(() => {
+      webglRef.current?.dispose()
+      webglRef.current = null
+    }, WEBGL_HIDDEN_MS)
+    return () => {
+      clearTimeout(t)
+    }
+  }, [visible])
 
   useEffect(() => {
     const term = termRef.current
@@ -261,6 +298,14 @@ export function TerminalPane({
     // New cell size means a new grid size; hidden panes refit when shown.
     if (visible) fitRef.current?.fit()
   }, [settings.fontFamily, settings.fontSize, visible])
+
+  useEffect(() => {
+    const term = termRef.current
+    // Lowering it drops the oldest lines past the new limit.
+    if (term && term.options.scrollback !== settings.scrollback) {
+      term.options.scrollback = settings.scrollback
+    }
+  }, [settings.scrollback])
 
   useEffect(() => {
     const term = termRef.current

@@ -60,6 +60,10 @@ describe('migrateConfig', () => {
   it('clamps terminal settings', () => {
     expect(migrateConfig({ terminal: { fontSize: 2 } }).terminal.fontSize).toBe(13)
     expect(migrateConfig({ terminal: { fontSize: 15 } }).terminal.fontSize).toBe(15)
+    expect(migrateConfig({}).terminal.scrollback).toBe(5000)
+    expect(migrateConfig({ terminal: { scrollback: 20_000 } }).terminal.scrollback).toBe(20_000)
+    expect(migrateConfig({ terminal: { scrollback: -1 } }).terminal.scrollback).toBe(5000)
+    expect(migrateConfig({ terminal: { scrollback: 1.5 } }).terminal.scrollback).toBe(5000)
   })
 
   it('repairs a layout: bad nodes dropped, single-child splits collapsed, missing presets become shell', () => {

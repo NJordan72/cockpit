@@ -1,6 +1,7 @@
 import * as pty from 'node-pty'
 import type { WebContents } from 'electron'
 import { IPC } from '@shared/ipc'
+import { PtyOutput } from './ptyOutput'
 
 export interface SpawnOptions {
   id: string
@@ -69,6 +70,7 @@ const INHERITED_TERMINAL_VARS = new RegExp(
 interface Session {
   proc: pty.IPty
   owner: WebContents
+  output: PtyOutput
 }
 
 /** Owns every PTY. Each PTY is tied to the WebContents that created it. */
@@ -103,17 +105,28 @@ export class PtyManager {
       env
     })
 
-    const session: Session = { proc, owner }
+    const output = new PtyOutput({
+      send: (data) => {
+        if (!owner.isDestroyed()) owner.send(IPC.ptyData, opts.id, data)
+      },
+      pause: () => proc.pause(),
+      resume: () => proc.resume()
+    })
+    const session: Session = { proc, owner, output }
     this.sessions.set(opts.id, session)
 
     proc.onData((data) => {
-      if (this.sessions.get(opts.id) === session) this.observer.output(opts.id, data)
-      if (!owner.isDestroyed()) owner.send(IPC.ptyData, opts.id, data)
+      if (this.sessions.get(opts.id) !== session) return
+      this.observer.output(opts.id, data)
+      output.push(data)
     })
     proc.onExit(({ exitCode, signal }) => {
       // Only report if this PTY is still the one registered under the id.
       if (this.sessions.get(opts.id) !== session) return
       this.sessions.delete(opts.id)
+      // The last of the output goes before the exit notice.
+      output.flush()
+      output.dispose()
       this.observer.exited(opts.id)
       if (!owner.isDestroyed()) owner.send(IPC.ptyExit, opts.id, { exitCode, signal })
     })
@@ -137,6 +150,11 @@ export class PtyManager {
     s.proc.write(data)
   }
 
+  /** The pane's terminal has parsed `chars` more characters of output. */
+  ack(id: string, chars: number): void {
+    this.sessions.get(id)?.output.ack(chars)
+  }
+
   resize(id: string, cols: number, rows: number): void {
     const s = this.sessions.get(id)
     if (!s || cols < 2 || rows < 1) return
@@ -156,6 +174,7 @@ export class PtyManager {
     const s = this.sessions.get(id)
     if (!s) return false
     this.sessions.delete(id)
+    s.output.dispose()
     try {
       s.proc.kill()
     } catch {

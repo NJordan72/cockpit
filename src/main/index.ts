@@ -425,6 +425,12 @@ function registerIpc(): void {
   ipcMain.on(IPC.ptyWrite, (e, id: string, data: string) => {
     if (trusted(e) && !kidsActive) ptys.write(id, data)
   })
+  // Not stopped by kids mode: a pane left unacknowledged would stay paused.
+  ipcMain.on(IPC.ptyAck, (e, id: unknown, chars: unknown) => {
+    if (trusted(e) && typeof id === 'string' && typeof chars === 'number' && chars > 0) {
+      ptys.ack(id, chars)
+    }
+  })
   ipcMain.on(IPC.ptyResize, (e, id: string, cols: number, rows: number) => {
     if (trusted(e)) ptys.resize(id, cols, rows)
   })

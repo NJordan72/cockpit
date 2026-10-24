@@ -1,4 +1,4 @@
-import { useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type {
   ActivityEntry,
   BashCommand,
@@ -204,6 +204,31 @@ async function promptMenu(prompt: string, onSave: () => void): Promise<void> {
   else if (chosen === 'copy') api.clipboard.writeText(prompt)
 }
 
+/** The right-click menu for a log entry, if it has one. */
+function rowMenu(
+  e: ActivityEntry,
+  promptsSavable: boolean,
+  onSavePrompt: (prompt: string) => void,
+  onRunCommand: (command: BashCommand) => void
+): RowMenu | undefined {
+  const { command, file } = e
+  if (command) {
+    return {
+      hint: 'Right-click to copy or run the command',
+      open: () => void commandMenu(command, onRunCommand)
+    }
+  }
+  if (file) return { hint: 'Right-click to open the file', open: () => void fileMenu(file) }
+  if (e.kind === 'prompt' && !e.agent && promptsSavable) {
+    const prompt = e.detail ?? e.text
+    return {
+      hint: 'Right-click to save as a command',
+      open: () => void promptMenu(prompt, () => onSavePrompt(prompt))
+    }
+  }
+  return undefined
+}
+
 function Empty({ children }: { children: React.ReactNode }): React.JSX.Element {
   return <p className="activity-empty">{children}</p>
 }
@@ -254,25 +279,20 @@ function LogView({
   const scrollRef = useRef<HTMLDivElement>(null)
   const onScroll = useStickyScroll(scrollRef, shown.at(-1)?.seq, session.id)
 
-  const menuFor = (e: ActivityEntry): RowMenu | undefined => {
-    const { command, file } = e
-    if (command) {
-      return {
-        hint: 'Right-click to copy or run the command',
-        open: () => void commandMenu(command, onRunCommand)
-      }
-    }
-    if (file) return { hint: 'Right-click to open the file', open: () => void fileMenu(file) }
-    // Codex logs only that a turn started, not what was asked.
-    if (e.kind === 'prompt' && !e.agent && session.agent === 'claude') {
-      const prompt = e.detail ?? e.text
-      return {
-        hint: 'Right-click to save as a command',
-        open: () => void promptMenu(prompt, () => onSavePrompt(prompt))
-      }
-    }
-    return undefined
-  }
+  // Stable, so a new entry re-renders only its own row and not the whole log.
+  const toggleRow = useCallback((key: string) => {
+    setOpenRow((open) => (open === key ? null : key))
+  }, [])
+  const callbacks = useRef({ onSavePrompt, onRunCommand })
+  useLayoutEffect(() => {
+    callbacks.current = { onSavePrompt, onRunCommand }
+  })
+  const savePrompt = useCallback((prompt: string) => {
+    callbacks.current.onSavePrompt(prompt)
+  }, [])
+  const runCommand = useCallback((command: BashCommand) => {
+    callbacks.current.onRunCommand(command)
+  }, [])
 
   return (
     <>
@@ -295,10 +315,14 @@ function LogView({
               return (
                 <LogRow
                   key={e.seq}
+                  rowKey={key}
                   entry={e}
                   open={openRow === key}
-                  onToggle={() => setOpenRow(openRow === key ? null : key)}
-                  menu={menuFor(e)}
+                  onToggle={toggleRow}
+                  // Codex logs only that a turn started, not what was asked.
+                  promptsSavable={session.agent === 'claude'}
+                  onSavePrompt={savePrompt}
+                  onRunCommand={runCommand}
                 />
               )
             })}
@@ -315,18 +339,25 @@ function LogView({
   )
 }
 
-function LogRow({
+const LogRow = memo(function LogRow({
+  rowKey,
   entry: e,
   open,
   onToggle,
-  menu
+  promptsSavable,
+  onSavePrompt,
+  onRunCommand
 }: {
+  rowKey: string
   entry: ActivityEntry
   open: boolean
-  onToggle: () => void
-  menu?: RowMenu
+  onToggle: (rowKey: string) => void
+  promptsSavable: boolean
+  onSavePrompt: (prompt: string) => void
+  onRunCommand: (command: BashCommand) => void
 }): React.JSX.Element {
   const when = new Date(e.at).toLocaleString()
+  const menu = rowMenu(e, promptsSavable, onSavePrompt, onRunCommand)
   return (
     <li>
       <button
@@ -334,7 +365,7 @@ function LogRow({
         tabIndex={-1}
         className={`log-row ${e.kind}${e.agent ? ' sub' : ''}${open ? ' open' : ''}`}
         title={(e.agent ? `${when} · in ${e.agent}` : when) + (menu ? `\n${menu.hint}` : '')}
-        onClick={onToggle}
+        onClick={() => onToggle(rowKey)}
         onContextMenu={(ev) => {
           if (!menu) return
           ev.preventDefault()
@@ -352,7 +383,7 @@ function LogRow({
       </button>
     </li>
   )
-}
+})
 
 const CHANGE_LETTER: Record<FileTouch['change'], string> = { created: 'A', edited: 'M', read: 'R' }
 

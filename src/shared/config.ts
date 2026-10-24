@@ -91,6 +91,8 @@ export interface Layout {
 export interface TerminalSettings {
   fontFamily: string
   fontSize: number
+  /** Lines each terminal keeps above the screen. A full one at 200 columns holds about 2.4 KB a line. */
+  scrollback: number
 }
 
 export interface WidgetPlacement {
@@ -245,7 +247,8 @@ export const DEFAULT_KEYBINDINGS: Keybindings = {
 export const DEFAULT_TERMINAL: TerminalSettings = {
   fontFamily:
     '"0xProto Nerd Font Mono", "JetBrainsMono Nerd Font Mono", ui-monospace, Menlo, monospace',
-  fontSize: 13
+  fontSize: 13,
+  scrollback: 5000
 }
 
 /**
@@ -574,6 +577,10 @@ export function migrateConfig(raw: unknown): CockpitConfig {
     if (nonEmpty(raw.terminal.fontFamily)) terminal.fontFamily = raw.terminal.fontFamily
     const size = raw.terminal.fontSize
     if (typeof size === 'number' && size >= 6 && size <= 48) terminal.fontSize = size
+    const lines = raw.terminal.scrollback
+    if (typeof lines === 'number' && Number.isInteger(lines) && lines >= 0 && lines <= 100_000) {
+      terminal.scrollback = lines
+    }
   }
 
   const recentDirs: RecentDir[] = []
