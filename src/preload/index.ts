@@ -81,7 +81,8 @@ const api: CockpitApi = {
     kill: (id) => ipcRenderer.send(IPC.ptyKill, id),
     cwd: (id) => ipcRenderer.invoke(IPC.ptyCwd, id),
     onData: (id, cb) => subscribe(dataSubs, id, cb),
-    onExit: (id, cb) => subscribe(exitSubs, id, cb)
+    onExit: (id, cb) => subscribe(exitSubs, id, cb),
+    ack: (id, chars) => ipcRenderer.send(IPC.ptyAck, id, chars)
   },
   clipboard: {
     readText: () => ipcRenderer.invoke(IPC.clipboardRead),

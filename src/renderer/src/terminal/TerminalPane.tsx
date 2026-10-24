@@ -7,6 +7,7 @@ import { SearchAddon } from '@xterm/addon-search'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import { terminalFontStack, type PaneNode, type TerminalSettings } from '@shared/config'
 import type { PtyExitInfo } from '@shared/ipc'
+import { OutputAcks } from './acks'
 import { classifyKey } from './keys'
 import { openHyperlink, pathLinkProvider } from './pathLinks'
 import { terminals } from './registry'
@@ -171,9 +172,16 @@ export function TerminalPane({
       }
     })
 
+    const acks = new OutputAcks((chars) => api.pty.ack(id, chars))
     const offData = api.pty.onData(id, (data) => {
-      term.write(data)
+      const parsed = acks.received(data.length, document.hidden)
+      if (parsed) term.write(data, parsed)
+      else term.write(data)
     })
+    const onVisibility = (): void => {
+      if (document.hidden) acks.releaseAll()
+    }
+    document.addEventListener('visibilitychange', onVisibility)
     const offExit = api.pty.onExit(id, (info) => {
       const how = info.signal ? `signal ${info.signal}` : `code ${info.exitCode}`
       term.write(`\r\n\x1b[2m[process exited with ${how}]\x1b[0m\r\n`)
@@ -216,6 +224,7 @@ export function TerminalPane({
       pathLinks.dispose()
       offData()
       offExit()
+      document.removeEventListener('visibilitychange', onVisibility)
       api.pty.kill(id)
       if (terminals.get(id) === term) terminals.delete(id)
       termRef.current = null
