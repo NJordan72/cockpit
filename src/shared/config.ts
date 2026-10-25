@@ -8,7 +8,7 @@ import { isWebUrl } from './web'
 
 export { ACTIVITY_TABS, type ActivityTab }
 
-export const CONFIG_VERSION = 3
+export const CONFIG_VERSION = 4
 
 export interface Preset {
   id: string
@@ -172,18 +172,49 @@ export interface KidsSettings {
   speak: boolean
 }
 
-/** How the window looks. The chrome owns it; the View menu asks the chrome to change it. */
+/**
+ * How every window looks. The chrome owns it; the View menu asks the chrome to
+ * change it. Which layout a window uses is in its WindowState.
+ */
 export interface AppearanceSettings {
   /** A built-in theme's id or a folder name in ~/.cockpit/themes/. */
   theme: string
   /** Tokens that win over the theme's (see theme.ts). */
   overrides: ThemeOverrides
-  /** The layout in use: a built-in one's id (layouts.ts) or a key of `layouts`. */
-  layout: string
   /** Layouts changed from their built-in version, and layouts written by hand. */
   layouts: Record<string, FrameNode>
+}
+
+/** Most windows Cockpit opens: one for each of up to three displays. */
+export const MAX_WINDOWS = 3
+
+export interface WindowBounds {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+/** The display a window was put on, found again by id, or by name after it was unplugged. */
+export interface WindowDisplay {
+  id: number
+  label: string
+}
+
+/** What the window's chrome shows of its own: the layout it uses. */
+export interface WindowView {
+  /** A built-in layout's id (layouts.ts) or a key of appearance.layouts. */
+  layout: string
   /** Cmd+B: only the terminals and the tab bar show. */
   panelsHidden: boolean
+}
+
+/** One window: its layout, its terminal tabs, and where it goes. */
+export interface WindowState extends WindowView, Layout {
+  id: string
+  /** Where it was last moved to, in screen points. */
+  bounds?: WindowBounds
+  display?: WindowDisplay
 }
 
 export interface CockpitConfig {
@@ -205,7 +236,8 @@ export interface CockpitConfig {
    * login shell with the path added. null opens them in their default app.
    */
   editor: string | null
-  layout: Layout
+  /** The first one is the main window: it reopens when the Dock icon is clicked. */
+  windows: WindowState[]
 }
 
 export const DEFAULT_PRESETS: Preset[] = [
@@ -290,10 +322,14 @@ export function defaultAppearance(): AppearanceSettings {
   return {
     theme: DEFAULT_THEME_ID,
     overrides: {},
-    layout: DEFAULT_LAYOUT_ID,
-    layouts: {},
-    panelsHidden: false
+    layouts: {}
   }
+}
+
+export const MAIN_WINDOW_ID = 'main'
+
+export function defaultWindow(id = MAIN_WINDOW_ID, layout = DEFAULT_LAYOUT_ID): WindowState {
+  return { id, layout, panelsHidden: false, tabs: [], activeTabId: null }
 }
 
 export function defaultConfig(): CockpitConfig {
@@ -309,7 +345,7 @@ export function defaultConfig(): CockpitConfig {
     launcher: { presetId: 'claude' },
     kids: { ...DEFAULT_KIDS },
     editor: null,
-    layout: { tabs: [], activeTabId: null }
+    windows: [defaultWindow()]
   }
 }
 
@@ -389,10 +425,10 @@ export function paneIds(node: LayoutNode): string[] {
   return node.type === 'pane' ? [node.id] : node.children.flatMap(paneIds)
 }
 
-function readLayout(v: unknown, presetIds: Set<string>): Layout {
+/** `seen` holds the ids already taken; pane ids are PTY ids, so no two windows share one. */
+function readLayout(v: unknown, presetIds: Set<string>, seen = new Set<string>()): Layout {
   const empty: Layout = { tabs: [], activeTabId: null }
   if (!isObj(v) || !Array.isArray(v.tabs)) return empty
-  const seen = new Set<string>()
   const tabs: Tab[] = []
   for (const t of v.tabs) {
     if (!isObj(t) || !nonEmpty(t.id) || seen.has(t.id)) continue
@@ -513,25 +549,92 @@ export function readAppearance(raw: Obj): AppearanceSettings {
   if (sidebar && !layouts[DEFAULT_LAYOUT_ID]) {
     layouts[DEFAULT_LAYOUT_ID] = classicFromSidebar(sidebar)
   }
-  const layout =
-    isStr(a.layout) && NAME.test(a.layout) && (layouts[a.layout] ?? builtInLayout(a.layout))
-      ? a.layout
-      : DEFAULT_LAYOUT_ID
   return {
     theme: isStr(a.theme) && NAME.test(a.theme) ? a.theme : DEFAULT_THEME_ID,
     overrides: readTokens(isObj(a.overrides) ? a.overrides : raw.theme),
-    layout,
-    layouts,
-    panelsHidden:
-      typeof a.panelsHidden === 'boolean' ? a.panelsHidden : sidebar ? !sidebar.visible : false
+    layouts
   }
 }
 
-/** The tree of the layout in use, or the classic one if it doesn't exist. */
-export function activeLayout(a: AppearanceSettings): FrameNode {
+/** A layout name a window can use: built in, or in `layouts`. */
+export function layoutExists(a: Pick<AppearanceSettings, 'layouts'>, id: unknown): id is string {
+  return isStr(id) && NAME.test(id) && !!(a.layouts[id] ?? builtInLayout(id))
+}
+
+const WINDOW_ID = /^[a-z0-9][a-z0-9_-]{0,63}$/
+const MIN_WINDOW = 200
+const MAX_COORD = 100_000
+
+function readBounds(v: unknown): WindowBounds | undefined {
+  if (!isObj(v)) return undefined
+  const { x, y, width, height } = v
+  const coord = (n: unknown): n is number =>
+    typeof n === 'number' && Number.isFinite(n) && Math.abs(n) <= MAX_COORD
+  if (!coord(x) || !coord(y) || !coord(width) || !coord(height)) return undefined
+  if (width < MIN_WINDOW || height < MIN_WINDOW) return undefined
+  return {
+    x: Math.round(x),
+    y: Math.round(y),
+    width: Math.round(width),
+    height: Math.round(height)
+  }
+}
+
+function readDisplay(v: unknown): WindowDisplay | undefined {
+  if (!isObj(v) || typeof v.id !== 'number' || !Number.isInteger(v.id)) return undefined
+  return { id: v.id, label: isStr(v.label) ? v.label.slice(0, 200) : '' }
+}
+
+/**
+ * Version 4 has a list of windows. Before it, the one window's tabs were the
+ * top-level `layout`, and its layout and Cmd+B state were in `appearance`.
+ */
+function readWindows(
+  raw: Obj,
+  appearance: AppearanceSettings,
+  presetIds: Set<string>
+): WindowState[] {
+  const seen = new Set<string>()
+  const view = (v: Obj): WindowView => ({
+    layout: layoutExists(appearance, v.layout) ? v.layout : DEFAULT_LAYOUT_ID,
+    panelsHidden: v.panelsHidden === true
+  })
+  const windows: WindowState[] = []
+  if (Array.isArray(raw.windows)) {
+    const ids = new Set<string>()
+    for (const w of raw.windows) {
+      if (windows.length === MAX_WINDOWS) break
+      if (!isObj(w) || !isStr(w.id) || !WINDOW_ID.test(w.id) || ids.has(w.id)) continue
+      ids.add(w.id)
+      const state: WindowState = { id: w.id, ...view(w), ...readLayout(w, presetIds, seen) }
+      const bounds = readBounds(w.bounds)
+      if (bounds) state.bounds = bounds
+      const display = readDisplay(w.display)
+      if (display) state.display = display
+      windows.push(state)
+    }
+  }
+  if (windows.length > 0) return windows
+  const a = isObj(raw.appearance) ? raw.appearance : {}
+  // Version 2 kept Cmd+B as the sidebar's `visible`.
+  const sidebarHidden = isObj(raw.sidebar) && raw.sidebar.visible === false
+  return [
+    {
+      id: MAIN_WINDOW_ID,
+      ...view({
+        ...a,
+        panelsHidden: typeof a.panelsHidden === 'boolean' ? a.panelsHidden : sidebarHidden
+      }),
+      ...readLayout(raw.layout, presetIds, seen)
+    }
+  ]
+}
+
+/** The tree of a window's layout, or the classic one if it doesn't exist. */
+export function activeLayout(a: AppearanceSettings, layout: string): FrameNode {
   return (
-    a.layouts[a.layout] ??
-    builtInLayout(a.layout) ??
+    a.layouts[layout] ??
+    builtInLayout(layout) ??
     a.layouts[DEFAULT_LAYOUT_ID] ??
     builtInLayout(DEFAULT_LAYOUT_ID) ??
     readFrame(null)
@@ -550,6 +653,7 @@ export function migrateConfig(raw: unknown): CockpitConfig {
   // Fields are read one by one, so older shapes are upgraded where they're
   // read. Version 2 added times and presets to recentDirs (readRecentDir).
   // Version 3 moved theme and sidebar into appearance (readAppearance).
+  // Version 4 moved the tabs and the layout in use into windows (readWindows).
   const rawPresets: unknown = raw.presets
 
   let presets = def.presets
@@ -603,12 +707,13 @@ export function migrateConfig(raw: unknown): CockpitConfig {
     }
   }
 
+  const appearance = readAppearance(raw)
   return {
     version: CONFIG_VERSION,
     presets,
     keybindings,
     terminal,
-    appearance: readAppearance(raw),
+    appearance,
     projectsDir: nonEmpty(raw.projectsDir) ? raw.projectsDir : def.projectsDir,
     recentDirs: recentDirs.slice(0, MAX_RECENT_DIRS),
     recentPages: recentPages.slice(0, MAX_RECENT_PAGES),
@@ -620,7 +725,7 @@ export function migrateConfig(raw: unknown): CockpitConfig {
     },
     kids: readKids(raw.kids),
     editor: isStr(raw.editor) && raw.editor.trim() ? raw.editor.trim() : null,
-    layout: readLayout(raw.layout, new Set(presets.map((p) => p.id)))
+    windows: readWindows(raw, appearance, new Set(presets.map((p) => p.id)))
   }
 }
 

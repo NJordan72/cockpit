@@ -12,14 +12,22 @@ export function widgetSession({ message: _message, ...info }: PaneSession): Sess
   return info
 }
 
+/** The active tab's focused pane. */
+function activePane(layout: Layout): string | null {
+  return layout.tabs.find((t) => t.id === layout.activeTabId)?.activePaneId ?? null
+}
+
 /**
  * One session per terminal pane in the layout, in tab order. A pane with no
- * process is exited. Web panes run nothing, so they aren't sessions.
+ * process is exited. Web panes run nothing, so they aren't sessions. With
+ * several windows, `layout` holds all their tabs and `focused` names the pane
+ * the user last worked in.
  */
 export function listSessions(
   layout: Layout,
   presets: readonly Preset[],
-  status: (paneId: string) => PaneStatus | null
+  status: (paneId: string) => PaneStatus | null,
+  focused: string | null = activePane(layout)
 ): PaneSession[] {
   return layout.tabs.flatMap((tab) =>
     panes(tab.root)
@@ -38,7 +46,7 @@ export function listSessions(
           message: s?.message ?? null,
           title: s?.title ?? null,
           tokens: s?.tokens ?? null,
-          focused: tab.id === layout.activeTabId && tab.activePaneId === p.id
+          focused: p.id === focused
         }
       })
   )

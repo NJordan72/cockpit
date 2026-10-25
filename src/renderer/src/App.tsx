@@ -5,10 +5,12 @@ import {
   type AppearanceSettings,
   type CockpitConfig,
   type Layout,
-  type PaneNode
+  type PaneNode,
+  type WindowView
 } from '@shared/config'
 import {
   edges,
+  hasTerminals,
   panels,
   placeWidgets,
   updateNode,
@@ -20,7 +22,7 @@ import {
 import { builtInLayout, layoutChoices } from '@shared/layouts'
 import { resolveTheme, themeVars, type ResolvedTheme, type ThemeDefinition } from '@shared/theme'
 import type { BashCommand } from '@shared/activity'
-import type { AppearanceCommand, PaneSession } from '@shared/ipc'
+import type { AppearanceCommand, PaneSession, WindowInfo } from '@shared/ipc'
 import type { SecretPrompt, SessionStatus, WidgetInfo } from '@shared/widgets'
 import { ActivityPanel } from './activity/ActivityPanel'
 import { newSessionTarget } from './agentSessions'
@@ -74,6 +76,9 @@ const PICKER_TITLES: Record<PickerState['mode'], string> = {
 
 const SAVE_DELAY_MS = 150
 
+/** Actions a window without terminals still runs itself; it forwards the rest. */
+const OWN_ACTIONS: readonly Action[] = ['toggleSidebar', 'kidsMode']
+
 /** Give a pane the keyboard, whether it's a terminal or a web page. */
 function focusPane(paneId: string): void {
   const term = terminals.get(paneId)
@@ -84,6 +89,10 @@ function focusPane(paneId: string): void {
 export function App(): React.JSX.Element {
   const api = window.cockpit
   const [config, setConfig] = useState<CockpitConfig | null>(null)
+  /** Which window this is, and what main says about it. */
+  const [windowInfo, setWindowInfo] = useState<WindowInfo | null>(null)
+  /** This window's layout and Cmd+B state; the appearance is shared by all windows. */
+  const [view, setView] = useState<WindowView | null>(null)
   const [themes, setThemes] = useState<ThemeDefinition[] | null>(null)
   const [layout, dispatch] = useReducer(layoutReducer, { tabs: [], activeTabId: null })
   const [picker, setPicker] = useState<PickerState | null>(null)
@@ -109,6 +118,8 @@ export function App(): React.JSX.Element {
   const loaded = useRef(false)
   /** The appearance main has on disk, as JSON, so it isn't saved back to it. */
   const savedAppearance = useRef<string | null>(null)
+  /** The same for this window's view. */
+  const savedView = useRef<string | null>(null)
   const launcherInput = useRef<HTMLInputElement>(null)
 
   const statuses = useMemo(
@@ -117,18 +128,24 @@ export function App(): React.JSX.Element {
   )
 
   const appearance = config?.appearance ?? null
-  const widgetMap = useMemo(() => new Map(widgets.map((w) => [w.id, w])), [widgets])
-  // Installed widgets nobody placed go into the layout's widget group.
+  // A widget runs in one window only; main says which ones are this window's.
+  const here = useMemo(() => new Set(windowInfo?.widgets ?? []), [windowInfo])
+  const widgetMap = useMemo(
+    () => new Map(widgets.filter((w) => here.has(w.id)).map((w) => [w.id, w])),
+    [widgets, here]
+  )
+  // This window's widgets that its layout doesn't place go into its widget group.
   const tree = useMemo(
     () =>
-      appearance
-        ? placeWidgets(
-            activeLayout(appearance),
-            widgets.map((w) => w.id)
-          )
+      appearance && view
+        ? placeWidgets(activeLayout(appearance, view.layout), [...widgetMap.keys()])
         : null,
-    [appearance, widgets]
+    [appearance, view, widgetMap]
   )
+  /** A window of panels only passes pane actions to the one with terminals. */
+  const terminals = tree ? hasTerminals(tree) : true
+  // The pane the user works in, in whichever window; Activity and the other
+  // panels follow it.
   const focused = sessions.find((s) => s.focused) ?? null
   const hasFocus = focused !== null
   // Panels with nothing to show take no room.
@@ -138,8 +155,9 @@ export function App(): React.JSX.Element {
       if (p.panel === 'activity' && !hasFocus) absent.add(p.id)
       if (p.panel === 'widget' && p.widget && !widgetMap.has(p.widget)) absent.add(p.id)
     }
-    return { absent, panelsHidden: appearance?.panelsHidden ?? false }
-  }, [tree, hasFocus, widgetMap, appearance?.panelsHidden])
+    // Cmd+B keeps the terminals; a window without them has nothing to keep.
+    return { absent, panelsHidden: terminals && (view?.panelsHidden ?? false) }
+  }, [tree, hasFocus, widgetMap, terminals, view?.panelsHidden])
   const visible = useMemo(
     () => (tree ? visiblePanels(tree, frameState) : new Set<string>()),
     [tree, frameState]
@@ -204,15 +222,28 @@ export function App(): React.JSX.Element {
     }
   }, [api])
 
-  // Load config. The app opens on the start screen, which offers the saved
-  // layout for restoring; nothing is saved over it until the user picks.
+  // Load config. The window opens on the start screen, which offers its saved
+  // tabs for restoring; nothing is saved over them until the user picks.
   useEffect(() => {
     let cancelled = false
-    void api.config.get().then((c) => {
+    let id: string | null = null
+    /** This window's layout from a config main sent, or null if it has none for it. */
+    const takeView = (c: CockpitConfig): void => {
+      const mine = c.windows.find((w) => w.id === id)
+      if (!mine) return
+      const next: WindowView = { layout: mine.layout, panelsHidden: mine.panelsHidden }
+      savedView.current = JSON.stringify(next)
+      setView(next)
+    }
+    void Promise.all([api.config.get(), api.window.info()]).then(([c, info]) => {
       if (cancelled) return
+      id = info.id
+      setWindowInfo(info)
       savedAppearance.current = JSON.stringify(c.appearance)
       setConfig(c)
-      setRestorable(c.layout.tabs.length > 0 ? c.layout : null)
+      takeView(c)
+      const mine = c.windows.find((w) => w.id === info.id)
+      setRestorable(mine && mine.tabs.length > 0 ? mine : null)
       loaded.current = true
     })
     // Only hand edits arrive here, the appearance among them. Saving that back
@@ -220,10 +251,19 @@ export function App(): React.JSX.Element {
     const off = api.config.onChange((c) => {
       savedAppearance.current = JSON.stringify(c.appearance)
       setConfig(c)
+      takeView(c)
     })
+    // Another window changed the appearance they share.
+    const offAppearance = api.config.onAppearanceChange((a) => {
+      savedAppearance.current = JSON.stringify(a)
+      setConfig((c) => c && { ...c, appearance: a })
+    })
+    const offWindow = api.window.onChange(setWindowInfo)
     return () => {
       cancelled = true
       off()
+      offAppearance()
+      offWindow()
     }
   }, [api])
 
@@ -253,6 +293,24 @@ export function App(): React.JSX.Element {
     setConfig((c) => c && { ...c, appearance: fn(c.appearance) })
   }, [])
 
+  const updateView = useCallback((fn: (v: WindowView) => WindowView) => {
+    setView((v) => v && fn(v))
+  }, [])
+
+  // This window's view, saved the same way.
+  useEffect(() => {
+    if (!view) return
+    const json = JSON.stringify(view)
+    if (json === savedView.current) return
+    const t = setTimeout(() => {
+      savedView.current = json
+      api.window.save(view)
+    }, SAVE_DELAY_MS)
+    return () => {
+      clearTimeout(t)
+    }
+  }, [api, view])
+
   // The chrome owns the appearance. Save it shortly after it settles (divider
   // drags change it on every frame); a hand edit comes back here unchanged.
   useEffect(() => {
@@ -269,11 +327,13 @@ export function App(): React.JSX.Element {
   }, [api, appearance])
 
   /** A change to the layout in use. Saved as that layout's own copy. */
+  const layoutId = view?.layout ?? null
   const setTree = useCallback(
     (next: FrameNode) => {
-      updateAppearance((a) => ({ ...a, layouts: { ...a.layouts, [a.layout]: next } }))
+      if (layoutId === null) return
+      updateAppearance((a) => ({ ...a, layouts: { ...a.layouts, [layoutId]: next } }))
     },
-    [updateAppearance]
+    [updateAppearance, layoutId]
   )
 
   useEffect(() => {
@@ -291,6 +351,10 @@ export function App(): React.JSX.Element {
     const offPrompt = api.widgets.onSecretPrompt((p) => {
       setPrompts((ps) => [...ps, p])
     })
+    // Answered here or in another window.
+    const offDone = api.widgets.onSecretDone((promptId) => {
+      setPrompts((ps) => ps.filter((p) => p.promptId !== promptId))
+    })
     const onVisibility = (): void => {
       setWindowVisible(document.visibilityState === 'visible')
     }
@@ -299,6 +363,7 @@ export function App(): React.JSX.Element {
       cancelled = true
       offChange()
       offPrompt()
+      offDone()
       document.removeEventListener('visibilitychange', onVisibility)
     }
   }, [api])
@@ -360,29 +425,26 @@ export function App(): React.JSX.Element {
           updateAppearance((a) => ({ ...a, theme: command.id }))
           return
         case 'layout':
-          updateAppearance((a) => ({ ...a, layout: command.id }))
+          updateView((v) => ({ ...v, layout: command.id }))
           break
-        case 'resetLayout':
+        case 'resetLayout': {
           // A layout written by hand has no built-in version to go back to.
-          updateAppearance((a) =>
-            builtInLayout(a.layout)
-              ? {
-                  ...a,
-                  layouts: Object.fromEntries(
-                    Object.entries(a.layouts).filter(([name]) => name !== a.layout)
-                  )
-                }
-              : a
-          )
+          const id = layoutId
+          if (id === null || !builtInLayout(id)) break
+          updateAppearance((a) => ({
+            ...a,
+            layouts: Object.fromEntries(Object.entries(a.layouts).filter(([name]) => name !== id))
+          }))
           break
+        }
         case 'togglePanels':
-          updateAppearance((a) => ({ ...a, panelsHidden: !a.panelsHidden }))
+          updateView((v) => ({ ...v, panelsHidden: !v.panelsHidden }))
           break
       }
       // A panel that had the keyboard may be gone.
       requestAnimationFrame(focusWorkspace)
     },
-    [updateAppearance, focusWorkspace]
+    [updateAppearance, updateView, layoutId, focusWorkspace]
   )
 
   // The View menu asks; the chrome carries it out.
@@ -438,6 +500,10 @@ export function App(): React.JSX.Element {
 
   const runAction = useCallback(
     (action: Action) => {
+      if (!terminals && !OWN_ACTIONS.includes(action)) {
+        api.window.forward(action)
+        return
+      }
       const tab = activeTab(layoutRef.current)
       switch (action) {
         case 'newTab':
@@ -501,8 +567,11 @@ export function App(): React.JSX.Element {
         }
       }
     },
-    [api, openPicker, openShell, runAppearance]
+    [api, terminals, openPicker, openShell, runAppearance]
   )
+
+  // A window without terminals passed this one an action.
+  useEffect(() => api.window.onAction(runAction), [api, runAction])
 
   // App shortcuts run in the capture phase, before xterm sees the key.
   useEffect(() => {
@@ -543,14 +612,24 @@ export function App(): React.JSX.Element {
     }
   }, [api, keymap, runAction])
 
-  /** Show a pane and give it the keyboard (a notification or the session list asked). */
-  const revealPane = useCallback((paneId: string) => {
+  /** Show a pane of this window and give it the keyboard (a notification or main asked). */
+  const showPane = useCallback((paneId: string) => {
     setPicker(null)
     dispatch({ type: 'focusPane', paneId })
     requestAnimationFrame(() => focusPane(paneId))
   }, [])
 
-  useEffect(() => api.sessions.onFocusRequest(revealPane), [api, revealPane])
+  useEffect(() => api.sessions.onFocusRequest(showPane), [api, showPane])
+
+  /** Show a pane (the session list asked); main brings forward another window's. */
+  const revealPane = useCallback(
+    (paneId: string) => {
+      const mine = layoutRef.current.tabs.some((t) => findPane(t.root, paneId))
+      if (mine) showPane(paneId)
+      else api.sessions.reveal(paneId)
+    },
+    [api, showPane]
+  )
 
   // When the window comes back, Chromium can hand focus to the first button in
   // the page, where a stray Enter would close a tab. Give it to the terminal
@@ -703,7 +782,16 @@ export function App(): React.JSX.Element {
 
   // The theme and the config arrive together before anything shows; after
   // that neither goes back to null, so the terminals are never unmounted.
-  if (!config || !terminalTheme || !tree || !resolved) return <div className="app" />
+  if (!config || !terminalTheme || !tree || !view || !windowInfo || !resolved) {
+    return <div className="app" />
+  }
+
+  // The toolbar names this window's own pane; a window of panels names the
+  // one the user works in.
+  const ownTab = activeTab(layout)
+  const toolbarPane = terminals
+    ? (sessions.find((s) => s.id === ownTab?.activePaneId) ?? null)
+    : focused
 
   const renderPanel = (p: FramePanel, place: PanelPlace): React.ReactNode => {
     switch (p.panel) {
@@ -786,7 +874,7 @@ export function App(): React.JSX.Element {
 
   // Widgets in a fixed order: React moves reordered siblings in the DOM, and
   // a moved iframe reloads.
-  const floatingWidgets = widgets
+  const floatingWidgets = [...widgetMap.values()]
     .filter((w) => w.manifest)
     .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
 
@@ -815,33 +903,36 @@ export function App(): React.JSX.Element {
           {/* Not positioned: the items' containing block must be .frame-root,
               the ancestor of the placeholders they anchor to. */}
           <div className="frame-floating">
-            <div
-              className="floating-item"
-              style={{
-                ['--anchor' as string]: slotName('workspace'),
-                display: workspaceShown ? undefined : 'none'
-              }}
-            >
-              {layout.tabs.length > 0 ? (
-                <Workspace
-                  layout={layout}
-                  presets={config.presets}
-                  settings={config.terminal}
-                  theme={terminalTheme}
-                  dispatch={dispatch}
-                />
-              ) : (
-                <Launcher
-                  presets={config.presets}
-                  initialPresetId={config.launcher.presetId}
-                  projectsDir={config.projectsDir}
-                  restoreTabs={restorable?.tabs.length ?? 0}
-                  inputRef={launcherInput}
-                  onLaunch={launch}
-                  onRestore={restore}
-                />
-              )}
-            </div>
+            {/* Kept while a window of panels has tabs from before, so they live on. */}
+            {(terminals || layout.tabs.length > 0) && (
+              <div
+                className="floating-item"
+                style={{
+                  ['--anchor' as string]: slotName('workspace'),
+                  display: workspaceShown ? undefined : 'none'
+                }}
+              >
+                {layout.tabs.length > 0 ? (
+                  <Workspace
+                    layout={layout}
+                    presets={config.presets}
+                    settings={config.terminal}
+                    theme={terminalTheme}
+                    dispatch={dispatch}
+                  />
+                ) : (
+                  <Launcher
+                    presets={config.presets}
+                    initialPresetId={config.launcher.presetId}
+                    projectsDir={config.projectsDir}
+                    restoreTabs={restorable?.tabs.length ?? 0}
+                    inputRef={launcherInput}
+                    onLaunch={launch}
+                    onRestore={restore}
+                  />
+                )}
+              </div>
+            )}
             {floatingWidgets.map((w) =>
               w.manifest ? (
                 <div
@@ -865,14 +956,17 @@ export function App(): React.JSX.Element {
           </div>
         </div>
         <Toolbar
-          focused={focused}
+          focused={toolbarPane}
           keybindings={config.keybindings}
           layouts={layoutChoices(config.appearance)}
-          layout={config.appearance.layout}
-          panelsHidden={config.appearance.panelsHidden}
+          layout={view.layout}
+          panelsHidden={view.panelsHidden}
           active={windowVisible}
           onAction={runAction}
           onLayout={(id) => runAppearance({ type: 'layout', id })}
+          windows={windowInfo.count}
+          displays={windowInfo.displays}
+          onWindows={(n) => api.window.setCount(n)}
         />
         {picker && (
           <Picker

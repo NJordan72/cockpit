@@ -712,6 +712,28 @@ kbd {
   opacity: 0.4;
 }
 
+/* 1, 2, or 3 windows. */
+.toolbar-windows {
+  display: flex;
+  align-items: center;
+  margin-left: 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.toolbar-windows > span {
+  padding: 0 2px 0 4px;
+}
+
+.toolbar-actions .toolbar-windows button {
+  min-width: 20px;
+  padding: 0 4px;
+}
+
+.toolbar-actions .toolbar-windows button.on {
+  background: var(--bg-hover);
+}
+
 /* ---- the frame: the window's panels ---- */
 
 .frame-root {

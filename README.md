@@ -57,7 +57,7 @@ list), and press `Enter`. Type to filter, or type a path starting with `~` or
 and preset. Drag a tab along the tab bar to move it.
 
 The layout (tabs, splits, sizes, each pane's preset and directory) is saved to
-`~/.cockpit/config.json`, and the start screen offers to restore it on
+`~/.cockpit/config.json` for each window, and the start screen offers to restore it on
 relaunch. Processes and scrollback are not restored; each pane starts its
 preset fresh in the directory it was last in. When a pane's process exits, the
 pane shows the exit status; press `Enter` to restart it.
@@ -273,6 +273,8 @@ View > Layout arranges the window:
   Sessions, Activity, and widgets.
 - **Cockpit**: an image banner and a clock across the top, Activity on the
   left, and Sessions, a System monitor, and widgets on the right.
+- **Panels (no terminals)**: for a second or third window (see [Windows and
+  displays](#windows-and-displays)).
 
 Every line between two panels drags, and panels in a column fold from their
 title. Changes are saved as your own copy of that layout; View > Layout >
@@ -284,6 +286,33 @@ runs, and terminals and widgets keep running when the layout changes.
 [docs/layouts.md](docs/layouts.md) has the format.
 
 View > Open Cockpit Folder opens `~/.cockpit` in Finder.
+
+## Windows and displays
+
+The ▭ 1 2 3 switch at the right of the toolbar (or Window > One, Two, Three
+Windows) sets how many Cockpit windows are open and puts them on the displays:
+one per display while there are enough, filling it, and side by side on the
+biggest display past that. Windows that are already on a display stay on it.
+Picking the number already selected arranges the windows again. Going down
+closes the newest windows first, and asks before ending terminals in them.
+
+Each window has its own tabs and its own layout, so a side display can run
+**Panels**, a layout with no terminals: clock, Sessions, System, pull
+requests, and commands on the left, Activity in the middle, widgets on the
+right. Activity, pull requests, commands, and the toolbar there follow the
+pane you last worked in, in whichever window. Shortcuts pressed in a Panels
+window (Cmd+T, Cmd+D, ...) go to the window with terminals you used last.
+
+A widget runs in one window only: the first whose layout places it. Widgets
+no layout places go to the first window without terminals, or else the first
+window. Two windows on the same layout share it, so dragging a divider in one
+moves it in the other.
+
+Every window's tabs, layout, and place are saved, and a relaunch reopens each
+on the display it was on. When a display is unplugged, macOS moves its window
+to another one; when the display comes back, the window goes back to it.
+Closing a window with its red button ends its terminals and forgets it, except
+the last one, which the start screen offers to restore as before.
 
 ## Kids mode
 

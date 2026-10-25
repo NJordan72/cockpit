@@ -7,6 +7,7 @@ import {
   defaultAppearance,
   defaultConfig,
   defaultSidebar,
+  defaultWindow,
   migrateConfig,
   normalizeSizes,
   pushRecentDir,
@@ -14,9 +15,18 @@ import {
   readSidebar,
   SIDEBAR_MAX_WIDTH,
   terminalFontStack,
-  type RecentDir
+  type CockpitConfig,
+  type RecentDir,
+  type WindowState
 } from './config'
 import { findNode } from './frame'
+
+/** The main window, which a config always has. */
+function win(c: CockpitConfig): WindowState {
+  const w = c.windows[0]
+  if (!w) throw new Error('no window')
+  return w
+}
 
 describe('migrateConfig', () => {
   it('returns defaults for missing or garbage input', () => {
@@ -99,9 +109,9 @@ describe('migrateConfig', () => {
         ]
       }
     })
-    expect(c.layout.activeTabId).toBe('t1')
-    expect(c.layout.tabs.map((t) => t.id)).toEqual(['t1', 't3'])
-    const t1 = c.layout.tabs[0]
+    expect(win(c).activeTabId).toBe('t1')
+    expect(win(c).tabs.map((t) => t.id)).toEqual(['t1', 't3'])
+    const t1 = win(c).tabs[0]
     expect(t1?.activePaneId).toBe('p1')
     expect(t1?.root).toEqual({
       type: 'split',
@@ -113,7 +123,7 @@ describe('migrateConfig', () => {
         { type: 'pane', id: 'p3', presetId: 'shell', cwd: '~/dev/b' }
       ]
     })
-    expect(c.layout.tabs[1]?.root).toEqual({ type: 'pane', id: 'p4', presetId: 'shell', cwd: '~' })
+    expect(win(c).tabs[1]?.root).toEqual({ type: 'pane', id: 'p4', presetId: 'shell', cwd: '~' })
   })
 
   it('rejects duplicate ids in a layout', () => {
@@ -135,7 +145,7 @@ describe('migrateConfig', () => {
         ]
       }
     })
-    expect(c.layout.tabs[0]?.root).toEqual({ type: 'pane', id: 'p1', presetId: 'shell', cwd: '~' })
+    expect(win(c).tabs[0]?.root).toEqual({ type: 'pane', id: 'p1', presetId: 'shell', cwd: '~' })
   })
 
   it('keeps web panes with a web URL and drops other URLs', () => {
@@ -146,7 +156,7 @@ describe('migrateConfig', () => {
     const c = migrateConfig({
       layout: { tabs: [tab('a', 'file:///tmp/deck/index.html'), tab('b', 'javascript:alert(1)')] }
     })
-    expect(c.layout.tabs.map((t) => t.root)).toEqual([
+    expect(win(c).tabs.map((t) => t.root)).toEqual([
       {
         type: 'pane',
         id: 'p-a',
@@ -277,9 +287,9 @@ describe('migrateConfig: appearance', () => {
       }
     })
     expect(c).not.toHaveProperty('sidebar')
-    expect(c.appearance.layout).toBe('classic')
-    expect(c.appearance.panelsHidden).toBe(true)
-    const tree = activeLayout(c.appearance)
+    expect(win(c).layout).toBe('classic')
+    expect(win(c).panelsHidden).toBe(true)
+    const tree = activeLayout(c.appearance, win(c).layout)
     const sidebar = findNode(tree, 'sidebar')
     expect(sidebar?.size).toBe(400)
     expect(findNode(tree, 'sessions')?.collapsed).toBe(true)
@@ -300,17 +310,17 @@ describe('migrateConfig: appearance', () => {
       sidebar: { width: 500 },
       appearance: { layouts: { classic: saved }, panelsHidden: false }
     })
-    expect(findNode(activeLayout(c.appearance), 'sidebar')).toBeNull()
-    expect(c.appearance.panelsHidden).toBe(false)
+    expect(findNode(activeLayout(c.appearance, win(c).layout), 'sidebar')).toBeNull()
+    expect(win(c).panelsHidden).toBe(false)
   })
 
   it('falls back to the classic layout for one that does not exist', () => {
-    expect(migrateConfig({ appearance: { layout: 'nope' } }).appearance.layout).toBe('classic')
-    expect(migrateConfig({ appearance: { layout: 'cockpit' } }).appearance.layout).toBe('cockpit')
+    expect(win(migrateConfig({ appearance: { layout: 'nope' } })).layout).toBe('classic')
+    expect(win(migrateConfig({ appearance: { layout: 'cockpit' } })).layout).toBe('cockpit')
     const mine = migrateConfig({
       appearance: { layout: 'mine', layouts: { mine: { type: 'panel', panel: 'workspace' } } }
     })
-    expect(mine.appearance.layout).toBe('mine')
+    expect(win(mine).layout).toBe('mine')
   })
 
   it('drops layouts whose names could not be config keys', () => {
@@ -429,5 +439,76 @@ describe('terminalFontStack', () => {
   it('leaves a stack that already names them alone', () => {
     const stack = '"Symbols Nerd Font", Menlo'
     expect(terminalFontStack(stack)).toBe(stack)
+  })
+})
+
+describe('migrateConfig: windows', () => {
+  const pane = (id: string): unknown => ({ type: 'pane', id, presetId: 'shell', cwd: '~' })
+  const tab = (id: string, paneId: string): unknown => ({
+    id,
+    root: pane(paneId),
+    activePaneId: paneId
+  })
+
+  it("makes version 3's tabs, layout, and Cmd+B state the main window", () => {
+    const c = migrateConfig({
+      version: 3,
+      appearance: { layout: 'cockpit', panelsHidden: true },
+      layout: { tabs: [tab('t1', 'p1')], activeTabId: 't1' }
+    })
+    expect(c.windows).toEqual([
+      {
+        id: 'main',
+        layout: 'cockpit',
+        panelsHidden: true,
+        tabs: [{ id: 't1', root: pane('p1'), activePaneId: 'p1' }],
+        activeTabId: 't1'
+      }
+    ])
+    expect(c).not.toHaveProperty('layout')
+    expect(c.appearance).not.toHaveProperty('layout')
+  })
+
+  it('keeps up to three windows with their place, and repairs the rest', () => {
+    const c = migrateConfig({
+      windows: [
+        {
+          id: 'main',
+          layout: 'panels',
+          bounds: { x: -1920, y: 0, width: 1920, height: 1080 },
+          display: { id: 7, label: 'DELL' }
+        },
+        { id: 'main', layout: 'classic' },
+        { id: 'Bad Id' },
+        { id: 'w2', layout: 'gone', bounds: { x: 0, y: 0, width: 50, height: 50 } },
+        { id: 'w3', display: { id: 1.5 } },
+        { id: 'w4' }
+      ]
+    })
+    expect(c.windows.map((w) => [w.id, w.layout])).toEqual([
+      ['main', 'panels'],
+      ['w2', 'classic'],
+      ['w3', 'classic']
+    ])
+    expect(win(c)).toMatchObject({
+      bounds: { x: -1920, y: 0, width: 1920, height: 1080 },
+      display: { id: 7, label: 'DELL' }
+    })
+    expect(c.windows[1]).not.toHaveProperty('bounds')
+    expect(c.windows[2]).not.toHaveProperty('display')
+  })
+
+  it('gives no two windows the same pane', () => {
+    const c = migrateConfig({
+      windows: [
+        { id: 'main', tabs: [tab('t1', 'p1')] },
+        { id: 'w2', tabs: [tab('t2', 'p1'), tab('t3', 'p3')] }
+      ]
+    })
+    expect(c.windows[1]?.tabs.map((t) => t.id)).toEqual(['t3'])
+  })
+
+  it('always has a main window', () => {
+    expect(migrateConfig({ windows: [] }).windows).toEqual([defaultWindow()])
   })
 })

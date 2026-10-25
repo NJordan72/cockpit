@@ -63,6 +63,11 @@ interface Container extends Sizing {
   title?: string
   /** Installed widgets that aren't placed anywhere else go here. */
   widgets?: 'rest'
+  /**
+   * On the root only: the layout has no terminals and no tab bar, for a
+   * window of panels beside the ones with terminals.
+   */
+  terminals?: false
 }
 
 export interface FrameSplit extends Container {
@@ -138,6 +143,8 @@ function defaultId(v: Obj, path: string): string {
 }
 
 interface ReadState {
+  /** False for a layout of panels only. */
+  terminals: boolean
   ids: Set<string>
   widgets: Set<string>
   workspace: boolean
@@ -157,11 +164,11 @@ function readNode(v: unknown, path: string, depth: number, st: ReadState): Frame
     // One terminal area, one tab bar, and each widget once: they hold state
     // that can't be in two places.
     if (p.panel === 'workspace') {
-      if (st.workspace) return null
+      if (st.workspace || !st.terminals) return null
       st.workspace = true
     }
     if (p.panel === 'tabbar') {
-      if (st.tabbar) return null
+      if (st.tabbar || !st.terminals) return null
       st.tabbar = true
     }
     if (p.widget) {
@@ -242,18 +249,22 @@ export function panel(kind: PanelKind, extra: Partial<FramePanel> = {}): FramePa
 /**
  * Turn whatever is in config.json into a usable tree. Bad nodes are dropped,
  * and the tree always ends up with one workspace, one tab bar, and one group
- * for widgets that aren't placed elsewhere. Never throws. Ids it makes up
+ * for widgets that aren't placed elsewhere. A root marked `terminals: false`
+ * gets neither a workspace nor a tab bar. Never throws. Ids it makes up
  * depend only on the tree's shape, so reading a saved tree again keeps them.
  */
 export function readFrame(raw: unknown): FrameNode {
   const st: ReadState = {
+    terminals: !(isObj(raw) && raw.terminals === false),
     ids: new Set(),
     widgets: new Set(),
     workspace: false,
     tabbar: false,
     rest: false
   }
-  let root = unfold(readNode(raw, '0', 0, st) ?? panel('workspace'))
+  const read = readNode(raw, '0', 0, st)
+  if (!st.terminals) return panelsOnly(read && unfold(read), st)
+  let root = unfold(read ?? panel('workspace'))
   if (root.type === 'panel' && root.panel === 'workspace') st.workspace = true
 
   if (!st.workspace) {
@@ -275,6 +286,49 @@ export function readFrame(raw: unknown): FrameNode {
   }
   if (!st.rest) root = addRestGroup(root)
   return root
+}
+
+/** The rest of readFrame for a layout without terminals. Its root is always a container. */
+function panelsOnly(read: FrameNode | null, st: ReadState): FrameContainer {
+  let root: FrameNode = read ?? {
+    type: 'split',
+    id: 'n-widgets',
+    direction: 'column',
+    title: 'Widgets',
+    widgets: 'rest',
+    children: []
+  }
+  if (!read) st.rest = true
+  if (!st.rest) root = addRestGroup(root)
+  if (root.type === 'panel') {
+    root = { type: 'split', id: 'n-root', direction: 'column', children: [root] }
+  }
+  return { ...root, terminals: false }
+}
+
+/** Whether a layout has the terminals in it (see `terminals` on its root). */
+export function hasTerminals(root: FrameNode): boolean {
+  return root.type === 'panel' || root.terminals !== false
+}
+
+/**
+ * Which widgets each window shows, given the windows' layouts in order. A
+ * widget runs in one window only: the first whose layout places it. Widgets
+ * no layout places go to the first window without terminals, or else to the
+ * first window.
+ */
+export function widgetHomes(trees: readonly FrameNode[], installed: readonly string[]): string[][] {
+  const out = trees.map((): string[] => [])
+  const rest = Math.max(
+    0,
+    trees.findIndex((t) => !hasTerminals(t))
+  )
+  const placed = trees.map((t) => new Set(panels(t).flatMap((p) => (p.widget ? [p.widget] : []))))
+  for (const id of installed) {
+    const i = placed.findIndex((set) => set.has(id))
+    out[i >= 0 ? i : rest]?.push(id)
+  }
+  return out
 }
 
 /**
@@ -480,6 +534,7 @@ export function toggleMode(root: FrameNode, id: string): FrameNode {
     const base: Container = { id: n.id, children, ...sizingOf(n) }
     if (title) base.title = title
     if (widgets) base.widgets = widgets
+    if (n.terminals === false) base.terminals = false
     if (n.type === 'tabs') return { ...base, type: 'split', direction: 'column' }
     // A tab has no title row to unfold it from.
     return {

@@ -831,3 +831,71 @@ Next: M5 (optional).
   `zed`, but no real Zed window was opened.
 - Not covered: Codex rows (Codex doesn't report its commands or files), and
   bash 3.2's quiet-output fallback, which is only unit tested.
+
+### Windows and displays (added 2026-10-25, not in the original plan)
+
+The user asked for Cockpit to be multi-monitor aware and span up to three
+displays, with a 1/2/3 switch in the toolbar. They chose one window per
+display, each with its own tabs and layout, over a single stretched window
+(which macOS clips to one display while "Displays have separate Spaces" is on).
+
+- Config version 4 replaces the top-level `layout` and `appearance.layout` /
+  `panelsHidden` with `windows`: up to three `WindowState`s, each with its id,
+  layout, Cmd+B state, tabs, `bounds`, and `display` (id and name). Version 3
+  becomes the `main` window; pane ids stay unique across windows. A hand edit
+  to a window's layout or `panelsHidden` applies live; its tabs and place
+  don't.
+- Main keeps one `CockpitWindow` per BrowserWindow in config order. Each
+  window's chrome owns its tabs (as before) and its view (`window:save`);
+  the theme and saved layouts are shared, and a save in one window goes to the
+  others as `appearance:changed`. PTYs already belonged to the webContents
+  that created them, so each window's die with it.
+- The toolbar's ▭ 1 2 3 switch and Window > One/Two/Three Windows call
+  `setWindowCount`: close the newest windows (a dialog first if terminals in
+  them are running), then `arrange` (`src/main/displays.ts`, pure and tested)
+  gives each window a display while there are enough, keeps windows on the
+  displays they're on, and tiles the rest side by side on the biggest
+  display. Choosing the current count arranges again. New windows copy the
+  layout of the window that asked, if it has terminals.
+- A layout root with `"terminals": false` has no workspace or tab bar
+  (`readFrame` drops them and adds none). Built-in **Panels** is one: clock,
+  Sessions, System, PRs/commands; Activity; widgets. In such a window, pane
+  actions are forwarded to the terminal window last focused, and Cmd+B does
+  nothing.
+- "The pane the user works in" (`focused` in sessions, which Activity, PRs,
+  commands, and the Panels toolbar follow) is the active pane of the most
+  recently focused window with terminals and open tabs, so a fresh window on
+  its start screen doesn't blank the panels. A finished turn counts as seen
+  when any Cockpit window has focus.
+- Widgets run in one window: `widgetHomes` puts each in the first window whose
+  layout places it, unplaced ones in the first window without terminals (else
+  the first). Main sends each window its list in `WindowInfo`. Widget events
+  and secret prompts go to every window; a chrome passes on only its own
+  widgets' events, shows a prompt only while the widget is on screen in it,
+  and drops it on `secret:done`.
+- Placement: windows save `getNormalBounds()` and their display on
+  `moved`/`resized`, except within 2 s of a display change, so macOS's moves
+  off an unplugged display aren't saved. On `display-added`, windows whose
+  saved display it is go back to their saved bounds. On launch a window opens
+  on its saved display, or on the display nearest its saved bounds, fitted
+  inside the work area.
+- Closing a window by its red button forgets it (and ends its PTYs), except
+  the last, which stays to restore. Quitting keeps every window. Kids mode
+  takes kiosk on one window and hides the others until it ends.
+- Verified in the built app with a scratch COCKPIT_HOME and the `hello`
+  widget, on this Mac's three displays (built-in plus two Studio Displays):
+  1 → 2 → 3 put one window on each display left/right of the laptop; window 2
+  switched to Panels got `hello` (main showed none) and Activity for main's
+  shell; Cmd+T in the Panels window opened the picker in main; 3 → 1 asked
+  "Close 2 windows? 1 terminal in them will end." and Cancel kept them; 2
+  closed only the third; config.json held both windows with bounds and
+  display names; relaunch reopened both on their displays with their layouts
+  and offered Restore in main; the Window menu showed the counts with the
+  right one checked; Cmd+B in the Panels window left its panels up. No
+  console errors.
+- Not checked by hand: unplugging and replugging a display (the move back
+  rests on `display-added` and is unit tested only through `findDisplay` and
+  `fitInto`), macOS's own Window menu "Move to" items, and kids mode with
+  several windows.
+- Tests: config v3 → v4 migration and window repairs, layouts without
+  terminals, widget homes, and display arrangement (406 total).

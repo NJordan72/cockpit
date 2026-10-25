@@ -9,7 +9,7 @@ import {
   type AppearanceSettings,
   type CockpitConfig,
   type LauncherSettings,
-  type Layout
+  type WindowState
 } from '@shared/config'
 import { cockpitHome } from './paths'
 
@@ -38,13 +38,21 @@ export class ConfigStore {
     return this.config
   }
 
-  setLayout(layout: Layout): void {
-    this.config = migrateConfig({ ...this.config, layout })
+  /** Run through migration, so a bad layout from the chrome can't corrupt the file. */
+  setWindows(windows: WindowState[]): void {
+    this.config = migrateConfig({ ...this.config, windows })
     this.write()
   }
 
+  updateWindow(id: string, fn: (w: WindowState) => WindowState): void {
+    const { windows } = this.config
+    if (!windows.some((w) => w.id === id)) return
+    this.setWindows(windows.map((w) => (w.id === id ? fn(w) : w)))
+  }
+
   setAppearance(appearance: AppearanceSettings): void {
-    this.config = { ...this.config, appearance: readAppearance({ appearance }) }
+    // Through migration as a whole, so a window whose layout is gone falls back.
+    this.config = migrateConfig({ ...this.config, appearance: readAppearance({ appearance }) })
     this.write()
   }
 
@@ -105,9 +113,15 @@ export class ConfigStore {
       // Half-written or mid-edit; wait for the next save.
       return
     }
-    // The renderer owns the live layout; a hand edit can't rearrange open panes.
-    // The appearance does come from the file, so it can be edited by hand.
-    this.config = { ...migrateConfig(raw), layout: this.config.layout }
+    // The chrome owns the open windows and their tabs; a hand edit can't
+    // rearrange open panes. The appearance and each window's layout do come
+    // from the file, so they can be edited by hand.
+    const read = migrateConfig(raw)
+    const windows = this.config.windows.map((w) => {
+      const edited = read.windows.find((r) => r.id === w.id)
+      return edited ? { ...w, layout: edited.layout, panelsHidden: edited.panelsHidden } : w
+    })
+    this.config = migrateConfig({ ...read, windows })
     this.lastWritten = text
     this.onExternalChange(this.config)
   }

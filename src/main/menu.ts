@@ -17,7 +17,15 @@ export interface MenuHandlers {
   canResetLayout: boolean
   onTogglePanels: () => void
   onOpenFolder: () => void
+  /** Windows open now. */
+  windows: number
+  /** Displays connected now. */
+  displays: number
+  /** Open or close windows to make `count`, and arrange them on the displays. */
+  onWindows: (count: number) => void
 }
+
+const WINDOW_COUNTS = ['One Window', 'Two Windows', 'Three Windows']
 
 /**
  * A minimal macOS menu. Copy and paste are handled by the terminal itself so
@@ -94,9 +102,33 @@ export function buildMenu(handlers: MenuHandlers): Menu {
       ]
     },
     {
-      // Built by hand: the stock window menu binds Cmd+W, which closes panes here.
+      // Built by hand: the stock window menu binds Cmd+W, which closes panes
+      // here. The role still makes it macOS's Window menu, which lists the
+      // windows and offers to move one to another display.
       label: 'Window',
-      submenu: [{ role: 'minimize' }, { role: 'zoom' }, { type: 'separator' }, { role: 'front' }]
+      role: 'window',
+      submenu: [
+        { role: 'minimize' },
+        { role: 'zoom' },
+        { type: 'separator' },
+        ...WINDOW_COUNTS.map((label, i): MenuItemConstructorOptions => ({
+          id: `windows:${String(i + 1)}`,
+          label,
+          type: 'radio',
+          checked: handlers.windows === i + 1,
+          click: () => handlers.onWindows(i + 1)
+        })),
+        {
+          id: 'windows-arrange',
+          label:
+            handlers.displays > 1
+              ? `Arrange Windows on ${String(handlers.displays)} Displays`
+              : 'Arrange Windows',
+          click: () => handlers.onWindows(handlers.windows)
+        },
+        { type: 'separator' },
+        { role: 'front' }
+      ]
     }
   ]
   return Menu.buildFromTemplate(template)

@@ -1,11 +1,14 @@
-import type { Action, Keybindings } from '@shared/config'
+import { MAX_WINDOWS, type Action, type Keybindings } from '@shared/config'
 import type { PaneSession } from '@shared/ipc'
 import { useGit } from '../activity/useActivity'
 import { chordLabel } from '../keybindings'
 import { STATUS_LABEL } from '../sessions'
 
 interface Props {
-  /** The focused pane of the active tab; null on the start screen. */
+  /**
+   * The focused pane of the active tab; null on the start screen. In a window
+   * without terminals, the one the user last worked in.
+   */
   focused: PaneSession | null
   keybindings: Keybindings
   layouts: { id: string; name: string }[]
@@ -15,6 +18,28 @@ interface Props {
   active: boolean
   onAction: (action: Action) => void
   onLayout: (id: string) => void
+  /** Windows open now, and displays to put them on. */
+  windows: number
+  displays: number
+  /** Open or close windows to make `count`, and arrange them on the displays. */
+  onWindows: (count: number) => void
+}
+
+const COUNTS = Array.from({ length: MAX_WINDOWS }, (_, i) => i + 1)
+
+function windowsTitle(count: number, open: number, displays: number): string {
+  const what = count === 1 ? '1 window' : `${String(count)} windows`
+  const where =
+    displays >= count
+      ? count === 1
+        ? ''
+        : ', one per display'
+      : displays === 1
+        ? ', side by side'
+        : `, on ${String(displays)} displays`
+  return count === open
+    ? `Arrange ${what}${where}`
+    : `${what[0]?.toUpperCase() ?? ''}${what.slice(1)}${where}`
 }
 
 const BUTTONS: { action: Action; label: string; title: string; needsPane: boolean }[] = [
@@ -42,7 +67,10 @@ export function Toolbar({
   panelsHidden,
   active,
   onAction,
-  onLayout
+  onLayout,
+  windows,
+  displays,
+  onWindows
 }: Props): React.JSX.Element {
   const tip = (title: string, action: Action): string => {
     const keys = chordLabel(keybindings[action])
@@ -96,6 +124,23 @@ export function Toolbar({
             </option>
           ))}
         </select>
+        <div className="toolbar-windows" role="group" aria-label="Windows">
+          <span aria-hidden>▭</span>
+          {COUNTS.map((n) => (
+            <button
+              key={n}
+              type="button"
+              tabIndex={-1}
+              className={n === windows ? 'on' : undefined}
+              aria-pressed={n === windows}
+              title={windowsTitle(n, windows, displays)}
+              onMouseDown={keepFocus}
+              onClick={() => onWindows(n)}
+            >
+              {n}
+            </button>
+          ))}
+        </div>
       </div>
     </div>
   )
