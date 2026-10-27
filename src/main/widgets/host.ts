@@ -41,6 +41,8 @@ export interface WidgetHostOptions {
   sendPrompt: (paneId: string, prompt: string) => boolean
   /** Only accept IPC from the chrome's own top-level frame. */
   trusted: (e: IpcMainEvent | IpcMainInvokeEvent) => boolean
+  /** Widgets were installed, removed, or edited. */
+  changed?: () => void
 }
 
 export class WidgetHost {
@@ -48,8 +50,12 @@ export class WidgetHost {
   private readonly storage: WidgetStorage
   private readonly secrets: SecretStore
   private readonly broker: WidgetBroker
-  /** The chrome that shows the widgets. One window, so one target. */
-  private target: WebContents | null = null
+  /**
+   * The windows' chromes. Each widget runs in one of them; events go to all,
+   * and a chrome passes on only those for widgets it shows.
+   */
+  private targets = new Set<WebContents>()
+  private guarded = new WeakSet<WebContents>()
   private prompts = new Map<string, { widgetId: string; resolve: (v: string | null) => void }>()
   private openPrompts = new Map<string, Promise<string | null>>()
   /** When the user last dismissed a prompt from each widget. */
@@ -59,6 +65,7 @@ export class WidgetHost {
   constructor(private readonly opts: WidgetHostOptions) {
     this.registry = new WidgetRegistry(path.join(opts.home, 'widgets'), (list) => {
       this.send(IPC.widgetsChanged, list)
+      opts.changed?.()
     })
     this.storage = new WidgetStorage(path.join(opts.home, 'data'), (id, key, value) => {
       if (this.registry.get(id)?.parsed?.manifest.permissions.storage) {
@@ -91,9 +98,12 @@ export class WidgetHost {
     this.storage.close()
   }
 
-  /** Point the host at the chrome window and guard its widget frames. */
+  /** Add a window's chrome to the ones that show widgets, and guard its widget frames. */
   attach(wc: WebContents): void {
-    this.target = wc
+    this.targets.add(wc)
+    // A reload attaches again; the guards are already in place.
+    if (this.guarded.has(wc)) return
+    this.guarded.add(wc)
     // A widget can navigate its own frame, and a URL can carry data out. The
     // chrome only ever frames widgets, so cancel every other frame load.
     // (will-frame-navigate would be the natural hook, but Electron 44 doesn't
@@ -124,10 +134,16 @@ export class WidgetHost {
     wc.setWebRTCIPHandlingPolicy('disable_non_proxied_udp')
   }
 
-  /** The chrome went away or reloaded; nobody is left to answer prompts. */
+  /**
+   * A window's chrome went away or reloaded. Prompts wait for another window,
+   * unless none is left to answer them. A reload attaches again.
+   */
   detach(wc: WebContents): void {
-    if (this.target !== wc) return
-    for (const { resolve } of this.prompts.values()) resolve(null)
+    if (!this.targets.delete(wc) || this.targets.size > 0) return
+    for (const [promptId, { resolve }] of this.prompts) {
+      resolve(null)
+      this.send(IPC.secretDone, promptId)
+    }
     this.prompts.clear()
     this.lastSessions = ''
   }
@@ -162,13 +178,14 @@ export class WidgetHost {
       const answer = typeof value === 'string' && value !== '' ? value : null
       if (answer === null) this.dismissedAt.set(pending.widgetId, Date.now())
       pending.resolve(answer)
+      // Every window was told about the prompt; the others drop it now.
+      this.send(IPC.secretDone, promptId)
     })
   }
 
   private promptSecret(widget: LoadedWidget, name: string): Promise<string | null> {
-    const wc = this.target
     const manifest = widget.parsed?.manifest
-    if (!wc || wc.isDestroyed() || !manifest) return Promise.resolve(null)
+    if (this.targets.size === 0 || !manifest) return Promise.resolve(null)
     // A widget that asks again right after the user said no is refused for a
     // while, so a widget asking in a loop can't keep the window covered.
     if (Date.now() - (this.dismissedAt.get(manifest.id) ?? 0) < PROMPT_COOLDOWN_MS) {
@@ -188,7 +205,9 @@ export class WidgetHost {
       this.prompts.set(prompt.promptId, { widgetId: manifest.id, resolve })
     }).finally(() => this.openPrompts.delete(key))
     this.openPrompts.set(key, answer)
-    wc.send(IPC.secretPrompt, prompt)
+    // The window showing the widget asks; the others keep it in case the
+    // widget moves to them.
+    this.send(IPC.secretPrompt, prompt)
     return answer
   }
 
@@ -228,8 +247,7 @@ export class WidgetHost {
   }
 
   private send(channel: string, ...args: unknown[]): void {
-    const wc = this.target
-    if (wc && !wc.isDestroyed()) wc.send(channel, ...args)
+    for (const wc of this.targets) if (!wc.isDestroyed()) wc.send(channel, ...args)
   }
 
   private sendEvent<T extends WidgetEventTopic>(id: string, topic: T, data: WidgetEvents[T]): void {

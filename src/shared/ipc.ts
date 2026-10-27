@@ -2,11 +2,13 @@
 import type { ActivityUpdate, GitStatus, PaneActivity } from './activity'
 import type { CommandList, CommandScope, SaveCommand, SaveResult } from './commands'
 import type {
+  Action,
   AppearanceSettings,
   CockpitConfig,
   LauncherSettings,
   Layout,
-  RecentPage
+  RecentPage,
+  WindowView
 } from './config'
 import type { PrList } from './prs'
 import type { ThemeDefinition } from './theme'
@@ -36,6 +38,13 @@ export const IPC = {
   launcherSave: 'launcher:save',
   appearanceSave: 'appearance:save',
   appearanceCommand: 'appearance:command',
+  appearanceChanged: 'appearance:changed',
+  windowInfo: 'window:info',
+  windowSave: 'window:save',
+  windowChanged: 'window:changed',
+  windowCount: 'window:count',
+  windowForward: 'window:forward',
+  appAction: 'app:action',
   themesList: 'themes:list',
   themesChanged: 'themes:changed',
   imagesChanged: 'images:changed',
@@ -48,9 +57,11 @@ export const IPC = {
   widgetEvent: 'widget:event',
   secretPrompt: 'secret:prompt',
   secretAnswer: 'secret:answer',
+  secretDone: 'secret:done',
   sessionsList: 'sessions:list',
   sessionsChanged: 'sessions:changed',
   paneFocus: 'pane:focus',
+  sessionsReveal: 'sessions:reveal',
   activityGet: 'activity:get',
   activityUpdate: 'activity:update',
   activityGit: 'activity:git',
@@ -166,6 +177,17 @@ export interface KidsCharacter {
   src: string
 }
 
+/** What a window's chrome needs to know about itself and the other windows. */
+export interface WindowInfo {
+  /** Its WindowState id in config.json. */
+  id: string
+  /** The widgets this window shows; each runs in one window only (see widgetHomes). */
+  widgets: string[]
+  /** How many windows are open, and how many displays there are to put them on. */
+  count: number
+  displays: number
+}
+
 /** A View menu choice, carried out by the chrome, which owns the appearance. */
 export type AppearanceCommand =
   | { type: 'theme'; id: string }
@@ -212,6 +234,21 @@ export interface CockpitApi {
     saveAppearance(appearance: AppearanceSettings): void
     /** The View menu asks for a change. */
     onAppearanceCommand(cb: (command: AppearanceCommand) => void): () => void
+    /** Another window changed the appearance every window shares. */
+    onAppearanceChange(cb: (appearance: AppearanceSettings) => void): () => void
+  }
+  window: {
+    info(): Promise<WindowInfo>
+    /** Main has new widgets or a new window count for this window. */
+    onChange(cb: (info: WindowInfo) => void): () => void
+    /** This window's own layout and Cmd+B state. */
+    save(view: WindowView): void
+    /** Open or close windows until there are `count`, and put them on the displays. */
+    setCount(count: number): void
+    /** Run a pane action in the window with the terminals the user last worked in. */
+    forward(action: Action): void
+    /** Another window forwarded an action here. */
+    onAction(cb: (action: Action) => void): () => void
   }
   themes: {
     /** Built-in themes, then the ones in ~/.cockpit/themes/. */
@@ -239,13 +276,17 @@ export interface CockpitApi {
     onSecretPrompt(cb: (prompt: SecretPrompt) => void): () => void
     /** null when the user cancelled. */
     answerSecret(promptId: string, value: string | null): void
+    /** A prompt was answered, maybe in another window. */
+    onSecretDone(cb: (promptId: string) => void): () => void
   }
   sessions: {
     /** One entry per pane, with its status. */
     list(): Promise<PaneSession[]>
     onChange(cb: (sessions: PaneSession[]) => void): () => void
-    /** The user clicked a notification about this pane. */
+    /** The user clicked a notification about this pane, or another window asked. */
     onFocusRequest(cb: (paneId: string) => void): () => void
+    /** Bring forward the window a pane is in, and focus the pane. */
+    reveal(paneId: string): void
     /** Type a prompt into an agent pane and submit it. False if it isn't running one. */
     send(paneId: string, prompt: string): Promise<boolean>
     /** A widget asked for a new session. */

@@ -3,6 +3,7 @@ import {
   dragDivider,
   edges,
   findNode,
+  hasTerminals,
   isShown,
   panel,
   panels,
@@ -12,6 +13,7 @@ import {
   toggleCollapsed,
   toggleMode,
   visiblePanels,
+  widgetHomes,
   type FrameNode,
   type FrameState
 } from './frame'
@@ -448,5 +450,62 @@ describe('toggleMode', () => {
     expect(
       findNode(back, 'widgets')?.type !== 'panel' && kinds(findNode(back, 'widgets') ?? tree)
     ).toEqual(['a', 'b'])
+  })
+})
+
+describe('layouts without terminals', () => {
+  it('drops the terminals and the tab bar, and adds neither back', () => {
+    const tree = readFrame({
+      type: 'split',
+      direction: 'row',
+      terminals: false,
+      children: [panel('workspace'), panel('tabbar'), panel('sessions'), panel('clock')]
+    })
+    expect(hasTerminals(tree)).toBe(false)
+    expect(kinds(tree)).toEqual(['sessions', 'clock'])
+    expect(tree.type !== 'panel' && tree.terminals).toBe(false)
+    expect(readFrame(tree)).toEqual(tree)
+  })
+
+  it('keeps a root of one panel a container, and always has a group for widgets', () => {
+    const tree = readFrame({ type: 'panel', panel: 'clock', terminals: false })
+    expect(hasTerminals(tree)).toBe(false)
+    expect(readFrame(tree)).toEqual(tree)
+    const empty = readFrame({ type: 'split', terminals: false, children: [] })
+    expect(empty).toMatchObject({ type: 'split', widgets: 'rest', terminals: false })
+  })
+
+  it('stays without terminals when switched to tabs', () => {
+    const tree = readFrame({
+      type: 'split',
+      terminals: false,
+      title: 'All',
+      children: [panel('clock')]
+    })
+    expect(hasTerminals(toggleMode(tree, tree.id))).toBe(false)
+  })
+})
+
+describe('widgetHomes', () => {
+  const classic = builtInLayout('classic') ?? readFrame(null)
+  const panelsOnly = builtInLayout('panels') ?? readFrame(null)
+  const placing = (w: string): FrameNode =>
+    readFrame({
+      type: 'split',
+      direction: 'row',
+      children: [panel('workspace'), panel('widget', { widget: w })]
+    })
+
+  it('puts a widget in the first window whose layout places it', () => {
+    expect(widgetHomes([classic, placing('b'), placing('b')], ['a', 'b'])).toEqual([
+      ['a'],
+      ['b'],
+      []
+    ])
+  })
+
+  it('sends widgets nobody places to a window without terminals, if there is one', () => {
+    expect(widgetHomes([classic, panelsOnly], ['a', 'b'])).toEqual([[], ['a', 'b']])
+    expect(widgetHomes([classic, classic], ['a'])).toEqual([['a'], []])
   })
 })

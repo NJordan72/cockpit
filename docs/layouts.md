@@ -6,16 +6,27 @@ one from View > Layout. Dragging the line between two panels, folding a panel,
 or switching a group between stacked and tabs saves your own copy of that
 layout in `config.json`. View > Layout > Reset Layout deletes the copy.
 
+Each window picks its own layout, so View > Layout changes the window in
+front.
+
 ```jsonc
 "appearance": {
-  "layout": "classic",
   "layouts": {
     "classic": { /* your copy, written when you changed it */ },
     "wide": { /* one you wrote; it shows up in View > Layout */ }
-  },
-  "panelsHidden": false
-}
+  }
+},
+"windows": [
+  { "id": "main", "layout": "classic", "panelsHidden": false, "tabs": [/* ... */] },
+  { "id": "w2", "layout": "panels", "panelsHidden": false, "tabs": [] }
+]
 ```
+
+`windows` also keeps each window's tabs, `bounds`, and `display`; Cockpit
+writes those, and a hand edit to them while it runs is ignored. A window's
+`layout` and `panelsHidden` can be edited by hand. Before version 4 of the
+file, the one window's layout and `panelsHidden` were in `appearance`, and
+its tabs were the top-level `layout`.
 
 `panelsHidden` is what Cmd+B toggles: every panel but the terminals and the
 tab bar is hidden. The toolbar along the bottom isn't part of the layout and
@@ -35,18 +46,18 @@ stacked (`"direction": "column"`).
 
 **`panel`** is a leaf. `panel` names which:
 
-| `panel`     | Shows                                                                              | Options                                                           |
-| ----------- | ---------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
-| `workspace` | The terminals, or the start screen when no tab is open. Exactly one.               | –                                                                 |
-| `tabbar`    | The terminal tabs. Exactly one.                                                    | –                                                                 |
-| `sessions`  | Every pane with its status.                                                        | –                                                                 |
-| `activity`  | What the focused pane's agent did. Absent when no pane has focus.                  | `tab`: `log`, `files`, `agents`, or `git`                         |
-| `widget`    | One widget. Each widget can appear once.                                           | `widget`: the widget's id                                         |
-| `clock`     | The time and date, in the theme's accent.                                          | `seconds`, `date` (both default true), `hour12` (default: locale) |
-| `image`     | An image or animated GIF.                                                          | `src`, `fit` (`cover` or `contain`), `position`, `pixelated`      |
-| `monitor`   | CPU, memory, load averages, and uptime, read every 2 seconds while it's on screen. | –                                                                 |
-| `prs`       | Open pull requests of the focused pane's repository, through `gh`.                 | –                                                                 |
-| `commands`  | Claude Code slash commands for the focused pane's repository and everywhere.       | –                                                                 |
+| `panel`     | Shows                                                                                     | Options                                                           |
+| ----------- | ----------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| `workspace` | The terminals, or the start screen when no tab is open. Exactly one, or none (see below). | –                                                                 |
+| `tabbar`    | The terminal tabs. Exactly one, or none.                                                  | –                                                                 |
+| `sessions`  | Every pane with its status.                                                               | –                                                                 |
+| `activity`  | What the focused pane's agent did. Absent when no pane has focus.                         | `tab`: `log`, `files`, `agents`, or `git`                         |
+| `widget`    | One widget. Each widget can appear once.                                                  | `widget`: the widget's id                                         |
+| `clock`     | The time and date, in the theme's accent.                                                 | `seconds`, `date` (both default true), `hour12` (default: locale) |
+| `image`     | An image or animated GIF.                                                                 | `src`, `fit` (`cover` or `contain`), `position`, `pixelated`      |
+| `monitor`   | CPU, memory, load averages, and uptime, read every 2 seconds while it's on screen.        | –                                                                 |
+| `prs`       | Open pull requests of the focused pane's repository, through `gh`.                        | –                                                                 |
+| `commands`  | Claude Code slash commands for the focused pane's repository and everywhere.              | –                                                                 |
 
 An image's `src` is a file in `~/.cockpit/images/`, or `theme:<file>` for one
 in the current theme's folder. Without an extension, Cockpit tries `.gif`,
@@ -54,6 +65,26 @@ in the current theme's folder. Without an extension, Cockpit tries `.gif`,
 so `"src": "banner"` finds `banner.gif`. The image reloads when the file
 changes. `position` is a CSS `object-position` such as `top left` or `50% 20%`;
 `pixelated` keeps pixel art sharp when it's scaled.
+
+### Layouts without terminals
+
+A root `split` or `tabs` node with `"terminals": false` has no terminals and no
+tab bar: `workspace` and `tabbar` panels in it are dropped and none are added.
+It's for a window on another display, beside the ones with terminals. The
+built-in Panels layout is one. Widgets that no window's layout places go to
+the first window with such a layout.
+
+```json
+{
+  "type": "split",
+  "direction": "row",
+  "terminals": false,
+  "children": [
+    { "type": "panel", "panel": "activity" },
+    { "type": "panel", "panel": "widget", "widget": "shortcut-stories", "size": 400 }
+  ]
+}
+```
 
 Every node may have an `id`. Cockpit makes up ids for nodes without one, from
 their kind (`workspace`, `tabbar`, `widget:<id>`) or their place in the tree.

@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
 import type { ActivityUpdate } from '@shared/activity'
-import type { CockpitConfig } from '@shared/config'
+import type { Action, AppearanceSettings, CockpitConfig } from '@shared/config'
 import {
   IPC,
   type AppearanceCommand,
@@ -10,7 +10,8 @@ import {
   type PaneSession,
   type PtyCreateOptions,
   type PtyExitInfo,
-  type SystemSample
+  type SystemSample,
+  type WindowInfo
 } from '@shared/ipc'
 import type { ThemeDefinition } from '@shared/theme'
 import type { SecretPrompt, WidgetEventTopic, WidgetInfo } from '@shared/widgets'
@@ -62,6 +63,10 @@ const onAppearanceCommand: Subscribe<[AppearanceCommand]> = channel(IPC.appearan
 const onThemesChanged: Subscribe<[ThemeDefinition[]]> = channel(IPC.themesChanged)
 const onImagesChanged: Subscribe<[number]> = channel(IPC.imagesChanged)
 const onSystemSample: Subscribe<[SystemSample]> = channel(IPC.systemSample)
+const onAppearanceChange: Subscribe<[AppearanceSettings]> = channel(IPC.appearanceChanged)
+const onWindowChanged: Subscribe<[WindowInfo]> = channel(IPC.windowChanged)
+const onAppAction: Subscribe<[Action]> = channel(IPC.appAction)
+const onSecretDone: Subscribe<[string]> = channel(IPC.secretDone)
 
 function subscribe<T>(map: Map<string, Set<T>>, id: string, cb: T): () => void {
   let set = map.get(id)
@@ -97,7 +102,16 @@ const api: CockpitApi = {
     saveLayout: (layout) => ipcRenderer.send(IPC.layoutSave, layout),
     saveLauncher: (launcher) => ipcRenderer.send(IPC.launcherSave, launcher),
     saveAppearance: (appearance) => ipcRenderer.send(IPC.appearanceSave, appearance),
-    onAppearanceCommand
+    onAppearanceCommand,
+    onAppearanceChange
+  },
+  window: {
+    info: () => ipcRenderer.invoke(IPC.windowInfo),
+    onChange: onWindowChanged,
+    save: (view) => ipcRenderer.send(IPC.windowSave, view),
+    setCount: (count) => ipcRenderer.send(IPC.windowCount, count),
+    forward: (action) => ipcRenderer.send(IPC.windowForward, action),
+    onAction: onAppAction
   },
   themes: {
     list: () => ipcRenderer.invoke(IPC.themesList),
@@ -120,12 +134,14 @@ const api: CockpitApi = {
       ipcRenderer.invoke(IPC.widgetCall, widgetId, method, params),
     onEvent: (cb) => onWidgetEvent(cb),
     onSecretPrompt: (cb) => onSecretPrompt(cb),
-    answerSecret: (promptId, value) => ipcRenderer.send(IPC.secretAnswer, promptId, value)
+    answerSecret: (promptId, value) => ipcRenderer.send(IPC.secretAnswer, promptId, value),
+    onSecretDone
   },
   sessions: {
     list: () => ipcRenderer.invoke(IPC.sessionsList),
     onChange: (cb) => onSessionsChanged(cb),
     onFocusRequest: (cb) => onPaneFocus(cb),
+    reveal: (paneId) => ipcRenderer.send(IPC.sessionsReveal, paneId),
     send: (paneId, prompt) => ipcRenderer.invoke(IPC.sessionsSend, paneId, prompt),
     onOpenRequest: (cb) => onOpenSession(cb)
   },

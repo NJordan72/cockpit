@@ -9,23 +9,33 @@ import {
   ipcMain,
   Menu,
   nativeImage,
+  screen,
   session,
   shell,
+  type Display,
   type IpcMainEvent,
   type IpcMainInvokeEvent,
+  type MessageBoxOptions,
+  type MessageBoxReturnValue,
   type WebContents,
   type WebPreferences
 } from 'electron'
 import {
-  migrateConfig,
+  activeLayout,
+  DEFAULT_KEYBINDINGS,
+  defaultWindow,
+  MAX_WINDOWS,
   paneIds,
   type AppearanceSettings,
   type LauncherSettings,
   type Layout,
   type LayoutNode,
   type PaneNode,
-  type RecentPage
+  type RecentPage,
+  type WindowState,
+  type WindowView
 } from '@shared/config'
+import { hasTerminals, widgetHomes, type FrameNode } from '@shared/frame'
 import {
   IPC,
   type AppearanceCommand,
@@ -33,17 +43,19 @@ import {
   type KidsCharacter,
   type PaneSession,
   type PtyCreateOptions,
-  type PtyCreated
+  type PtyCreated,
+  type WindowInfo
 } from '@shared/ipc'
 import type { SaveResult } from '@shared/commands'
 import type { PrList } from '@shared/prs'
-import { BUILT_IN_LAYOUTS, layoutChoices } from '@shared/layouts'
+import { BUILT_IN_LAYOUTS, DEFAULT_LAYOUT_ID, layoutChoices } from '@shared/layouts'
 import { resolveTheme, type ResolvedTheme } from '@shared/theme'
 import { canOpenExternally, isWebUrl, WEB_PARTITION } from '@shared/web'
 import { AgentMonitor } from './agents/monitor'
 import { serveAssets } from './assets'
 import { ConfigStore } from './config'
 import { listDirs, processCwd, processCwdSync, resolveCwd } from './dirs'
+import { arrange, findDisplay, fitInto, mostlyOn, type DisplayInfo, type Rect } from './displays'
 import { deleteCommand, listCommands, saveCommand } from './commands'
 import { existingPaths, resolveIn } from './files'
 import { editorCommand, openInEditor } from './editor'
@@ -74,36 +86,121 @@ let themes: ThemeStore
 let images: TreeWatcher
 let imagesRevision = 0
 const system = new SystemMonitor((sample) => {
-  const win = mainWindow
-  if (win && !win.isDestroyed()) win.webContents.send(IPC.systemSample, sample)
+  for (const w of windows) if (w.wantsSystem) send(w, IPC.systemSample, sample)
 })
 let widgets: WidgetHost
 let agents: AgentMonitor
-let mainWindow: BrowserWindow | null = null
 let lastSessions = ''
 let warnedNotifications = false
 /**
- * The chrome opens on the start screen, where the saved layout is only
- * offered for restoring. Its panes are live once the chrome sends a layout.
- */
-let layoutShown = false
-/**
- * Kids mode is on: the window is in kiosk mode, the menu has no shortcuts, and
- * nothing typed reaches a PTY. Main owns this, so it survives a chrome reload.
+ * Kids mode is on: its window is in kiosk mode, the others are hidden, the
+ * menu has no shortcuts, and nothing typed reaches a PTY. Main owns this, so
+ * it survives a chrome reload.
  */
 let kidsActive = false
+let kidsWindow: CockpitWindow | null = null
+/** Set from before-quit: windows closing now are kept for the next launch. */
+let quitting = false
+/** When a display was last added, removed, or changed. */
+let displaysChangedAt = 0
+
+/** An open window. Its layout, tabs, and place are its WindowState in config.json. */
+interface CockpitWindow {
+  id: string
+  win: BrowserWindow
+  /**
+   * The chrome opens on the start screen, where the saved tabs are only
+   * offered for restoring. They're live once the chrome sends a layout.
+   */
+  shown: boolean
+  /** When it last had focus; the newest one with terminals is where the user works. */
+  focusedAt: number
+  /** A System panel is on screen in it. */
+  wantsSystem: boolean
+  /** The WindowInfo sent last, as JSON. */
+  info: string
+}
+
+/** In config.json's order. */
+const windows: CockpitWindow[] = []
 
 registerSchemes()
 
-const NO_LAYOUT: Layout = { tabs: [], activeTabId: null }
-
-/** The layout on screen: the saved one, once the chrome has shown it. */
-function liveLayout(): Layout {
-  return layoutShown ? config.get().layout : NO_LAYOUT
+function send(w: CockpitWindow, channel: string, ...args: unknown[]): void {
+  if (!w.win.isDestroyed()) w.win.webContents.send(channel, ...args)
 }
 
+function broadcast(channel: string, ...args: unknown[]): void {
+  for (const w of windows) send(w, channel, ...args)
+}
+
+function windowFor(wc: WebContents): CockpitWindow | null {
+  return windows.find((w) => !w.win.isDestroyed() && w.win.webContents === wc) ?? null
+}
+
+function stateOf(w: CockpitWindow): WindowState | null {
+  return config.get().windows.find((s) => s.id === w.id) ?? null
+}
+
+/** The tree of a window's layout. */
+function treeOf(w: CockpitWindow): FrameNode {
+  const c = config.get()
+  return activeLayout(c.appearance, stateOf(w)?.layout ?? DEFAULT_LAYOUT_ID)
+}
+
+/** The tabs on screen in a window: its saved ones, once the chrome has shown them. */
+function liveLayout(w: CockpitWindow): Layout {
+  const state = stateOf(w)
+  return w.shown && state ? { tabs: state.tabs, activeTabId: state.activeTabId } : NO_LAYOUT
+}
+
+/** Every window's tabs together. */
+function allTabs(): Layout {
+  return { tabs: windows.flatMap((w) => liveLayout(w).tabs), activeTabId: null }
+}
+
+/** The window focused now, or else the one focused last. */
+function currentWindow(): CockpitWindow | null {
+  return windows.reduce<CockpitWindow | null>(
+    (best, w) => (!best || w.focusedAt > best.focusedAt ? w : best),
+    null
+  )
+}
+
+/**
+ * The window with terminals the user worked in last, where actions from a
+ * window of panels go. With `withTabs`, the last one that has tabs open:
+ * Activity follows its pane, so a new window on its start screen doesn't
+ * leave the panels empty.
+ */
+function terminalWindow(withTabs = false): CockpitWindow | null {
+  return windows.reduce<CockpitWindow | null>(
+    (best, w) =>
+      hasTerminals(treeOf(w)) &&
+      (!withTabs || liveLayout(w).tabs.length > 0) &&
+      (!best || w.focusedAt > best.focusedAt)
+        ? w
+        : best,
+    null
+  )
+}
+
+/** The pane the user is working in: the active one in the terminal window. */
+function focusedPaneId(): string | null {
+  const w = terminalWindow(true)
+  const layout = w ? liveLayout(w) : NO_LAYOUT
+  const tab = layout.tabs.find((t) => t.id === layout.activeTabId)
+  return tab && paneIds(tab.root).includes(tab.activePaneId) ? tab.activePaneId : null
+}
+
+function anyFocused(): boolean {
+  return windows.some((w) => !w.win.isDestroyed() && w.win.isFocused())
+}
+
+const NO_LAYOUT: Layout = { tabs: [], activeTabId: null }
+
 function sessions(): PaneSession[] {
-  return listSessions(liveLayout(), config.get().presets, (id) => agents.status(id))
+  return listSessions(allTabs(), config.get().presets, (id) => agents.status(id), focusedPaneId())
 }
 
 /** Push the session list to the chrome and to widgets that read it, if it changed. */
@@ -112,7 +209,7 @@ function sessionsChanged(): void {
   const json = JSON.stringify(list)
   if (json !== lastSessions) {
     lastSessions = json
-    mainWindow?.webContents.send(IPC.sessionsChanged, list)
+    broadcast(IPC.sessionsChanged, list)
     // The Dock shows how many panes want the user, notifications or not.
     const waiting = list.filter((s) => s.status === 'needs-input' || s.status === 'done').length
     app.dock?.setBadge(waiting > 0 ? String(waiting) : '')
@@ -123,11 +220,41 @@ function sessionsChanged(): void {
 function findPaneNode(id: string): PaneNode | null {
   const find = (n: LayoutNode): PaneNode | null =>
     n.type === 'pane' ? (n.id === id ? n : null) : (n.children.map(find).find(Boolean) ?? null)
-  for (const tab of liveLayout().tabs) {
+  for (const tab of allTabs().tabs) {
     const pane = find(tab.root)
     if (pane) return pane
   }
   return null
+}
+
+/** The window a pane is in. */
+function windowOfPane(paneId: string): CockpitWindow | null {
+  return (
+    windows.find((w) => liveLayout(w).tabs.some((t) => paneIds(t.root).includes(paneId))) ?? null
+  )
+}
+
+/** What each window's chrome is told about itself: its widgets, and how many windows there are. */
+function windowInfo(w: CockpitWindow): WindowInfo {
+  const installed = widgets.registry.list().map((i) => i.id)
+  const homes = widgetHomes(windows.map(treeOf), installed)
+  return {
+    id: w.id,
+    widgets: homes[windows.indexOf(w)] ?? [],
+    count: windows.length,
+    displays: screen.getAllDisplays().length
+  }
+}
+
+/** Tell each window what changed about it: which widgets it shows, how many windows there are. */
+function windowsChanged(): void {
+  for (const w of windows) {
+    const info = windowInfo(w)
+    const json = JSON.stringify(info)
+    if (json === w.info) continue
+    w.info = json
+    send(w, IPC.windowChanged, info)
+  }
 }
 
 /** Where a pane's agent runs now: as its hooks last said, else its process's cwd, else where it started. */
@@ -141,6 +268,9 @@ async function paneCwd(paneId: string): Promise<string | null> {
   }
   return cwd ?? expandHome(pane.cwd)
 }
+
+/** How long after a display change window moves are macOS's, not the user's. */
+const DISPLAY_SETTLE_MS = 2000
 
 /** Longest prompt a panel or widget may type into a pane. */
 const MAX_PROMPT = 20_000
@@ -162,36 +292,39 @@ function sendPrompt(paneId: string, prompt: string): boolean {
   return true
 }
 
-/** Asks the chrome to open a new agent session that starts with `prompt`. */
+/** Asks the chrome of the terminal window to open a new agent session that starts with `prompt`. */
 function openSession(prompt: string): boolean {
   const text = prompt.trim()
-  if (!mainWindow || !text || text.length > MAX_PROMPT) return false
-  mainWindow.webContents.send(IPC.sessionsOpen, { prompt: text })
+  const w = terminalWindow()
+  if (!w || !text || text.length > MAX_PROMPT) return false
+  send(w, IPC.sessionsOpen, { prompt: text })
   return true
 }
 
 /** Tell the monitor which pane the user is looking at, so a finished turn counts as seen. */
 function updateFocus(): void {
-  const win = mainWindow
   // Kids mode covers the panes; a turn that ends meanwhile is still news later.
-  if (!win?.isFocused() || kidsActive) {
-    agents.setFocused(null)
-    return
-  }
-  const layout = liveLayout()
-  const tab = layout.tabs.find((t) => t.id === layout.activeTabId)
-  agents.setFocused(tab && paneIds(tab.root).includes(tab.activePaneId) ? tab.activePaneId : null)
+  // With Cockpit in front, the pane last worked in counts as seen, whichever
+  // of its windows has the keyboard.
+  agents.setFocused(!anyFocused() || kidsActive ? null : focusedPaneId())
 }
 
-/** A notification was clicked: bring the window forward and focus its pane. */
-function revealPane(paneId: string): void {
-  const win = mainWindow
-  if (!win || win.isDestroyed()) return
+/** Bring a window forward. */
+function raise(w: CockpitWindow): void {
+  const win = w.win
+  if (win.isDestroyed()) return
   if (win.isMinimized()) win.restore()
   win.show()
   app.focus({ steal: true })
   win.focus()
-  win.webContents.send(IPC.paneFocus, paneId)
+}
+
+/** A notification or another window asked for a pane: bring its window forward and focus it. */
+function revealPane(paneId: string): void {
+  const w = windowOfPane(paneId)
+  if (!w) return
+  raise(w)
+  send(w, IPC.paneFocus, paneId)
 }
 
 function currentTheme(): ResolvedTheme {
@@ -211,36 +344,40 @@ function windowBackground(): string {
 }
 
 /** Only a built-in layout the user has changed can go back to how it was. */
-function canResetLayout(): boolean {
+function canResetLayout(layout: string): boolean {
   const a = config.get().appearance
-  return BUILT_IN_LAYOUTS.some((l) => l.id === a.layout) && a.layout in a.layouts
+  return BUILT_IN_LAYOUTS.some((l) => l.id === layout) && layout in a.layouts
 }
 
-/** The chrome owns the appearance; menu choices go to it to apply and save. */
+/** The chrome owns the appearance; menu choices go to the current window's to apply and save. */
 function sendAppearance(command: AppearanceCommand): void {
-  const win = mainWindow
-  if (!win || win.isDestroyed()) return
-  win.webContents.send(IPC.appearanceCommand, command)
+  const w = currentWindow()
+  if (w) send(w, IPC.appearanceCommand, command)
 }
 
 /** Kids mode gets a menu with nothing in it to quit, hide, or close with. */
 function applyMenu(): void {
+  const current = currentWindow()
+  const layout = (current && stateOf(current)?.layout) ?? DEFAULT_LAYOUT_ID
   Menu.setApplicationMenu(
     kidsActive
       ? buildKidsMenu({ onAbout: showAbout })
       : buildMenu({
           onAbout: showAbout,
-          onKidsMode: () => setKids(true),
+          onKidsMode: () => setKids(true, currentWindow()),
           themes: themes.list(),
           theme: currentTheme().id,
           onTheme: (id) => sendAppearance({ type: 'theme', id }),
           layouts: layoutChoices(config.get().appearance),
-          layout: config.get().appearance.layout,
+          layout,
           onLayout: (id) => sendAppearance({ type: 'layout', id }),
           onResetLayout: () => sendAppearance({ type: 'resetLayout' }),
-          canResetLayout: canResetLayout(),
+          canResetLayout: canResetLayout(layout),
           onTogglePanels: () => sendAppearance({ type: 'togglePanels' }),
-          onOpenFolder: () => void shell.openPath(cockpitHome())
+          onOpenFolder: () => void shell.openPath(cockpitHome()),
+          windows: windows.length,
+          displays: screen.getAllDisplays().length,
+          onWindows: (count) => void setWindowCount(count, currentWindow())
         })
   )
 }
@@ -248,8 +385,16 @@ function applyMenu(): void {
 /** The appearance or the theme files changed: follow them outside the chrome. */
 function appearanceChanged(): void {
   applyMenu()
-  const win = mainWindow
-  if (win && !win.isDestroyed()) win.setBackgroundColor(windowBackground())
+  const bg = windowBackground()
+  for (const w of windows) if (!w.win.isDestroyed()) w.win.setBackgroundColor(bg)
+}
+
+/** A dialog on the current window, or on its own when there is none. */
+function showDialog(options: MessageBoxOptions): Promise<MessageBoxReturnValue> {
+  const win = currentWindow()?.win
+  return win && !win.isDestroyed()
+    ? dialog.showMessageBox(win, options)
+    : dialog.showMessageBox(options)
 }
 
 /**
@@ -257,16 +402,12 @@ function appearanceChanged(): void {
  * Electron's while Cockpit runs unpackaged.
  */
 function showAbout(): void {
-  const options = {
+  void showDialog({
     icon: nativeImage.createFromPath(iconPath),
     message: 'Cockpit',
     detail: `Version ${app.getVersion()}\nElectron ${process.versions.electron}`,
     buttons: ['OK']
-  }
-  const win = mainWindow
-  void (win && !win.isDestroyed()
-    ? dialog.showMessageBox(win, options)
-    : dialog.showMessageBox(options))
+  })
 }
 
 /** Opens a file or folder in config.json's editor, and says so when that fails. */
@@ -278,31 +419,38 @@ async function openEditor(target: string): Promise<void> {
   )
   const err = found ? await openInEditor(editor, target) : 'It no longer exists.'
   if (!err) return
-  const options = {
-    type: 'warning' as const,
+  void showDialog({
+    type: 'warning',
     message: `Could not open ${abbreviateHome(target)}`,
     detail: editor && found ? `${editorCommand(editor, target)}\n\n${err}` : err,
     buttons: ['OK']
-  }
-  const win = mainWindow
-  void (win && !win.isDestroyed()
-    ? dialog.showMessageBox(win, options)
-    : dialog.showMessageBox(options))
+  })
 }
 
-function setKids(active: boolean): void {
+/**
+ * Kids mode takes over one window. Kiosk mode only covers that window's
+ * display, so the other windows are hidden until it ends.
+ */
+function setKids(active: boolean, from: CockpitWindow | null = null): void {
   if (active === kidsActive) return
+  const target = active ? (from ?? currentWindow()) : kidsWindow
+  if (active && !target) return
   kidsActive = active
-  const win = mainWindow
-  // Kiosk mode on macOS also turns off Cmd+Tab, force quit, and hiding.
-  if (win && !win.isDestroyed()) win.setKiosk(active)
+  kidsWindow = active ? target : null
+  for (const w of windows) {
+    if (w.win.isDestroyed()) continue
+    // Kiosk mode on macOS also turns off Cmd+Tab, force quit, and hiding.
+    if (w === target) w.win.setKiosk(active)
+    else if (active) w.win.hide()
+    else w.win.showInactive()
+  }
   applyMenu()
   updateFocus()
-  win?.webContents.send(IPC.kidsChanged, active)
+  if (target) send(target, IPC.kidsChanged, active)
 }
 
 /** Record where each live pane's process is now, so a relaunch reopens it there. */
-function captureCwds(): void {
+function captureCwds(only?: CockpitWindow): void {
   const pids = ptys.pids()
   if (pids.size === 0) return
   const update = (n: LayoutNode): LayoutNode => {
@@ -311,14 +459,128 @@ function captureCwds(): void {
     const cwd = pid === undefined ? null : processCwdSync(pid)
     return cwd ? { ...n, cwd: abbreviateHome(cwd) } : n
   }
-  const layout = config.get().layout
-  config.setLayout({ ...layout, tabs: layout.tabs.map((t) => ({ ...t, root: update(t.root) })) })
+  const live = new Set(windows.filter((w) => w.shown && (!only || w === only)).map((w) => w.id))
+  config.setWindows(
+    config
+      .get()
+      .windows.map((s) =>
+        live.has(s.id) ? { ...s, tabs: s.tabs.map((t) => ({ ...t, root: update(t.root) })) } : s
+      )
+  )
 }
 
-function createWindow(): void {
+function displayInfos(): (DisplayInfo & { display: Display })[] {
+  return screen
+    .getAllDisplays()
+    .map((d) => ({ id: d.id, label: d.label, workArea: d.workArea, display: d }))
+}
+
+/**
+ * Where a window opens: where it was, on the display it was on if that's
+ * still there, or else on the display nearest to where it was.
+ */
+function placement(state: WindowState): Rect | undefined {
+  if (!state.bounds) return undefined
+  const home =
+    findDisplay(displayInfos(), state.display)?.display ?? screen.getDisplayMatching(state.bounds)
+  return fitInto(state.bounds, home.workArea)
+}
+
+/**
+ * Remember where the user put a window. Moves macOS makes when a display is
+ * unplugged or changes aren't remembered, so the window can go back when the
+ * display returns.
+ */
+function savePlacement(w: CockpitWindow): void {
+  const win = w.win
+  if (win.isDestroyed() || win.isMinimized() || win.isFullScreen()) return
+  if (Date.now() - displaysChangedAt < DISPLAY_SETTLE_MS) return
+  const bounds = win.getNormalBounds()
+  const d = screen.getDisplayMatching(bounds)
+  config.updateWindow(w.id, (s) => ({ ...s, bounds, display: { id: d.id, label: d.label } }))
+}
+
+/** A display came back: windows that were on it go back to where they were. */
+function returnToDisplay(display: Display): void {
+  const info = [{ id: display.id, label: display.label, workArea: display.workArea }]
+  for (const w of windows) {
+    const state = stateOf(w)
+    if (w.win.isDestroyed() || w.win.isFullScreen() || !state?.bounds) continue
+    if (!findDisplay(info, state.display)) continue
+    if (mostlyOn(w.win.getBounds(), display.workArea)) continue
+    w.win.setBounds(fitInto(state.bounds, display.workArea))
+  }
+}
+
+function newWindowId(): string {
+  const taken = new Set(config.get().windows.map((s) => s.id))
+  for (let n = 2; ; n++) if (!taken.has(`w${String(n)}`)) return `w${String(n)}`
+}
+
+/**
+ * Open or close windows until there are `count`, then put them on the
+ * displays: one each while there are enough, side by side past that. The
+ * newest windows close first, after asking if terminals would end with them.
+ */
+async function setWindowCount(count: number, from: CockpitWindow | null): Promise<void> {
+  const n = Math.min(MAX_WINDOWS, Math.max(1, Math.round(count)))
+  if (kidsActive) return
+  const closing = windows.slice(n)
+  if (closing.length > 0) {
+    const running = closing.flatMap((w) => liveLayout(w).tabs.flatMap((t) => paneIds(t.root)))
+    const live = running.filter((id) => ptys.pid(id) !== null).length
+    if (live > 0) {
+      const many = closing.length > 1
+      const { response } = await showDialog({
+        type: 'warning',
+        message: many ? `Close ${String(closing.length)} windows?` : 'Close the newest window?',
+        detail: `${String(live)} ${live === 1 ? 'terminal' : 'terminals'} in ${many ? 'them' : 'it'} will end.`,
+        buttons: [many ? 'Close Windows' : 'Close Window', 'Cancel'],
+        defaultId: 0,
+        cancelId: 1
+      })
+      if (response !== 0) {
+        applyMenu()
+        return
+      }
+    }
+    for (const w of closing) if (!w.win.isDestroyed()) w.win.close()
+  }
+  const open = windows.slice(0, n)
+  const current = open.map((w) =>
+    w.win.isDestroyed() ? null : screen.getDisplayMatching(w.win.getBounds()).id
+  )
+  const rects = arrange(displayInfos(), n, current)
+  open.forEach((w, i) => {
+    const r = rects[i]
+    if (!r || w.win.isDestroyed()) return
+    if (w.win.isFullScreen()) w.win.setFullScreen(false)
+    w.win.setBounds(r)
+  })
+  // A new window copies the layout of the one it was asked from, if that has terminals.
+  const source = from ? stateOf(from) : null
+  const layout =
+    source && hasTerminals(activeLayout(config.get().appearance, source.layout))
+      ? source.layout
+      : DEFAULT_LAYOUT_ID
+  for (let i = open.length; i < n; i++) {
+    const state: WindowState = { ...defaultWindow(newWindowId(), layout) }
+    const r = rects[i]
+    if (r) state.bounds = r
+    config.setWindows([...config.get().windows, state])
+    createWindow(state)
+  }
+  for (const w of windows) savePlacement(w)
+  windowsChanged()
+  applyMenu()
+}
+
+function createWindow(state: WindowState): void {
+  const bounds = placement(state)
   const win = new BrowserWindow({
     width: 1280,
     height: 820,
+    ...bounds,
     minWidth: 480,
     minHeight: 300,
     show: false,
@@ -334,11 +596,28 @@ function createWindow(): void {
       webviewTag: true
     }
   })
-  mainWindow = win
+  const w: CockpitWindow = {
+    id: state.id,
+    win,
+    shown: false,
+    // The first window counts as the one in use until another is focused.
+    focusedAt: windows.length === 0 ? 1 : 0,
+    wantsSystem: false,
+    info: ''
+  }
+  windows.push(w)
 
   win.once('ready-to-show', () => win.show())
-  win.on('focus', updateFocus)
+  win.on('focus', () => {
+    w.focusedAt = Date.now()
+    updateFocus()
+    applyMenu()
+    // The pane the user works in may now be in this window.
+    sessionsChanged()
+  })
   win.on('blur', updateFocus)
+  win.on('moved', () => savePlacement(w))
+  win.on('resized', () => savePlacement(w))
 
   // The chrome is a single page. Anything that tries to navigate away or open
   // a window is a link the user clicked; send http(s) ones to the browser.
@@ -354,23 +633,37 @@ function createWindow(): void {
   wc.on('did-start-navigation', (details) => {
     if (details.isMainFrame && !details.isSameDocument) {
       ptys.killAllFor(wc)
+      // Prompts nobody else can answer end; the new page takes widgets again.
       widgets.detach(wc)
-      system.set(false)
+      widgets.attach(wc)
+      w.wantsSystem = false
+      updateSystem()
+      w.shown = false
+      w.info = ''
       lastSessions = ''
-      layoutShown = false
+      sessionsChanged()
     }
   })
   win.on('close', () => {
-    captureCwds()
+    // Quitting keeps every window for the next launch, and closing the last
+    // one keeps it to restore. Closing any other window is for good.
+    if (!quitting) {
+      if (windows.length > 1) config.setWindows(config.get().windows.filter((s) => s.id !== w.id))
+      else captureCwds(w)
+    }
     // While the window still exists, so kiosk mode is turned off on it.
-    setKids(false)
+    if (w === kidsWindow) setKids(false)
   })
   win.on('closed', () => {
-    if (mainWindow === win) mainWindow = null
-    layoutShown = false
+    const i = windows.indexOf(w)
+    if (i >= 0) windows.splice(i, 1)
     ptys.killAllFor(wc)
     widgets.detach(wc)
-    system.set(false)
+    updateSystem()
+    updateFocus()
+    sessionsChanged()
+    windowsChanged()
+    applyMenu()
   })
 
   if (!app.isPackaged && process.env.ELECTRON_RENDERER_URL) {
@@ -378,6 +671,13 @@ function createWindow(): void {
   } else {
     void win.loadFile(join(__dirname, '../renderer/index.html'))
   }
+  windowsChanged()
+  applyMenu()
+}
+
+/** System readings are taken while any window shows a System panel. */
+function updateSystem(): void {
+  system.set(windows.some((w) => w.wantsSystem))
 }
 
 /** Only accept IPC from our own top-level chrome frame. */
@@ -451,18 +751,65 @@ function registerIpc(): void {
     if (!trusted(e)) throw new Error('untrusted sender')
     return config.get()
   })
-  ipcMain.on(IPC.layoutSave, (e, layout: Layout) => {
-    if (!trusted(e)) return
-    // Run it through migration so a bad layout can't corrupt the file.
-    config.setLayout(migrateConfig({ ...config.get(), layout }).layout)
-    layoutShown = true
+  ipcMain.on(IPC.layoutSave, (e, layout: unknown) => {
+    const w = windowFor(e.sender)
+    if (!trusted(e) || !w || typeof layout !== 'object' || layout === null) return
+    const { tabs, activeTabId } = layout as Partial<Layout>
+    // The store runs it through migration, so a bad layout can't corrupt the file.
+    config.updateWindow(w.id, (s) => ({ ...s, tabs: tabs ?? [], activeTabId: activeTabId ?? null }))
+    w.shown = true
     updateFocus()
     sessionsChanged()
   })
   ipcMain.on(IPC.appearanceSave, (e, appearance: AppearanceSettings) => {
-    if (!trusted(e)) return
+    const from = windowFor(e.sender)
+    if (!trusted(e) || !from) return
     config.setAppearance(appearance)
+    // Every window shares it; the one that saved it has it already.
+    const saved = config.get().appearance
+    for (const w of windows) if (w !== from) send(w, IPC.appearanceChanged, saved)
     appearanceChanged()
+    // A layout edit can move a widget between windows.
+    windowsChanged()
+  })
+  ipcMain.handle(IPC.windowInfo, (e) => {
+    const w = windowFor(e.sender)
+    if (!trusted(e) || !w) throw new Error('untrusted sender')
+    const info = windowInfo(w)
+    w.info = JSON.stringify(info)
+    return info
+  })
+  ipcMain.on(IPC.windowSave, (e, view: unknown) => {
+    const w = windowFor(e.sender)
+    if (!trusted(e) || !w || typeof view !== 'object' || view === null) return
+    const { layout, panelsHidden } = view as Partial<WindowView>
+    config.updateWindow(w.id, (s) => ({
+      ...s,
+      layout: typeof layout === 'string' ? layout : s.layout,
+      panelsHidden: typeof panelsHidden === 'boolean' ? panelsHidden : s.panelsHidden
+    }))
+    // Its widgets, the menu's checkmark, and the pane the user works in may all follow.
+    windowsChanged()
+    applyMenu()
+    updateFocus()
+    sessionsChanged()
+  })
+  ipcMain.on(IPC.windowCount, (e, count: unknown) => {
+    const w = windowFor(e.sender)
+    if (trusted(e) && typeof count === 'number' && Number.isFinite(count)) {
+      void setWindowCount(count, w)
+    }
+  })
+  // A window without terminals passes pane actions to the window with them.
+  ipcMain.on(IPC.windowForward, (e, action: unknown) => {
+    const target = terminalWindow()
+    if (!trusted(e) || !target || target.win.webContents === e.sender) return
+    if (typeof action !== 'string' || !(action in DEFAULT_KEYBINDINGS)) return
+    raise(target)
+    send(target, IPC.appAction, action)
+  })
+  ipcMain.on(IPC.sessionsReveal, (e, paneId: unknown) => {
+    if (trusted(e) && typeof paneId === 'string') revealPane(paneId)
   })
   ipcMain.handle(IPC.themesList, (e) => {
     if (!trusted(e)) throw new Error('untrusted sender')
@@ -573,14 +920,18 @@ function registerIpc(): void {
     })
   })
   ipcMain.on(IPC.systemWatch, (e, on: unknown) => {
-    if (trusted(e)) system.set(on === true)
+    const w = windowFor(e.sender)
+    if (!trusted(e) || !w) return
+    w.wantsSystem = on === true
+    updateSystem()
   })
   ipcMain.on(IPC.launcherSave, (e, launcher: LauncherSettings) => {
     if (trusted(e)) config.setLauncher(launcher)
   })
-  ipcMain.handle(IPC.kidsGet, (e) => trusted(e) && kidsActive)
+  // Only the window kids mode took over shows it.
+  ipcMain.handle(IPC.kidsGet, (e) => trusted(e) && kidsActive && kidsWindow === windowFor(e.sender))
   ipcMain.on(IPC.kidsSet, (e, active: unknown) => {
-    if (trusted(e) && typeof active === 'boolean') setKids(active)
+    if (trusted(e) && typeof active === 'boolean') setKids(active, windowFor(e.sender))
   })
   ipcMain.handle(IPC.kidsCharacters, async (e): Promise<KidsCharacter[]> => {
     if (!trusted(e)) throw new Error('untrusted sender')
@@ -655,7 +1006,7 @@ function guardWebPane(contents: WebContents): void {
   // Cmd chords on, as WidgetHost does for widgets.
   contents.on('before-input-event', (_e, input) => {
     if (input.type !== 'keyDown' || !input.meta) return
-    mainWindow?.webContents.send(IPC.appKey, {
+    contents.hostWebContents?.send(IPC.appKey, {
       code: input.code,
       metaKey: input.meta,
       ctrlKey: input.control,
@@ -673,7 +1024,7 @@ async function startup(): Promise<void> {
   app.on('web-contents-created', (_e, contents) => {
     contents.session.setPermissionRequestHandler((_wc, _perm, cb) => cb(false))
     contents.on('will-attach-webview', (ev, prefs, params) => {
-      if (contents !== mainWindow?.webContents || !isWebUrl(params.src ?? '')) {
+      if (!windowFor(contents) || !isWebUrl(params.src ?? '')) {
         ev.preventDefault()
         return
       }
@@ -690,20 +1041,21 @@ async function startup(): Promise<void> {
   await cutRendererNetwork()
 
   config = new ConfigStore((c) => {
-    mainWindow?.webContents.send(IPC.configChanged, c)
+    broadcast(IPC.configChanged, c)
+    windowsChanged()
     appearanceChanged()
   })
   config.watch()
 
   themes = new ThemeStore(join(cockpitHome(), 'themes'), (list) => {
-    mainWindow?.webContents.send(IPC.themesChanged, list)
+    broadcast(IPC.themesChanged, list)
     appearanceChanged()
   })
   themes.start()
   const imagesDir = join(cockpitHome(), 'images')
   images = new TreeWatcher(imagesDir, () => {
     imagesRevision++
-    mainWindow?.webContents.send(IPC.imagesChanged, imagesRevision)
+    broadcast(IPC.imagesChanged, imagesRevision)
   })
   images.start()
   serveAssets({
@@ -723,16 +1075,17 @@ async function startup(): Promise<void> {
     theme: () => currentTheme().tokens,
     sessions: () => sessions().map(widgetSession),
     startSession: openSession,
-    sendPrompt
+    sendPrompt,
+    changed: windowsChanged
   })
   widgets.start()
 
   agents = new AgentMonitor({
     home: cockpitHome(),
     onChange: sessionsChanged,
-    onActivity: (update) => mainWindow?.webContents.send(IPC.activityUpdate, update),
+    onActivity: (update) => broadcast(IPC.activityUpdate, update),
     // No notifications over kids mode; the tab badges have them afterwards.
-    windowFocused: () => kidsActive || (mainWindow?.isFocused() ?? false),
+    windowFocused: () => kidsActive || anyFocused(),
     describe: (paneId) => {
       const pane = findPaneNode(paneId)
       if (!pane) return null
@@ -760,11 +1113,28 @@ async function startup(): Promise<void> {
 
   applyMenu()
   registerIpc()
-  createWindow()
+  for (const state of config.get().windows) createWindow(state)
 
+  // The Dock icon reopens the main window.
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow()
+    const [main] = config.get().windows
+    if (windows.length === 0 && main) createWindow(main)
   })
+
+  // macOS moves windows off a display that goes away. Those moves aren't
+  // saved, and the windows go back when the display returns.
+  const displaysChanged = (): void => {
+    displaysChangedAt = Date.now()
+    windowsChanged()
+    applyMenu()
+  }
+  screen.on('display-added', (_e, display) => {
+    displaysChanged()
+    // Give macOS a moment to finish arranging the displays first.
+    setTimeout(() => returnToDisplay(display), DISPLAY_SETTLE_MS / 2)
+  })
+  screen.on('display-removed', displaysChanged)
+  screen.on('display-metrics-changed', displaysChanged)
 }
 
 void app
@@ -783,6 +1153,7 @@ app.on('window-all-closed', () => {
 })
 
 app.on('before-quit', () => {
+  quitting = true
   captureCwds()
   ptys.killAll()
 })

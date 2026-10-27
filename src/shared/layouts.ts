@@ -20,10 +20,10 @@ const widgetsGroup = (): FrameSplit => ({
 })
 
 /** Pull requests and saved commands, one at a time. */
-const reposGroup = (size: number): FrameTabs => ({
+const reposGroup = (size?: number): FrameTabs => ({
   type: 'tabs',
   id: 'repo',
-  size,
+  ...(size === undefined ? {} : { size }),
   active: 'prs',
   children: [panel('prs'), panel('commands')]
 })
@@ -100,11 +100,42 @@ const cockpit: FrameNode = {
   ]
 }
 
+/**
+ * No terminals: for a window on another display, beside the ones with them.
+ * The clock, sessions, system, pull requests, and commands on the left,
+ * Activity in the middle, and widgets on the right. Widgets that no layout
+ * places come here (see widgetHomes).
+ */
+const panels: FrameNode = {
+  type: 'split',
+  id: 'root',
+  direction: 'row',
+  terminals: false,
+  children: [
+    {
+      type: 'split',
+      id: 'left',
+      direction: 'column',
+      size: 340,
+      children: [
+        panel('clock', { size: 150 }),
+        panel('sessions', { max: 0.4 }),
+        panel('monitor'),
+        reposGroup()
+      ]
+    },
+    panel('activity', { tab: 'log' }),
+    { ...widgetsGroup(), size: 420 }
+  ]
+}
+
 export const DEFAULT_LAYOUT_ID = 'classic'
+export const PANELS_LAYOUT_ID = 'panels'
 
 export const BUILT_IN_LAYOUTS: readonly BuiltInLayout[] = [
   { id: 'classic', name: 'Classic', tree: classic },
-  { id: 'cockpit', name: 'Cockpit', tree: cockpit }
+  { id: 'cockpit', name: 'Cockpit', tree: cockpit },
+  { id: PANELS_LAYOUT_ID, name: 'Panels (no terminals)', tree: panels }
 ]
 
 export function builtInLayout(id: string): FrameNode | null {
