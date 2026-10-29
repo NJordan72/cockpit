@@ -9,18 +9,28 @@ export type AgentSignal =
    */
   | { kind: 'idle'; keepDone?: boolean }
   /**
-   * The agent is on a turn. `resolves` names a pending request this event
-   * settles (the tool it was asking about ran). `clears` drops every pending
-   * request: the user just sent a prompt, so no dialog can be open.
+   * The agent is on a turn. `starts` and `ends` are a tool call beginning and
+   * finishing. `resolves` names a pending request this event settles (the
+   * tool it was asking about ran). `clears` drops every pending request: the
+   * user just sent a prompt, so no dialog can be open.
    */
-  | { kind: 'working'; resolves?: string; clears?: boolean }
+  | { kind: 'working'; starts?: ToolCall; ends?: ToolCall; resolves?: string; clears?: boolean }
   /**
    * The agent is blocked on the user. `key` matches the event that settles
    * it; null when nothing will (a reminder about a request already pending).
+   * A request with a `scope` is also settled once no call in that scope is
+   * running, since answering can change a call's input and with it the key.
    * `message` says what it wants; null keeps the one already shown, and so
    * does a `reminder` (it only fills in a message when there is none).
    */
-  | { kind: 'waiting'; key: string | null; message: string | null; reminder?: boolean }
+  | {
+      kind: 'waiting'
+      key: string | null
+      scope?: string
+      starts?: ToolCall
+      message: string | null
+      reminder?: boolean
+    }
   /** The agent finished its turn. */
   | { kind: 'done'; message: string | null }
   | { kind: 'none' }
@@ -43,6 +53,18 @@ export function toolKey(tool: unknown, input: unknown): string {
     .digest('hex')
     .slice(0, 16)
   return `${typeof tool === 'string' ? tool : '?'}:${hash}`
+}
+
+/** Names one agent's calls to one tool; the main conversation and each subagent count separately. */
+export function toolScope(tool: unknown, agentId: unknown): string {
+  return `${typeof tool === 'string' ? tool : '?'}@${typeof agentId === 'string' ? agentId : 'main'}`
+}
+
+/** A tool call between its PreToolUse and its PostToolUse. */
+export interface ToolCall {
+  /** Claude Code's tool_use_id. PermissionRequest doesn't send one. */
+  id: string
+  scope: string
 }
 
 /** Tools that stop and ask the user something, rather than asking permission to run. */
@@ -91,6 +113,9 @@ export function parseClaudeHook(event: string, payload: unknown): AgentReport {
   })
   const tool = str(p.tool_name)
   const key = toolKey(p.tool_name, p.tool_input)
+  const scope = toolScope(p.tool_name, p.agent_id)
+  const id = str(p.tool_use_id)
+  const call = id ? { id, scope } : undefined
 
   switch (name) {
     case 'SessionStart':
@@ -102,19 +127,26 @@ export function parseClaudeHook(event: string, payload: unknown): AgentReport {
       return report({ kind: 'working', clears: true })
     case 'PreToolUse':
       if (tool && QUESTION_TOOLS.has(tool)) {
-        return report({ kind: 'waiting', key, message: 'Claude has a question' })
+        return report({
+          kind: 'waiting',
+          key,
+          scope,
+          starts: call,
+          message: 'Claude has a question'
+        })
       }
-      return report({ kind: 'working' })
+      return report({ kind: 'working', starts: call })
     case 'PermissionRequest':
       return report({
         kind: 'waiting',
         key,
+        scope,
         message: tool ? `Claude needs permission to use ${tool}` : 'Claude needs permission'
       })
     case 'PermissionDenied':
     case 'PostToolUse':
     case 'PostToolUseFailure':
-      return report({ kind: 'working', resolves: key })
+      return report({ kind: 'working', resolves: key, ends: call })
     case 'Notification': {
       const type = str(p.notification_type)
       if (type && WAITING_NOTIFICATIONS.has(type)) {
