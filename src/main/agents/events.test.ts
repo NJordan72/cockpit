@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseClaudeHook, toolKey } from './events'
+import { parseClaudeHook, toolKey, toolScope } from './events'
 
 const base = {
   session_id: 's1',
@@ -30,6 +30,14 @@ describe('parseClaudeHook', () => {
 
   it('ties a permission request to the tool call that settles it', () => {
     const input = { command: 'rm -rf build' }
+    const call = { id: 'toolu_1', scope: toolScope('Bash', undefined) }
+    const started = parseClaudeHook('PreToolUse', {
+      ...base,
+      tool_name: 'Bash',
+      tool_input: input,
+      tool_use_id: 'toolu_1'
+    }).signal
+    // PermissionRequest is the one tool hook without a tool_use_id.
     const asked = parseClaudeHook('PermissionRequest', {
       ...base,
       tool_name: 'Bash',
@@ -39,25 +47,45 @@ describe('parseClaudeHook', () => {
       ...base,
       tool_name: 'Bash',
       tool_input: input,
-      tool_response: { stdout: '' }
+      tool_response: { stdout: '' },
+      tool_use_id: 'toolu_1'
     }).signal
+    expect(started).toEqual({ kind: 'working', starts: call })
     expect(asked).toEqual({
       kind: 'waiting',
       key: toolKey('Bash', input),
+      scope: call.scope,
       message: 'Claude needs permission to use Bash'
     })
-    expect(ran).toEqual({ kind: 'working', resolves: toolKey('Bash', input) })
+    expect(ran).toEqual({ kind: 'working', resolves: toolKey('Bash', input), ends: call })
     // A different call to the same tool settles nothing.
     expect(toolKey('Bash', { command: 'ls' })).not.toBe(toolKey('Bash', input))
+  })
+
+  it("keeps each subagent's tool calls apart from the main conversation's", () => {
+    const signal = parseClaudeHook('PreToolUse', {
+      ...base,
+      tool_name: 'Bash',
+      tool_use_id: 'toolu_1',
+      agent_id: 'a1'
+    }).signal
+    expect(signal).toEqual({ kind: 'working', starts: { id: 'toolu_1', scope: 'Bash@a1' } })
+    expect(toolScope('Bash', 'a1')).not.toBe(toolScope('Bash', undefined))
   })
 
   it('treats a question from Claude as needing input', () => {
     const signal = parseClaudeHook('PreToolUse', {
       ...base,
       tool_name: 'AskUserQuestion',
-      tool_input: { questions: [] }
+      tool_input: { questions: [] },
+      tool_use_id: 'toolu_1'
     }).signal
-    expect(signal).toMatchObject({ kind: 'waiting', message: 'Claude has a question' })
+    expect(signal).toMatchObject({
+      kind: 'waiting',
+      scope: 'AskUserQuestion@main',
+      starts: { id: 'toolu_1' },
+      message: 'Claude has a question'
+    })
   })
 
   it('reads blocking notifications as reminders and ignores the rest', () => {

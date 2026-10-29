@@ -114,6 +114,60 @@ describe('with hooks', () => {
     expect(status()).toBe('working')
   })
 
+  it('settles a dialog when its call finishes with different input', () => {
+    // Plan approval, answered with keys that don't read as an answer.
+    const plan = { id: 'toolu_1', scope: 'ExitPlanMode@main' }
+    tracker.report('t1', report({ kind: 'working', starts: plan }))
+    tracker.report(
+      't1',
+      report({ kind: 'waiting', key: 'ExitPlanMode:1', scope: plan.scope, message: 'Approve?' })
+    )
+    tracker.report(
+      't1',
+      report({ kind: 'waiting', key: null, message: 'Claude needs you', reminder: true })
+    )
+    tracker.input('p1', '\x1b[B')
+    tracker.report('t1', report({ kind: 'working', resolves: 'ExitPlanMode:2', ends: plan }))
+    expect(status()).toBe('working')
+    tracker.report('t1', report({ kind: 'working', starts: { id: 'toolu_2', scope: 'Bash@main' } }))
+    expect(status()).toBe('working')
+  })
+
+  it('keeps needs-input while another call to the same tool finishes', () => {
+    const asking = { id: 'toolu_1', scope: 'WebFetch@main' }
+    const other = { id: 'toolu_2', scope: 'WebFetch@main' }
+    const subagent = { id: 'toolu_3', scope: 'WebFetch@a1' }
+    for (const call of [asking, other, subagent]) {
+      tracker.report('t1', report({ kind: 'working', starts: call }))
+    }
+    tracker.report(
+      't1',
+      report({ kind: 'waiting', key: 'WebFetch:1', scope: asking.scope, message: 'Fetch?' })
+    )
+    tracker.report('t1', report({ kind: 'working', resolves: 'WebFetch:2', ends: other }))
+    tracker.report('t1', report({ kind: 'working', resolves: 'WebFetch:3', ends: subagent }))
+    expect(status()).toBe('needs-input')
+    tracker.report('t1', report({ kind: 'working', resolves: 'WebFetch:4', ends: asking }))
+    expect(status()).toBe('working')
+  })
+
+  it('forgets a refused call once the user moves on', () => {
+    const refused = { id: 'toolu_1', scope: 'AskUserQuestion@main' }
+    tracker.report(
+      't1',
+      report({ kind: 'waiting', key: 'Ask:1', scope: refused.scope, starts: refused, message: '?' })
+    )
+    // Refused: the call never finishes, and the user sends a new prompt.
+    tracker.report('t1', report({ kind: 'working', clears: true }))
+    const next = { id: 'toolu_2', scope: refused.scope }
+    tracker.report(
+      't1',
+      report({ kind: 'waiting', key: 'Ask:2', scope: next.scope, starts: next, message: '?' })
+    )
+    tracker.report('t1', report({ kind: 'working', resolves: 'Ask:3', ends: next }))
+    expect(status()).toBe('working')
+  })
+
   it('keeps the specific request over a reminder, but takes a newer specific one', () => {
     tracker.report('t1', report({ kind: 'waiting', key: 'Bash:1', message: 'Use Bash?' }))
     tracker.report(

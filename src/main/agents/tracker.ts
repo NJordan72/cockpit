@@ -2,7 +2,7 @@
 // everything else gets an output heuristic: a pane that keeps printing is
 // working, and one that goes quiet again is idle.
 import type { AgentKind, SessionStatus } from '@shared/widgets'
-import type { AgentReport } from './events'
+import type { AgentReport, ToolCall } from './events'
 
 export interface PaneStatus {
   status: SessionStatus
@@ -47,8 +47,10 @@ interface Pane {
   state: PaneStatus
   /** The agent has reported at least once; output stops driving the status then. */
   hooked: boolean
-  /** Requests the agent is blocked on, by key (see AgentSignal). */
-  pending: Set<string>
+  /** Requests the agent is blocked on: each one's scope, by key (see AgentSignal). */
+  pending: Map<string, string | null>
+  /** Tool calls that started this turn and haven't finished: each one's scope, by id. */
+  running: Map<string, string>
   /** The user answered a dialog since the agent last asked for something. */
   answered: boolean
   lastInput: number
@@ -103,7 +105,8 @@ export class StatusTracker {
         doneMessage: null
       },
       hooked: false,
-      pending: new Set(),
+      pending: new Map(),
+      running: new Map(),
       answered: false,
       lastInput: 0,
       lastOutput: 0,
@@ -196,18 +199,21 @@ export class StatusTracker {
     const { signal } = report
     switch (signal.kind) {
       case 'idle':
-        pane.pending.clear()
+        this.endTurn(pane)
         if (signal.keepDone && pane.state.status === 'done') this.update(pane, extra)
         else this.set(pane, 'idle', extra)
         break
       case 'working':
-        if (signal.clears) pane.pending.clear()
+        if (signal.clears) this.endTurn(pane)
+        if (signal.starts) pane.running.set(signal.starts.id, signal.starts.scope)
         if (signal.resolves) pane.pending.delete(signal.resolves)
+        if (signal.ends) this.ended(pane, signal.ends)
         // Another tool finishing doesn't close a dialog that is still open.
         if (pane.pending.size === 0) this.set(pane, 'working', extra)
         else this.update(pane, extra)
         break
       case 'waiting': {
+        if (signal.starts) pane.running.set(signal.starts.id, signal.starts.scope)
         // A reminder that arrives after the user answered is about that
         // answered request, not a new one.
         if (signal.reminder && pane.answered) {
@@ -215,7 +221,7 @@ export class StatusTracker {
           break
         }
         if (!signal.reminder) pane.answered = false
-        if (signal.key) pane.pending.add(signal.key)
+        if (signal.key) pane.pending.set(signal.key, signal.scope ?? null)
         const shown = pane.state.status === 'needs-input' ? pane.state.message : null
         const message =
           (signal.reminder ? shown : null) ??
@@ -226,13 +232,34 @@ export class StatusTracker {
         break
       }
       case 'done':
-        pane.pending.clear()
+        this.endTurn(pane)
         this.set(pane, 'done', { ...extra, doneMessage: signal.message })
         break
       case 'none':
         this.update(pane, extra)
         break
     }
+  }
+
+  /**
+   * A tool call finished. Its input can differ from what the dialog was shown
+   * (AskUserQuestion's answers are added to it), so its key may not match the
+   * request. Once no call in its scope is still running, though, nothing in
+   * that scope can still be asking.
+   */
+  private ended(pane: Pane, call: ToolCall): void {
+    pane.running.delete(call.id)
+    for (const scope of pane.running.values()) if (scope === call.scope) return
+    for (const [key, scope] of pane.pending) if (scope === call.scope) pane.pending.delete(key)
+  }
+
+  /**
+   * No dialog is open at a turn's edge. A call the user refused never
+   * finishes, so forget running calls too.
+   */
+  private endTurn(pane: Pane): void {
+    pane.pending.clear()
+    pane.running.clear()
   }
 
   /** Title and token counts read from the agent's transcript. */
