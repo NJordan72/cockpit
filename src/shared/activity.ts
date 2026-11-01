@@ -101,6 +101,11 @@ export interface ActivityUpdate {
   /** The whole list, when it changed. */
   files?: FileTouch[]
   agents?: SubagentRun[]
+  /**
+   * The session was cleared (/clear). The update holds everything the pane
+   * has now and replaces what's shown. Entries start again at seq 1.
+   */
+  reset?: boolean
 }
 
 export interface GitFile {

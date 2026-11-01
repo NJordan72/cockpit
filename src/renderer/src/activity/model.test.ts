@@ -34,6 +34,21 @@ describe('applyUpdate', () => {
     expect(same.entries).toBe(a.entries)
   })
 
+  it('replaces everything on a reset, even entries with seqs it has', () => {
+    const a = applyUpdate(empty(), {
+      paneId: 'p1',
+      entries: [entry(1), entry(2), entry(3)],
+      files: [],
+      agents: []
+    })
+    const b = applyUpdate(a, { paneId: 'p1', entries: [entry(1, 'session')], reset: true })
+    expect(b.entries).toEqual([entry(1, 'session')])
+    expect(b.files).toEqual([])
+    expect(loggedCount(b)).toBe(1)
+    const c = applyUpdate(b, { paneId: 'p1', entries: [entry(2)] })
+    expect(c.entries.map((e) => e.seq)).toEqual([1, 2])
+  })
+
   it("ignores another pane's update and keeps at most the cap", () => {
     const a = empty()
     expect(applyUpdate(a, { paneId: 'p2', entries: [entry(1)] })).toBe(a)
