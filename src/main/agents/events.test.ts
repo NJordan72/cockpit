@@ -108,6 +108,16 @@ describe('parseClaudeHook', () => {
     }
   })
 
+  it('marks a cleared session as a new conversation', () => {
+    expect(parseClaudeHook('SessionStart', { ...base, source: 'clear' }).signal).toEqual({
+      kind: 'idle',
+      fresh: true
+    })
+    expect(parseClaudeHook('SessionStart', { ...base, source: 'resume' }).signal).toEqual({
+      kind: 'idle'
+    })
+  })
+
   it('tells a manual compaction from one inside a turn', () => {
     // Compaction restarts the session, which mustn't end a running turn.
     expect(parseClaudeHook('SessionStart', { ...base, source: 'compact' }).signal).toEqual({

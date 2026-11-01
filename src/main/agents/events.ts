@@ -5,9 +5,11 @@ import { createHash } from 'node:crypto'
 export type AgentSignal =
   /**
    * A session started, was cleared, or ended. `keepDone`: the agent went back
-   * to its prompt, which doesn't mean a finished turn has been seen.
+   * to its prompt, which doesn't mean a finished turn has been seen. `fresh`:
+   * a new conversation replaced the old one (/clear), so the old title and
+   * token count no longer apply.
    */
-  | { kind: 'idle'; keepDone?: boolean }
+  | { kind: 'idle'; keepDone?: boolean; fresh?: boolean }
   /**
    * The agent is on a turn. `starts` and `ends` are a tool call beginning and
    * finishing. `resolves` names a pending request this event settles (the
@@ -120,7 +122,8 @@ export function parseClaudeHook(event: string, payload: unknown): AgentReport {
   switch (name) {
     case 'SessionStart':
       // Compaction restarts the session, often in the middle of a turn.
-      return report(p.source === 'compact' ? { kind: 'none' } : { kind: 'idle' })
+      if (p.source === 'compact') return report({ kind: 'none' })
+      return report(p.source === 'clear' ? { kind: 'idle', fresh: true } : { kind: 'idle' })
     case 'SessionEnd':
       return report({ kind: 'idle' })
     case 'UserPromptSubmit':
