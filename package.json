@@ -1,6 +1,6 @@
 {
   "name": "cockpit",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "private": true,
   "description": "A macOS terminal host for Claude Code and Codex, with agent status, an activity log, and a sandboxed widget sidebar",
   "license": "MIT",
