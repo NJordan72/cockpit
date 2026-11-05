@@ -298,8 +298,14 @@ View > Layout arranges the window:
 
 - **Classic**: the tab bar across the top, the terminals, and on the right
   Sessions, Activity, and widgets.
-- **Cockpit**: an image banner and a clock across the top, Activity on the
-  left, and Sessions, a System monitor, and widgets on the right.
+- **Cockpit**: a banner and a clock across the top, Activity on the left, and
+  Sessions, a System monitor, and widgets on the right. The banner is
+  `~/.cockpit/images/banner` (a GIF, PNG, or other image) if you have one,
+  and otherwise a head-up display whose traffic is your agent sessions, with
+  lights for the ones working, waiting for you, and done:
+
+  ![The built-in banner: a head-up display with five agent sessions as traffic](docs/images/hud.png)
+
 - **Panels (no terminals)**: for a second or third window (see [Windows and
   displays](#windows-and-displays)).
 
