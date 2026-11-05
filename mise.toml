@@ -1,0 +1,7 @@
+# The bun and Node versions for working on Cockpit. `mise install` sets them
+# up, and CI installs the same ones with jdx/mise-action. Node matches the
+# version inside Electron, so tests run the main process code on the same
+# Node it ships with.
+[tools]
+bun = "1.4.4"
+node = "24.22.2"

@@ -28,10 +28,12 @@ update.
 
 ### From source
 
-Requires macOS, [bun](https://bun.sh), and Xcode Command Line Tools (for the
-`node-pty` native build).
+Requires macOS, [mise](https://mise.jdx.dev), and Xcode Command Line Tools
+(for the `node-pty` native build). `mise install` sets up the bun and Node
+versions pinned in `mise.toml`; Node matches the version inside Electron.
 
 ```sh
+mise install
 bun install
 ```
 
