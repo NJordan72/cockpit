@@ -20,11 +20,27 @@ Download the `.dmg` from the
 [latest release](https://github.com/NJordan72/cockpit/releases/latest), open
 it, and drag Cockpit to Applications.
 
-Releases aren't signed with an Apple Developer ID, so the first time you open
-Cockpit, macOS says it can't verify the app. Click **Done**, then open
+Releases from 0.3.0 on are signed with a Developer ID and notarized by Apple,
+so they open like any other app. 0.2.0 isn't: the first time you open it,
+macOS says it can't verify the app. Click **Done**, then open
 **System Settings > Privacy & Security**, scroll down to the message about
-Cockpit, and click **Open Anyway**. You'll need to do this again after each
-update.
+Cockpit, and click **Open Anyway**.
+
+### Updates
+
+Cockpit checks for a new release a minute after it opens and every four hours
+after that, and downloads it in the background. When the download is done,
+it asks whether to restart into the new version. A restart closes every
+terminal and ends what's running in it, so the dialog says how many terminals
+are open and how many agents are working or waiting for you. When any are,
+**Later** is the default. **Later** installs the update the next time you quit
+Cockpit, and **Cockpit > Restart to Install** asks again. To check right away,
+choose **Cockpit > Check for Updates…**.
+
+Updates need a release signed with the same Developer ID as the copy you're
+running, so 0.2.0, which has no updater, and builds from source don't update
+themselves. Install 0.3.0 or later from the release page once, and updates
+come by themselves after that.
 
 ### From source
 
@@ -622,12 +638,18 @@ bun run package       # dist/Cockpit-<version>-arm64.dmg and the .zip
 bun run package:app   # just dist/mac-arm64/Cockpit.app, in a few seconds
 ```
 
-Packaging is set up in `electron-builder.config.ts`. Builds are signed ad hoc.
-To sign with a Developer ID and notarize instead, add these repository
-secrets: `CSC_LINK` (the certificate as a base64-encoded `.p12`),
-`CSC_KEY_PASSWORD`, `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, and
-`APPLE_TEAM_ID`. Release notes leave out the Open Anyway steps for signed
-builds.
+Packaging is set up in `electron-builder.config.ts`. Releases are signed with
+a Developer ID and notarized, using these repository secrets: `CSC_LINK` (the
+certificate as a base64-encoded `.p12`), `CSC_KEY_PASSWORD`, `APPLE_ID`,
+`APPLE_APP_SPECIFIC_PASSWORD`, and `APPLE_TEAM_ID`. Without them, as in a local
+`bun run package`, the app is signed ad hoc. An ad-hoc build runs, but it
+can't install updates, so it doesn't check for them, and its release notes
+include the Open Anyway steps.
+
+Each release also carries `latest-mac.yml` and the blockmaps that
+electron-updater reads. `latest-mac.yml` names the new version and the `.zip`'s
+checksum. After a copy has updated once, the blockmaps let it download only the
+parts of the next `.zip` that changed; the first update downloads all of it.
 
 ## Contributing
 

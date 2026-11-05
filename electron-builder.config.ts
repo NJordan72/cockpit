@@ -67,7 +67,10 @@ const config: Configuration = {
         'A program running in a Cockpit terminal wants to use files on a network volume.'
     }
   },
-  publish: null
+  // Where electron-updater looks for new versions. It writes app-update.yml
+  // into the app and latest-mac.yml next to the .zip; the release workflow
+  // uploads the release itself.
+  publish: { provider: 'github', owner: 'NJordan72', repo: 'cockpit' }
 }
 
 export default config
