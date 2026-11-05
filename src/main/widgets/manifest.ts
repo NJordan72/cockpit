@@ -38,7 +38,8 @@ function compileEach<T>(key: string, list: string[], parse: (s: string) => T): T
     try {
       return parse(s)
     } catch (err) {
-      throw new Error(`"permissions.${key}[${i}]" (${JSON.stringify(s)}) ${(err as Error).message}`)
+      const why = (err as Error).message
+      throw new Error(`"permissions.${key}[${i}]" (${JSON.stringify(s)}) ${why}`, { cause: err })
     }
   })
 }
