@@ -126,6 +126,18 @@ try {
   }
   step('the shell ran a command and the terminal showed its output')
 
+  // xterm's WebGL renderer sets canvas fonts with a leading space. If the
+  // canvas ignores them, terminal text draws in 10px sans-serif.
+  const font = await page.evaluate(() => {
+    const ctx = document.createElement('canvas').getContext('2d')
+    ctx.font = ' normal 26px monospace'
+    return ctx.font
+  })
+  if (font !== '26px monospace') {
+    throw new Error(`the canvas ignored a font with a leading space and kept ${font}`)
+  }
+  step('the canvas accepts the fonts xterm sets')
+
   if (errors.length > 0) {
     throw new Error(`renderer errors:\n${errors.join('\n')}`)
   }
