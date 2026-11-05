@@ -271,6 +271,18 @@ describe('with hooks', () => {
     expect(state()).toMatchObject({ title: 'Fix login', tokens: 1234 })
   })
 
+  it('drops the title and tokens when the session is cleared', () => {
+    tracker.report('t1', report({ kind: 'idle' }, 'Fix login'))
+    tracker.annotate('p1', { tokens: 1234 })
+    tracker.report('t1', report({ kind: 'done', message: 'Fixed' }))
+    tracker.report('t1', report({ kind: 'idle', fresh: true }))
+    expect(state()).toMatchObject({ status: 'idle', title: null, tokens: null })
+    tracker.annotate('p1', { title: null, tokens: null })
+    expect(state()).toMatchObject({ title: null, tokens: null })
+    tracker.annotate('p1', { title: 'Next thing', tokens: 900 })
+    expect(state()).toMatchObject({ title: 'Next thing', tokens: 900 })
+  })
+
   it('refuses tokens from other panes, an earlier run, or an exited process', () => {
     expect(tracker.report('nope', report({ kind: 'done', message: null }))).toBe(false)
     tracker.spawn('p1', 't2', 'claude')

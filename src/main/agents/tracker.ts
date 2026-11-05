@@ -200,6 +200,11 @@ export class StatusTracker {
     switch (signal.kind) {
       case 'idle':
         this.endTurn(pane)
+        // The new conversation's transcript supplies these once it has them.
+        if (signal.fresh) {
+          extra.title = report.title
+          extra.tokens = null
+        }
         if (signal.keepDone && pane.state.status === 'done') this.update(pane, extra)
         else this.set(pane, 'idle', extra)
         break

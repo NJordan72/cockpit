@@ -256,6 +256,8 @@ interface PaneLog {
   fresh: ActivityEntry[]
   filesDirty: boolean
   agentsDirty: boolean
+  /** Cleared since the last update, so the next one replaces everything. */
+  reset: boolean
 }
 
 type NewEntry = Omit<ActivityEntry, 'seq' | 'at' | 'detail' | 'agent' | 'command' | 'file'> &
@@ -324,6 +326,8 @@ export class ActivityLog {
       case 'SessionStart': {
         // A compaction restarts the session; PreCompact already said so.
         if (p.source === 'compact') break
+        // /clear starts a new conversation, and what the old one did goes with it.
+        if (p.source === 'clear') this.reset(pane)
         const label = SESSION_SOURCES[str(p.source) ?? ''] ?? 'Started'
         this.add(pane, { kind: 'session', label, text: str(p.model) ?? '' })
         break
@@ -444,6 +448,20 @@ export class ActivityLog {
     if (this.timer) clearTimeout(this.timer)
     this.timer = null
     for (const [paneId, pane] of this.panes) {
+      if (pane.reset) {
+        pane.reset = false
+        pane.fresh = []
+        pane.filesDirty = false
+        pane.agentsDirty = false
+        this.onUpdate({
+          paneId,
+          entries: [...pane.entries],
+          files: fileList(pane),
+          agents: agentList(pane),
+          reset: true
+        })
+        continue
+      }
       if (pane.fresh.length === 0 && !pane.filesDirty && !pane.agentsDirty) continue
       const update: ActivityUpdate = { paneId, entries: pane.fresh }
       if (pane.filesDirty) update.files = fileList(pane)
@@ -473,7 +491,8 @@ export class ActivityLog {
         cwd: null,
         fresh: [],
         filesDirty: false,
-        agentsDirty: false
+        agentsDirty: false,
+        reset: false
       }
       this.panes.set(paneId, pane)
     }
@@ -496,6 +515,21 @@ export class ActivityLog {
     if (pane.entries.length > MAX_ENTRIES) pane.entries.splice(0, pane.entries.length - MAX_ENTRIES)
     pane.fresh.push(entry)
     if (pane.fresh.length > MAX_ENTRIES) pane.fresh.splice(0, pane.fresh.length - MAX_ENTRIES)
+    this.schedule()
+  }
+
+  /** Start the pane's log, files, and subagents over. Its directory still holds. */
+  private reset(pane: PaneLog): void {
+    pane.seq = 0
+    pane.entries = []
+    pane.fresh = []
+    pane.files.clear()
+    pane.agents.clear()
+    pane.spawns = []
+    pane.calls.clear()
+    pane.filesDirty = false
+    pane.agentsDirty = false
+    pane.reset = true
     this.schedule()
   }
 

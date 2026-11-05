@@ -311,7 +311,9 @@ function LogView({
         {shown.length > 0 ? (
           <ol className="log">
             {shown.map((e) => {
-              const key = `${session.id}:${String(e.seq)}`
+              // seq starts over when the session is cleared; the time keeps
+              // a row that was open from opening its namesake.
+              const key = `${session.id}:${String(e.seq)}:${String(e.at)}`
               return (
                 <LogRow
                   key={e.seq}

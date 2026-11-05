@@ -9,9 +9,20 @@ import {
   type PaneActivity
 } from '@shared/activity'
 
-/** An update applied to what's shown. Entries it already has (by seq) are skipped. */
+/**
+ * An update applied to what's shown. Entries it already has (by seq) are
+ * skipped. A reset replaces everything.
+ */
 export function applyUpdate(a: PaneActivity, u: ActivityUpdate): PaneActivity {
   if (u.paneId !== a.paneId) return a
+  if (u.reset) {
+    return {
+      paneId: a.paneId,
+      entries: u.entries.slice(-ACTIVITY_MAX_ENTRIES),
+      files: u.files ?? [],
+      agents: u.agents ?? []
+    }
+  }
   const last = a.entries.at(-1)?.seq ?? 0
   const fresh = u.entries.filter((e) => e.seq > last)
   let entries = fresh.length > 0 ? [...a.entries, ...fresh] : a.entries

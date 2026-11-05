@@ -372,17 +372,56 @@ describe('ActivityLog', () => {
     hook('PermissionDenied', { tool_name: 'Bash', tool_input: { command: 'rm -rf build' } })
     hook('PreCompact', { trigger: 'auto' })
     hook('SessionStart', { source: 'compact' })
-    hook('SessionEnd', { reason: 'clear' })
-    hook('SessionStart', { source: 'clear' })
+    hook('SessionStart', { source: 'resume' })
     hook('SessionEnd', { reason: 'prompt_input_exit' })
     log.exited('p1')
     expect(entries()).toEqual([
       { kind: 'ask', label: 'Bash', text: 'rm -rf build', agent: null },
       { kind: 'fail', label: 'Bash denied', text: 'rm -rf build', agent: null },
       { kind: 'compact', label: 'Auto-compacting', text: '', agent: null },
-      { kind: 'session', label: 'Cleared', text: '', agent: null },
+      { kind: 'session', label: 'Resumed', text: '', agent: null },
       { kind: 'session', label: 'Ended', text: '', agent: null }
     ])
+  })
+
+  it('starts over when the session is cleared, and says so in the next update', () => {
+    const file = `${CWD}/a.ts`
+    hook('UserPromptSubmit', { prompt: 'look around' })
+    hook('PreToolUse', { tool_name: 'Read', tool_input: { file_path: file } })
+    hook('PostToolUse', { tool_name: 'Read', tool_input: { file_path: file } })
+    hook('PreToolUse', {
+      tool_name: 'Agent',
+      tool_use_id: 't1',
+      tool_input: { description: 'dig', subagent_type: 'Explore' }
+    })
+    hook('SubagentStart', { agent_id: 'a1', agent_type: 'Explore' })
+    vi.advanceTimersByTime(FLUSH_MS)
+    expect(updates).toHaveLength(1)
+    expect(updates[0]?.reset).toBeUndefined()
+
+    hook('SessionEnd', { reason: 'clear' })
+    hook('SessionStart', { source: 'clear', model: 'claude-opus-5-5' })
+    hook('UserPromptSubmit', { prompt: 'next thing' })
+    expect(log.snapshot('p1')).toMatchObject({ files: [], agents: [] })
+    expect(entries()).toEqual([
+      { kind: 'session', label: 'Cleared', text: 'claude-opus-5-5', agent: null },
+      { kind: 'prompt', label: '', text: 'next thing', agent: null }
+    ])
+    vi.advanceTimersByTime(FLUSH_MS)
+    expect(updates).toHaveLength(2)
+    expect(updates[1]).toMatchObject({ paneId: 'p1', reset: true, files: [], agents: [] })
+    expect(updates[1]?.entries.map((e) => [e.seq, e.label || e.text])).toEqual([
+      [1, 'Cleared'],
+      [2, 'next thing']
+    ])
+
+    // The old conversation's subagent finishing late leaves no trace.
+    hook('SubagentStop', { agent_id: 'a1', last_assistant_message: 'found it' })
+    hook('Stop', { last_assistant_message: 'Done.' })
+    vi.advanceTimersByTime(FLUSH_MS)
+    expect(updates[2]?.reset).toBeUndefined()
+    expect(updates[2]?.entries.map((e) => e.seq)).toEqual([3])
+    expect(log.snapshot('p1').agents).toEqual([])
   })
 
   it('keeps Bash commands whole, with the directory they ran in', () => {
