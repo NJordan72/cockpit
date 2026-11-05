@@ -86,6 +86,9 @@ describe('WidgetRegistry', () => {
     makeWidget(path.join(widgetsDir, 'late'), 'late')
     await waitFor(() => registry.list().length === 1)
     expect(registry.list()[0]?.id).toBe('late')
+    // Finding "late" starts a watch on its folder, which restarts the FSEvents
+    // stream that every watch shares, so a removal right away can be missed.
+    await settle()
     fs.rmSync(path.join(widgetsDir, 'late'), { recursive: true })
     await waitFor(() => registry.list().length === 0)
     expect(registry.list()).toEqual([])
