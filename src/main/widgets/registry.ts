@@ -111,7 +111,7 @@ export class WidgetRegistry {
       parsed: null
     })
 
-    let isLink = false
+    let isLink: boolean
     try {
       isLink = fs.lstatSync(full).isSymbolicLink()
     } catch {
