@@ -3,6 +3,8 @@ import type { ThemeDefinition } from '@shared/theme'
 
 export interface MenuHandlers {
   onAbout: () => void
+  /** Check for Updates and what it turns into; null in builds that can't update. */
+  update: { label: string; enabled: boolean; onClick: () => void } | null
   onKidsMode: () => void
   themes: ThemeDefinition[]
   /** The theme in use. */
@@ -64,6 +66,16 @@ export function buildMenu(handlers: MenuHandlers): Menu {
       label: app.name,
       submenu: [
         { label: 'About Cockpit', click: handlers.onAbout },
+        ...(handlers.update
+          ? [
+              {
+                id: 'update',
+                label: handlers.update.label,
+                enabled: handlers.update.enabled,
+                click: handlers.update.onClick
+              }
+            ]
+          : []),
         { type: 'separator' },
         { role: 'hide' },
         { role: 'hideOthers' },

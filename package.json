@@ -36,6 +36,7 @@
     "esbuild"
   ],
   "dependencies": {
+    "electron-updater": "6",
     "node-pty": "1.1.0"
   },
   "devDependencies": {

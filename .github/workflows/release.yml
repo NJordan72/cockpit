@@ -129,6 +129,8 @@ jobs:
           subject-path: |
             dist/*.dmg
             dist/*.zip
+      # latest-mac.yml tells installed copies about this version, and the
+      # blockmaps let a copy that has updated before download only what changed.
       - name: Create the release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -145,4 +147,4 @@ jobs:
             --target "$GITHUB_SHA" \
             --title "Cockpit $version" \
             --notes-file "$RUNNER_TEMP/notes.md" \
-            dist/*.dmg dist/*.zip
+            dist/*.dmg dist/*.zip dist/*.blockmap dist/latest-mac.yml

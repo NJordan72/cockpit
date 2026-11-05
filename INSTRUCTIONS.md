@@ -1153,6 +1153,42 @@ the project they were opened in.
   release workflow's version step runs `bun run version-packages`
   (`changeset version`, then `bun fmt` on `CHANGELOG.md`).
 
+### Updates (added 2026-11-05, not in the original plan)
+
+- `src/main/updater.ts` checks GitHub Releases with `electron-updater` a minute
+  after launch and every four hours, downloads in the background, and asks
+  once per version whether to restart. `restartPrompt` counts the panes whose
+  process is still running and the agents that are working or need input;
+  with any of those, **Later** is the default button, so Enter doesn't end
+  their work. **Later** leaves the update for the next quit
+  (`autoInstallOnAppQuit`), and the app menu's item turns into **Restart to
+  Install** to ask again. A check started from the menu reports its outcome in
+  a dialog; scheduled ones only log failures. No prompt opens over kids mode.
+- Updates are on only in a packaged app whose signature `codesign -dv`
+  reports as a Developer ID. Squirrel.Mac installs an update only when it
+  carries the running app's Developer ID, so ad-hoc builds would download
+  every update and then fail to install it.
+- `electron-updater`'s `quitAndInstall` closes the windows before it emits
+  `before-quit`, and Cockpit's window `close` handler treats a close outside a
+  quit as closing that window for good. The install path calls
+  `prepareToQuit` first, the same function `before-quit` runs, so every window
+  is kept for the relaunch.
+- `publish` in `electron-builder.config.ts` names this repository, so the
+  build writes `app-update.yml` into the app and `latest-mac.yml` and the
+  blockmaps into `dist/`. The release workflow uploads those with the `.dmg`
+  and `.zip`. The macOS updater downloads only changed blocks after a copy's
+  first update.
+- Releases are signed with the Developer ID "Nick Jordan (PYDSP98TRH)" and
+  notarized, from the five repository secrets. 0.2.0 was ad-hoc signed and has
+  no updater, so its users install 0.3.0 by hand once.
+- Verified locally: the updater's tests (schedule, asking once, Later, the
+  menu, manual and background outcomes, kids mode) and the prompt's wording;
+  `bun run package` writing `app-update.yml` and `latest-mac.yml` and bundling
+  `electron-updater`. Not verified: a real update, which needs two signed
+  releases, so the first one is 0.3.0 to its successor. Also not verified:
+  signing and notarization with the new secrets, which first run when 0.3.0
+  is released.
+
 ### Workflow and shell linters (added 2026-11-05, not in the original plan)
 
 - `mise.toml` pins actionlint 1.7.12, ShellCheck 0.11.0, and zizmor 1.31.1.
