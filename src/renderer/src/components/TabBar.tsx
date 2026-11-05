@@ -71,9 +71,11 @@ export function TabBar({
       (dx) => {
         if (!current && Math.abs(dx) < DRAG_THRESHOLD_PX) return
         const left = Math.min(Math.max(self.left + dx, first.left), last.right - self.width)
-        // The dragged tab lands after every other tab whose middle it has passed.
-        const middle = left + self.width / 2
-        const to = middles.filter((m, i) => i !== from && m < middle).length
+        // Another tab swaps sides once the dragged tab's leading edge crosses
+        // that tab's middle. Comparing middles would stop a wide tab from ever
+        // passing a narrower tab at the end of the row.
+        const right = left + self.width
+        const to = middles.filter((m, i) => i !== from && (i < from ? m < left : m < right)).length
         current = { from, to, dx: left - self.left, width: self.width }
         setDrag(current)
       },
