@@ -1,5 +1,11 @@
 # cockpit
 
+## 0.3.1
+
+### Patch Changes
+
+- Terminal text draws at its normal size again. Since 0.2.0, terminals drew letters in a tiny sans-serif font spread across each cell, while box drawing and the cursor looked fine. ([#20](https://github.com/NJordan72/cockpit/pull/20))
+
 ## 0.3.0
 
 ### Minor Changes
