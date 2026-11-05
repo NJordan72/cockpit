@@ -114,12 +114,33 @@ describe('parseUrlPattern / urlAllowed', () => {
   it('treats regex characters in the path literally', () => {
     expect(ok('https://example.com/a.b', 'https://example.com/a.b')).toBe(true)
     expect(ok('https://example.com/aXb', 'https://example.com/a.b')).toBe(false)
+    expect(ok('https://example.com/a(b)?c', 'https://example.com/a(b)?c')).toBe(true)
   })
 
-  it('rejects patterns without a path, or with a wildcard host part', () => {
+  it('matches each * to any run of characters, in order', () => {
+    const p = 'https://example.com/a/*/b/*'
+    expect(ok('https://example.com/a/x/b/y', p)).toBe(true)
+    expect(ok('https://example.com/a//b/', p)).toBe(true)
+    expect(ok('https://example.com/a/x/y/b/z?q=1', p)).toBe(true)
+    expect(ok('https://example.com/a/b/', p)).toBe(false)
+    expect(ok('https://example.com/b/x/a/y', p)).toBe(false)
+  })
+
+  it("doesn't let the start and end of a glob overlap", () => {
+    expect(ok('https://example.com/abba', 'https://example.com/ab*ba')).toBe(true)
+    expect(ok('https://example.com/aba', 'https://example.com/ab*ba')).toBe(false)
+  })
+
+  it('rejects patterns without a path', () => {
     expect(() => parseUrlPattern('https://app.shortcut.com')).toThrow('needs a path')
-    expect(() => parseUrlPattern('https://app.shortcut.com*')).toThrow()
+    expect(() => parseUrlPattern('https://app.shortcut.com*')).toThrow('needs a path')
     expect(() => parseUrlPattern('javascript:alert(1)')).toThrow()
+  })
+
+  it('applies the host rules of parseHostPattern', () => {
+    expect(() => parseUrlPattern('https://app*.example.com/x')).toThrow('whole leading label')
+    expect(ok('https://a.example.com/x', 'https://*.example.com/*')).toBe(true)
+    expect(ok('https://example.com/x', 'https://*.example.com/*')).toBe(false)
   })
 
   it('refuses non-http schemes as targets', () => {
