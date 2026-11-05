@@ -994,3 +994,33 @@ the project they were opened in.
   done, and idle states in Midnight, Amber, and Paper, and the empty state.
   The banner costs about 1% CPU (renderer plus GPU) while it moves, against
   0% for the Classic layout.
+
+### CI and dependency updates (added 2026-11-05, not in the original plan)
+
+- `scripts/smoke.mjs` (`bun run smoke`) launches the built app through
+  Playwright with a scratch HOME, COCKPIT_HOME, and `--user-data-dir`, waits
+  for the start screen to take focus, opens a shell with Cmd+Shift+T, runs
+  `echo cockpit-smoke-$((6 * 7))`, and waits for `cockpit-smoke-42` in the
+  pane's screen text. Only the shell's output can contain that string, since
+  the typed line shows `$((6 * 7))`. Any renderer console error or page error
+  fails it. Cmd+Shift+T opens the shell in one step, where Cmd+T would also
+  need an Enter in the picker.
+- After `bun run check`, the `check` workflow now builds the app and runs
+  the smoke test. New workflows: `audit` runs `bun audit --audit-level=high`,
+  which reads `bun.lock` without an install, and `codeql` scans the
+  TypeScript and the workflows, skipping while the repository is private.
+- `.github/renovate.json5` sets up Renovate with a Monday schedule, a 3-day
+  minimum release age, one group for all minor and patch updates, major
+  groups for eslint, react, vite, and xterm, digest-pinned actions, OSV
+  security alerts, and weekly lockfile maintenance. Renovate's bun manager
+  doesn't read locked versions from `bun.lock`, so updates within a range
+  arrive through lockfile maintenance. A major `@types/node` waits for
+  approval on the Dependency Dashboard, since it tracks Electron's Node.
+- `bun audit fix` moved Electron from 44.7.2 to 44.9.1 (GHSA-jr5w-w6x2-84p9,
+  compromised eMudhra intermediate certificates) and undici to 6.29.1 and
+  7.30.1. A moderate minimatch advisory remains, held back by
+  typescript-eslint's range.
+- Verified locally: `bun run check`, the build, the smoke test passing and
+  failing when the expected output is wrong, `bun audit`, actionlint and
+  zizmor on the workflows, and Renovate's config validator plus an extract and
+  lookup dry run. Not verified: any of the workflows on GitHub's runners.

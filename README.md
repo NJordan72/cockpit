@@ -497,10 +497,30 @@ and only paths that exist get underlined.
 ```sh
 bun run check   # typecheck + lint + format:check + test
 bun run format  # apply Prettier
+bun run build && bun run smoke   # launch the built app and run a command in a shell
 ```
 
 TypeScript runs in strict mode with `noUncheckedIndexedAccess`, and ESLint
 uses typescript-eslint's `strictTypeChecked` rules with zero warnings allowed.
+
+`bun run smoke` (`scripts/smoke.mjs`) starts the built app with a scratch HOME,
+`COCKPIT_HOME`, and Chromium profile, opens a shell from the start screen, and
+fails unless a command's output reaches the terminal and the renderer logs no
+errors. It never touches your real config.
+
+GitHub Actions runs:
+
+- `check` on every pull request and push to `main`: `bun run check`, the
+  build, and the smoke test, on macOS.
+- `audit` on changes to `package.json` or `bun.lock` and weekly: `bun audit`
+  checks every package in `bun.lock` and fails on a high or critical advisory.
+- `codeql` on pull requests, pushes to `main`, and weekly: CodeQL scanning of
+  the TypeScript and the workflows. It skips while the repository is private.
+
+[Renovate](https://docs.renovatebot.com/) proposes dependency updates on
+Monday mornings, set up in `.github/renovate.json5`: one PR for all minor and
+patch updates, one per major, and one that refreshes `bun.lock`. Security
+fixes for direct dependencies come right away.
 
 ## Driving the app from a script
 
@@ -540,7 +560,8 @@ top project. Screenshots go to `out/shots/`.
 
 Issues are welcome. For anything bigger than a small fix, open an issue before
 a pull request, since Cockpit still changes shape as it gets used. Run
-`bun run check` before you send one; CI runs the same checks. To report a
+`bun run check` before you send one; CI runs the same checks, plus the smoke
+test. To report a
 security problem, see [SECURITY.md](SECURITY.md).
 
 ## License
