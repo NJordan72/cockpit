@@ -38,7 +38,8 @@ assets from other apps.
   `@electron/rebuild` (wire this into `postinstall`).
 - Package manager and script runner: bun (`bun install`, `bun run <script>`).
   Electron 44 downloads its binary lazily, so `postinstall` runs
-  `install-electron` before the rebuild.
+  `install-electron` before the rebuild. `mise.toml` pins the bun and Node
+  versions, with Node at the version inside Electron.
 - Strict TypeScript (`strict`, `noUncheckedIndexedAccess`), typescript-eslint
   `strictTypeChecked` with `--max-warnings 0`, and Prettier.
 - App chrome UI: React. Keep the chrome small. The terminals and widgets are
@@ -1097,3 +1098,19 @@ the project they were opened in.
   hardened-runtime app; the `changeset` job on a PR with a changeset; and the
   `release` workflow's `mode` and `version` jobs, which opened the Version
   Packages PR for 0.2.0 (#7) once the Actions setting was on.
+
+### Tool versions in mise.toml (added 2026-11-05, not in the original plan)
+
+- `mise.toml` pins bun 1.4.4 and Node 24.22.2. Electron 45.2.3 runs Node
+  24.22.2 (`ELECTRON_RUN_AS_NODE=1 electron -p process.versions.node`), so
+  Vitest and the scripts run the main process code on the same Node it ships
+  with. CI installs both with `jdx/mise-action` in place of
+  `oven-sh/setup-bun`, which leaves `mise.toml` as the only place the versions
+  are set. The release workflow turns off mise-action's cache, so a release
+  never restores tools from a cache another run wrote.
+- `@types/node` goes back from 26 to 24 to match. Renovate's PR #5 had moved
+  it to 26, which describes APIs the app's Node doesn't have. The Renovate
+  rule that holds a major `@types/node` for approval on the Dependency
+  Dashboard now covers the `node` in `mise.toml` too.
+- `jdx/mise-action` is pinned at v5.2.5 rather than v5.2.6, which was under
+  the 3-day minimum release age that the Renovate config sets.

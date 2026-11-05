@@ -24,10 +24,10 @@
   },
   packageRules: [
     {
-      // @types/node follows the Node version inside Electron (Node 24 in
-      // Electron 44), so a major waits for approval on the Dependency
-      // Dashboard.
-      matchPackageNames: ['@types/node'],
+      // @types/node and the Node in mise.toml follow the Node version inside
+      // Electron (Node 24 in Electron 45), so a major waits for approval on
+      // the Dependency Dashboard.
+      matchPackageNames: ['@types/node', 'node'],
       matchUpdateTypes: ['major'],
       dependencyDashboardApproval: true
     },
