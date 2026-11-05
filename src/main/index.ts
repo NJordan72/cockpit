@@ -782,11 +782,13 @@ function registerIpc(): void {
   ipcMain.on(IPC.windowSave, (e, view: unknown) => {
     const w = windowFor(e.sender)
     if (!trusted(e) || !w || typeof view !== 'object' || view === null) return
-    const { layout, panelsHidden } = view as Partial<WindowView>
+    const { layout, panelsHidden, hiddenDirs } = view as Partial<WindowView>
+    // The store migrates the window, which drops hiddenDirs entries that aren't paths.
     config.updateWindow(w.id, (s) => ({
       ...s,
       layout: typeof layout === 'string' ? layout : s.layout,
-      panelsHidden: typeof panelsHidden === 'boolean' ? panelsHidden : s.panelsHidden
+      panelsHidden: typeof panelsHidden === 'boolean' ? panelsHidden : s.panelsHidden,
+      hiddenDirs: Array.isArray(hiddenDirs) ? hiddenDirs : s.hiddenDirs
     }))
     // Its widgets, the menu's checkmark, and the pane the user works in may all follow.
     windowsChanged()

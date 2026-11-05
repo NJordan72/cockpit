@@ -167,7 +167,16 @@ export function menuTemplate(
       out.push({ label: i.label, submenu: menuTemplate(i.submenu, choose, depth + 1) })
     } else if (typeof i.id === 'string') {
       const id = i.id
-      out.push({ label: i.label, enabled: i.enabled !== false, click: () => choose(id) })
+      const item: MenuItemConstructorOptions = {
+        label: i.label,
+        enabled: i.enabled !== false,
+        click: () => choose(id)
+      }
+      if (typeof i.checked === 'boolean') {
+        item.type = 'checkbox'
+        item.checked = i.checked
+      }
+      out.push(item)
     }
   }
   return out

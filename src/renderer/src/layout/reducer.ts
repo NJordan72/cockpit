@@ -1,4 +1,4 @@
-import type { Layout, PaneNode, Tab } from '@shared/config'
+import { MAX_TAB_NAME, type Layout, type PaneNode, type Tab, type TabColor } from '@shared/config'
 import {
   allPanes,
   arrange,
@@ -14,19 +14,26 @@ import {
   type Direction
 } from './model'
 
+/**
+ * `shown` lists the ids of the tabs the tab bar shows, in the bar's order.
+ * Without `shown`, every tab counts as shown.
+ */
 export type LayoutAction =
   | { type: 'replace'; layout: Layout }
   | { type: 'newTab'; pane: PaneNode }
   | { type: 'split'; paneId: string; direction: 'row' | 'column'; pane: PaneNode }
-  | { type: 'closePane'; paneId: string }
+  | { type: 'closePane'; paneId: string; shown?: readonly string[] }
   | { type: 'clearPane'; paneId: string; resume?: boolean }
-  | { type: 'closeTab'; tabId: string }
+  | { type: 'closeTab'; tabId: string; shown?: readonly string[] }
   | { type: 'focusPane'; paneId: string }
   | { type: 'focusDirection'; direction: Direction }
   | { type: 'selectTab'; tabId: string }
-  | { type: 'selectTabIndex'; index: number }
-  | { type: 'cycleTab'; delta: number }
+  | { type: 'selectTabIndex'; index: number; shown?: readonly string[] }
+  | { type: 'cycleTab'; delta: number; shown?: readonly string[] }
   | { type: 'moveTab'; tabId: string; index: number }
+  | { type: 'renameTab'; tabId: string; name: string }
+  | { type: 'colorTab'; tabId: string; color: TabColor | null }
+  | { type: 'pinTab'; tabId: string; pinned: boolean }
   | { type: 'resize'; splitId: string; sizes: number[] }
   | { type: 'setCwd'; paneId: string; cwd: string }
   | { type: 'setPage'; paneId: string; url: string; title?: string }
@@ -43,17 +50,25 @@ function mapTab(layout: Layout, tabId: string, fn: (t: Tab) => Tab): Layout {
   return { ...layout, tabs: layout.tabs.map((t) => (t.id === tabId ? fn(t) : t)) }
 }
 
+/** How many tabs come before the pinned ones. */
+const unpinnedCount = (tabs: readonly Tab[]): number => tabs.filter((t) => !t.pinned).length
+
+/** Pinned tabs after the others, each group in the order it was in. */
+const pinnedLast = (tabs: Tab[]): Tab[] =>
+  tabs.sort((a, b) => Number(a.pinned === true) - Number(b.pinned === true))
+
 export function layoutReducer(layout: Layout, action: LayoutAction): Layout {
   switch (action.type) {
     case 'replace':
       return action.layout
 
     case 'newTab': {
+      // After the active tab, or after the last tab that isn't pinned.
       const tab: Tab = { id: newId('tab'), root: action.pane, activePaneId: action.pane.id }
-      const idx = layout.tabs.findIndex((t) => t.id === layout.activeTabId)
+      const idx = layout.tabs.findIndex((t) => t.id === layout.activeTabId && !t.pinned)
       const tabs = [...layout.tabs]
-      tabs.splice(idx === -1 ? tabs.length : idx + 1, 0, tab)
-      return { tabs, activeTabId: tab.id }
+      tabs.splice(idx === -1 ? unpinnedCount(tabs) : idx + 1, 0, tab)
+      return { ...layout, tabs, activeTabId: tab.id }
     }
 
     case 'split': {
@@ -70,7 +85,8 @@ export function layoutReducer(layout: Layout, action: LayoutAction): Layout {
       const tab = tabOfPane(layout, action.paneId)
       if (!tab) return layout
       const root = removePane(tab.root, action.paneId)
-      if (!root) return layoutReducer(layout, { type: 'closeTab', tabId: tab.id })
+      if (!root)
+        return layoutReducer(layout, { type: 'closeTab', tabId: tab.id, shown: action.shown })
       let activePaneId = tab.activePaneId
       if (activePaneId === action.paneId) {
         // Move focus to the pane that took the closed one's space.
@@ -102,11 +118,15 @@ export function layoutReducer(layout: Layout, action: LayoutAction): Layout {
       const idx = layout.tabs.findIndex((t) => t.id === action.tabId)
       if (idx === -1) return layout
       const tabs = layout.tabs.filter((t) => t.id !== action.tabId)
-      const activeTabId =
-        layout.activeTabId === action.tabId
-          ? (tabs[Math.min(idx, tabs.length - 1)]?.id ?? null)
-          : layout.activeTabId
-      return { tabs, activeTabId }
+      if (layout.activeTabId !== action.tabId) return { ...layout, tabs }
+      // The shown tab that takes its place, or the one before it at the end.
+      const shown = action.shown ? new Set(action.shown) : null
+      const isShown = (t: Tab): boolean => !shown || shown.has(t.id)
+      const next =
+        tabs.slice(idx).find(isShown) ??
+        tabs.slice(0, idx).findLast(isShown) ??
+        tabs[Math.min(idx, tabs.length - 1)]
+      return { ...layout, tabs, activeTabId: next?.id ?? null }
     }
 
     case 'focusPane': {
@@ -132,25 +152,62 @@ export function layoutReducer(layout: Layout, action: LayoutAction): Layout {
         : layout
 
     case 'selectTabIndex': {
-      const tab = layout.tabs[action.index]
-      return tab ? { ...layout, activeTabId: tab.id } : layout
+      const id = action.shown ? action.shown[action.index] : layout.tabs[action.index]?.id
+      return id !== undefined && layout.tabs.some((t) => t.id === id)
+        ? { ...layout, activeTabId: id }
+        : layout
     }
 
     case 'cycleTab': {
-      const n = layout.tabs.length
+      const ids = action.shown ?? layout.tabs.map((t) => t.id)
+      const n = ids.length
       if (n === 0) return layout
-      const idx = layout.tabs.findIndex((t) => t.id === layout.activeTabId)
-      const next = layout.tabs[(((idx + action.delta) % n) + n) % n]
-      return next ? { ...layout, activeTabId: next.id } : layout
+      const idx = ids.indexOf(layout.activeTabId ?? '')
+      const next =
+        idx === -1 ? ids[action.delta > 0 ? 0 : n - 1] : ids[(((idx + action.delta) % n) + n) % n]
+      return next !== undefined && layout.tabs.some((t) => t.id === next)
+        ? { ...layout, activeTabId: next }
+        : layout
     }
 
     case 'moveTab': {
       // `index` is the tab's position once it has moved.
       const tab = layout.tabs.find((t) => t.id === action.tabId)
       if (!tab) return layout
+      // A tab stays with the pinned tabs or with the others.
       const tabs = layout.tabs.filter((t) => t !== tab)
       tabs.splice(Math.max(0, Math.min(action.index, tabs.length)), 0, tab)
+      pinnedLast(tabs)
       return tabs.every((t, i) => t === layout.tabs[i]) ? layout : { ...layout, tabs }
+    }
+
+    case 'renameTab': {
+      // An empty name goes back to the preset and folder.
+      const name = action.name.trim().slice(0, MAX_TAB_NAME)
+      return mapTab(layout, action.tabId, (t) => {
+        const next: Tab = { ...t, name }
+        if (!name) delete next.name
+        return next
+      })
+    }
+
+    case 'colorTab':
+      return mapTab(layout, action.tabId, (t) => {
+        const next: Tab = { ...t }
+        if (action.color) next.color = action.color
+        else delete next.color
+        return next
+      })
+
+    case 'pinTab': {
+      // Pinning puts a tab at the right end; unpinning puts it just before the pinned tabs.
+      const tab = layout.tabs.find((t) => t.id === action.tabId)
+      if (!tab || (tab.pinned === true) === action.pinned) return layout
+      const moved: Tab = { ...tab, pinned: true }
+      if (!action.pinned) delete moved.pinned
+      const tabs = layout.tabs.filter((t) => t !== tab)
+      tabs.splice(action.pinned ? tabs.length : unpinnedCount(tabs), 0, moved)
+      return { ...layout, tabs }
     }
 
     case 'resize': {

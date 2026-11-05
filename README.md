@@ -56,6 +56,21 @@ list), and press `Enter`. Type to filter, or type a path starting with `~` or
 `/`. Split keys open the same picker, starting in the focused pane's directory
 and preset. Drag a tab along the tab bar to move it.
 
+Right-click a tab to rename it, give it a color strip, or pin it to the right
+end of the tab bar (double-click also renames; an empty name goes back to the
+automatic one). Pinned tabs stay together on the right, have no close button,
+and are numbered after the others for Cmd+1 … Cmd+9. Use them for tabs that
+run one job for a long time, named for that job.
+
+When tabs come from more than one project, the funnel after `+` filters them by
+folder: uncheck a folder, or pick **Show only**, to hide its tabs. A tab's
+folder is the one under `projectsDir` it started in (`~/dev/cockpit` for a
+shell opened in `~/dev/cockpit/src`), or its directory outside `projectsDir`.
+Pinned tabs always show, and so does the active tab, in italics, while its
+folder is hidden. The tab shortcuts skip hidden tabs, the button counts them,
+and opening a new tab in a hidden folder shows that folder again. Each window
+keeps its own filter.
+
 The layout (tabs, splits, sizes, each pane's preset and directory) is saved to
 `~/.cockpit/config.json` for each window, and the start screen offers to restore it on
 relaunch. Processes and scrollback are not restored; each pane starts its

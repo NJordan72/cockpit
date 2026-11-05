@@ -126,6 +126,35 @@ describe('migrateConfig', () => {
     expect(win(c).tabs[1]?.root).toEqual({ type: 'pane', id: 'p4', presetId: 'shell', cwd: '~' })
   })
 
+  it("keeps tabs' names, colors, and pins, with pinned tabs last", () => {
+    const p = (id: string): object => ({ type: 'pane', id, presetId: 'shell', cwd: '~' })
+    const c = migrateConfig({
+      windows: [
+        {
+          id: 'main',
+          hiddenDirs: ['~/dev/a', 7, '', '~/dev/a', '~/dev/b'],
+          activeTabId: 't1',
+          tabs: [
+            { id: 't1', root: p('p1'), name: '  Deploys ', color: 'green', pinned: true },
+            { id: 't2', root: p('p2'), name: 42, color: 'chartreuse', pinned: 'yes' },
+            { id: 't3', root: p('p3'), name: '   ', color: 'magenta' }
+          ]
+        }
+      ]
+    })
+    expect(win(c).tabs.map((t) => t.id)).toEqual(['t2', 't3', 't1'])
+    expect(win(c).tabs[2]).toMatchObject({ name: 'Deploys', color: 'green', pinned: true })
+    expect(win(c).tabs[0]).toEqual({ id: 't2', root: p('p2'), activePaneId: 'p2' })
+    expect(win(c).tabs[1]).toEqual({
+      id: 't3',
+      root: p('p3'),
+      activePaneId: 'p3',
+      color: 'magenta'
+    })
+    expect(win(c).hiddenDirs).toEqual(['~/dev/a', '~/dev/b'])
+    expect(defaultWindow().hiddenDirs).toEqual([])
+  })
+
   it('rejects duplicate ids in a layout', () => {
     const c = migrateConfig({
       layout: {
@@ -461,6 +490,7 @@ describe('migrateConfig: windows', () => {
         id: 'main',
         layout: 'cockpit',
         panelsHidden: true,
+        hiddenDirs: [],
         tabs: [{ id: 't1', root: pane('p1'), activePaneId: 'p1' }],
         activeTabId: 't1'
       }
