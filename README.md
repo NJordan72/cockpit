@@ -9,12 +9,24 @@ input, done) with notifications; an Activity panel that shows what each agent
 read, changed, and ran; and a sidebar of sandboxed widgets that can call out
 to services like Shortcut. Layouts arrange the window, and themes style it.
 
-It's a personal project, built around one person's setup. It runs on macOS
-only, and from source, since there's no signed or packaged build. It was built
-with Claude Code, working from [INSTRUCTIONS.md](INSTRUCTIONS.md): the build
-plan, plus a status note for every feature as it landed.
+It's a personal project, built around one person's setup. It runs on Apple
+silicon Macs. It was built with Claude Code, working from
+[INSTRUCTIONS.md](INSTRUCTIONS.md): the build plan, plus a status note for
+every feature as it landed.
 
 ## Install
+
+Download the `.dmg` from the
+[latest release](https://github.com/NJordan72/cockpit/releases/latest), open
+it, and drag Cockpit to Applications.
+
+Releases aren't signed with an Apple Developer ID, so the first time you open
+Cockpit, macOS says it can't verify the app. Click **Done**, then open
+**System Settings > Privacy & Security**, scroll down to the message about
+Cockpit, and click **Open Anyway**. You'll need to do this again after each
+update.
+
+### From source
 
 Requires macOS, [bun](https://bun.sh), and Xcode Command Line Tools (for the
 `node-pty` native build).
@@ -498,6 +510,7 @@ and only paths that exist get underlined.
 bun run check   # typecheck + lint + format:check + test
 bun run format  # apply Prettier
 bun run build && bun run smoke   # launch the built app and run a command in a shell
+bun run package:app && bun run smoke dist/mac-arm64/Cockpit.app   # the same, packaged
 ```
 
 TypeScript runs in strict mode with `noUncheckedIndexedAccess`, and ESLint
@@ -506,12 +519,18 @@ uses typescript-eslint's `strictTypeChecked` rules with zero warnings allowed.
 `bun run smoke` (`scripts/smoke.mjs`) starts the built app with a scratch HOME,
 `COCKPIT_HOME`, and Chromium profile, opens a shell from the start screen, and
 fails unless a command's output reaches the terminal and the renderer logs no
-errors. It never touches your real config.
+errors. It never touches your real config. Given the path to a packaged
+`Cockpit.app`, it runs that instead, and also checks that the app can load its
+icon from inside `app.asar`.
 
 GitHub Actions runs:
 
 - `check` on every pull request and push to `main`: `bun run check`, the
-  build, and the smoke test, on macOS.
+  build, and the smoke test against `out/` and against the packaged app, on
+  macOS. On pull requests, a `changeset` job also fails a PR that changes the
+  app without a changeset (see [Releases](#releases)).
+- `release` on every push to `main`: opens the Version Packages PR, or
+  packages and publishes a release once that PR is merged.
 - `audit` on changes to `package.json` or `bun.lock` and weekly: `bun audit`
   checks every package in `bun.lock` and fails on a high or critical advisory.
 - `codeql` on pull requests, pushes to `main`, and weekly: CodeQL scanning of
@@ -556,13 +575,52 @@ driver> screen
 The app opens on the start screen; `Meta+t` then `Enter` opens a shell in the
 top project. Screenshots go to `out/shots/`.
 
+## Releases
+
+Versions and release notes come from [Changesets](https://changesets.dev). A
+pull request that changes the app adds a changeset: a short Markdown file in
+`.changeset/` that says what changed, written for someone using Cockpit.
+
+```sh
+bun run changeset          # pick patch, minor, or major, then write the note
+bun run changeset --empty  # for a change that doesn't need a release note
+```
+
+The `changeset` check fails a pull request that changes anything under `src/`
+or `resources/`, the dependencies, or the build and packaging config without
+adding a changeset. Docs, tests, and CI changes don't need one, and Renovate's PRs are
+exempt; the patterns are `changedFilePatterns` in `.changeset/config.json`.
+
+To cut a release, merge the **Version Packages** pull request. The `release`
+workflow keeps that PR up to date while `main` has changesets. The PR bumps
+the version in `package.json`, moves the notes into `CHANGELOG.md`, and gets
+the same checks as any other PR. Once it's merged, the workflow packages the app on macOS,
+runs the smoke test against the packaged app, and creates the `vX.Y.Z` tag and
+a GitHub release with the `.dmg`, the `.zip`, and build provenance for both.
+If a release fails partway, fix the cause and run the `release` workflow from
+the Actions tab; it does nothing once the tag exists.
+
+To package locally:
+
+```sh
+bun run package       # dist/Cockpit-<version>-arm64.dmg and the .zip
+bun run package:app   # just dist/mac-arm64/Cockpit.app, in a few seconds
+```
+
+Packaging is set up in `electron-builder.config.ts`. Builds are signed ad hoc.
+To sign with a Developer ID and notarize instead, add these repository
+secrets: `CSC_LINK` (the certificate as a base64-encoded `.p12`),
+`CSC_KEY_PASSWORD`, `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, and
+`APPLE_TEAM_ID`. Release notes leave out the Open Anyway steps for signed
+builds.
+
 ## Contributing
 
 Issues are welcome. For anything bigger than a small fix, open an issue before
 a pull request, since Cockpit still changes shape as it gets used. Run
-`bun run check` before you send one; CI runs the same checks, plus the smoke
-test. To report a
-security problem, see [SECURITY.md](SECURITY.md).
+`bun run check` before you send one, and add a changeset if it changes the app
+(see [Releases](#releases)). CI runs the same checks, plus the smoke tests. To
+report a security problem, see [SECURITY.md](SECURITY.md).
 
 ## License
 

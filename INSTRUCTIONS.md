@@ -1024,3 +1024,65 @@ the project they were opened in.
   failing when the expected output is wrong, `bun audit`, actionlint and
   zizmor on the workflows, and Renovate's config validator plus an extract and
   lookup dry run. Not verified: any of the workflows on GitHub's runners.
+
+### Packaged releases (added 2026-11-05, not in the original plan)
+
+- `bun run package` builds `out/` and packages it with electron-builder as
+  Cockpit.app, in a `.dmg` and a `.zip` under `dist/`. `bun run package:app`
+  makes only the `.app`, in about 5 seconds. Builds are arm64 only, since
+  macOS 27 runs only on Apple silicon. The config is
+  `electron-builder.config.ts`, passed with `--config`. It can't be named
+  `electron-builder.ts`, the name electron-builder looks for by default,
+  because `baseUrl: "."` in `tsconfig.base.json` makes TypeScript resolve
+  `import ... from 'electron-builder'` to that file.
+- `app.asar` holds `out/` (without `drive.mjs`'s screenshots and logs),
+  `package.json`, and `resources/icon.png`, which the main process loads from
+  `../../resources/icon.png`. node-pty is unpacked, because native code can't
+  run from inside an asar and node-pty looks for `spawn-helper` in
+  `app.asar.unpacked`. Its sources and prebuilds are left out, which saves
+  about 60 MB, and only the English Chromium locales ship, which saves about
+  50 MB. The app comes to 268 MB. The fuses turn off `ELECTRON_RUN_AS_NODE`
+  and `NODE_OPTIONS` and load the app only from `app.asar`. `--inspect` stays
+  on, since Playwright needs it.
+- Without a Developer ID, builds are signed ad hoc (`identity: '-'`). With no
+  identity at all, electron-builder skips signing, and Apple silicon refuses
+  to open the result. The hardened runtime is on in both cases, with
+  electron-builder's default entitlements plus Apple Events. Ad hoc builds
+  need the `disable-library-validation` entitlement, because an ad-hoc
+  signature has no team ID to match the app's frameworks against.
+  `CSC_LINK` or `CSC_NAME` switches to Developer ID signing, and the
+  `APPLE_*` variables turn on notarization. `Info.plist` has usage strings
+  for Apple Events and the protected folders, since programs in a pane ask
+  macOS for access as Cockpit.
+- Changesets 3 manages versions (`.changeset/config.json`). `privatePackages`
+  is on for both versioning and tags, since the package is private and
+  Changesets skips private packages by default. The changelog comes from
+  `@changesets/changelog-github` with a template that links the PR and drops
+  its default "Thanks @user!". `changedFilePatterns` limits which changes need
+  a changeset to `src/` (not tests), `resources/`, `package.json`, `bun.lock`,
+  and the two build configs.
+- The `release` workflow runs `changesets/action/select-mode` on every push to
+  `main`. With changesets, `changesets/action/version` opens the Version
+  Packages PR from `changeset-release/main`, and the workflow then dispatches
+  `check.yml` on that branch. A PR opened with `GITHUB_TOKEN` doesn't start
+  `pull_request` workflows, so without the dispatch the required checks would
+  never report. With no changesets and an untagged version, a macOS job runs
+  `bun run check`, packages the app, smoke tests the packaged app, attests
+  the `.dmg` and `.zip` with `actions/attest`, and runs `gh release create`
+  with notes from `scripts/release-notes.mjs`.
+- `check.yml` gains a `workflow_dispatch` trigger, a smoke test of the
+  packaged app, and a `changeset` job that runs
+  `changeset status --since=origin/main` on pull requests. The `changeset`
+  job is skipped for `renovate/` branches and for `changeset-release/main`,
+  and GitHub counts a skipped job as passing for a required check.
+- `scripts/smoke.mjs` takes an optional path to a `Cockpit.app`. With one, it
+  launches that app's executable and also checks that the app reports itself
+  as packaged and can load its icon from inside `app.asar`.
+- Verified locally: `bun run check`; `bun run package` and
+  `bun run package:app`; the asar contents, the ad-hoc signature with the
+  hardened runtime and entitlements, `Info.plist`, and the fuses;
+  `changeset status` passing for README, test, and workflow changes and
+  failing for source and `package.json` changes without a changeset;
+  `changeset publish-plan` listing the untagged version as tag-only; and
+  actionlint and zizmor on the workflows. The packaged app wasn't launched
+  locally.
