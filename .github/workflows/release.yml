@@ -3,7 +3,9 @@
 #
 # - version, when main has changesets. The `version` job opens or updates the
 #   "Version Packages" PR, which bumps package.json, writes CHANGELOG.md, and
-#   deletes the changesets. Merging that PR cuts the release.
+#   deletes the changesets. GitHub holds that PR's checks until someone clicks
+#   "Approve and run workflows" on it, because github-actions[bot] opened it.
+#   Merging that PR cuts the release.
 # - publish, when main has no changesets and package.json's version has no
 #   tag, which happens right after a Version Packages PR is merged. The
 #   `release` job packages the app on macOS, smoke tests the packaged app, and
@@ -55,7 +57,6 @@ jobs:
     permissions:
       contents: write # push the changeset-release/main branch
       pull-requests: write # open the Version Packages PR
-      actions: write # start the checks on it
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -66,17 +67,8 @@ jobs:
           bun-version: 1.4.2
       - run: bun install --frozen-lockfile --ignore-scripts
       - uses: changesets/action/version@ae32849d5ba541f9ae29e40e22a623bc13562f51 # v2.1.2
-        id: version
         with:
           commit-message: 'chore: version packages'
-      # A PR opened with GITHUB_TOKEN doesn't start pull_request workflows,
-      # so the required checks would never report on it. A workflow_dispatch
-      # run on the PR's branch reports on the same commit.
-      - name: Run the checks on the Version Packages PR
-        if: steps.version.outputs.pr-number != ''
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh workflow run check.yml --repo "$GITHUB_REPOSITORY" --ref changeset-release/main
 
   release:
     needs: mode

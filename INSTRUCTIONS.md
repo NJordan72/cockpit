@@ -1063,18 +1063,25 @@ the project they were opened in.
   and the two build configs.
 - The `release` workflow runs `changesets/action/select-mode` on every push to
   `main`. With changesets, `changesets/action/version` opens the Version
-  Packages PR from `changeset-release/main`, and the workflow then dispatches
-  `check.yml` on that branch. A PR opened with `GITHUB_TOKEN` doesn't start
-  `pull_request` workflows, so without the dispatch the required checks would
-  never report. With no changesets and an untagged version, a macOS job runs
+  Packages PR from `changeset-release/main`. That needs "Allow GitHub Actions
+  to create and approve pull requests" on in the repository's Actions
+  settings. GitHub starts the `pull_request` workflows on that PR but holds
+  them as "action_required" until someone clicks "Approve and run workflows",
+  since github-actions[bot] opened it. A first version dispatched `check.yml`
+  on the PR's branch instead. That run passed on the PR's head commit, but the
+  PR's checks list didn't show it, so the dispatch came out. With no
+  changesets and an untagged version, a macOS job runs
   `bun run check`, packages the app, smoke tests the packaged app, attests
   the `.dmg` and `.zip` with `actions/attest`, and runs `gh release create`
   with notes from `scripts/release-notes.mjs`.
-- `check.yml` gains a `workflow_dispatch` trigger, a smoke test of the
-  packaged app, and a `changeset` job that runs
+- `check.yml` gains a smoke test of the packaged app and a `changeset` job
+  that runs
   `changeset status --since=origin/main` on pull requests. The `changeset`
   job is skipped for `renovate/` branches and for `changeset-release/main`,
-  and GitHub counts a skipped job as passing for a required check.
+  and GitHub counts a skipped job as passing for a required check. The
+  packaging step sets `CSC_FOR_PULL_REQUEST`, because electron-builder
+  otherwise skips signing on pull requests and the smoke test would launch an
+  unsigned app instead of the ad-hoc signed one a release ships.
 - `scripts/smoke.mjs` takes an optional path to a `Cockpit.app`. With one, it
   launches that app's executable and also checks that the app reports itself
   as packaged and can load its icon from inside `app.asar`.
@@ -1086,3 +1093,7 @@ the project they were opened in.
   `changeset publish-plan` listing the untagged version as tag-only; and
   actionlint and zizmor on the workflows. The packaged app wasn't launched
   locally.
+- Verified on GitHub's runners: the packaged smoke test on the ad-hoc signed,
+  hardened-runtime app; the `changeset` job on a PR with a changeset; and the
+  `release` workflow's `mode` and `version` jobs, which opened the Version
+  Packages PR for 0.2.0 (#7) once the Actions setting was on.
