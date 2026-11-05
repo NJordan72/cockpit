@@ -17,8 +17,11 @@ export interface HostPattern {
 }
 
 export interface UrlPattern extends HostPattern {
-  /** Matched against pathname + search + hash. */
-  path: RegExp
+  /**
+   * The path glob split at each *, matched against pathname + search + hash.
+   * "/docs/*" is ["/docs/", ""].
+   */
+  path: string[]
 }
 
 const LABEL = '[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?'
@@ -84,11 +87,28 @@ export function parseUrlPattern(raw: string): UrlPattern {
   const path = m[3]
   if (path === undefined) throw new Error('needs a path; use https://host/* for any page on a host')
   const host = parseHostPattern((m[1] ?? '') + (m[2] ?? ''))
-  const re = path
-    .split('*')
-    .map((part) => part.replace(/[.+?^${}()|[\]\\]/g, '\\$&'))
-    .join('.*')
-  return { ...host, path: new RegExp(`^${re}$`) }
+  return { ...host, path: path.split('*') }
+}
+
+/**
+ * Whether text matches a glob that was split at its *s, each * standing for
+ * any run of characters. ["/a/", "/b"] matches "/a/x/b" and "/a//b", not "/a/b".
+ */
+function globMatches(pieces: readonly string[], text: string): boolean {
+  const first = pieces[0] ?? ''
+  if (pieces.length === 1) return text === first
+  const last = pieces[pieces.length - 1] ?? ''
+  const end = text.length - last.length
+  if (end < first.length || !text.startsWith(first) || !text.endsWith(last)) return false
+  // Taking each middle piece at its earliest place leaves the most room for
+  // the ones after it, so a match exists exactly when this finds one.
+  let at = first.length
+  for (const piece of pieces.slice(1, -1)) {
+    const i = text.indexOf(piece, at)
+    if (i === -1 || i + piece.length > end) return false
+    at = i + piece.length
+  }
+  return true
 }
 
 function urlScheme(url: URL): Scheme | null {
@@ -115,5 +135,5 @@ export function urlAllowed(url: URL, patterns: readonly UrlPattern[]): boolean {
   const scheme = urlScheme(url)
   if (!scheme || url.username || url.password) return false
   const rest = url.pathname + url.search + url.hash
-  return patterns.some((p) => hostMatches(url, scheme, p) && p.path.test(rest))
+  return patterns.some((p) => hostMatches(url, scheme, p) && globMatches(p.path, rest))
 }
