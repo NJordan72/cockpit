@@ -998,11 +998,13 @@ the project they were opened in.
 ### CI and dependency updates (added 2026-11-05, not in the original plan)
 
 - `scripts/smoke.mjs` (`bun run smoke`) launches the built app through
-  Playwright with a scratch HOME, COCKPIT_HOME, and `--user-data-dir`, opens a
-  shell with Cmd+T and Enter, runs `echo cockpit-smoke-$((6 * 7))`, and waits
-  for `cockpit-smoke-42` in the pane's screen text. Only the shell's output
-  can contain that string, since the typed line shows `$((6 * 7))`. Any
-  renderer console error or page error fails it.
+  Playwright with a scratch HOME, COCKPIT_HOME, and `--user-data-dir`, waits
+  for the start screen to take focus, opens a shell with Cmd+Shift+T, runs
+  `echo cockpit-smoke-$((6 * 7))`, and waits for `cockpit-smoke-42` in the
+  pane's screen text. Only the shell's output can contain that string, since
+  the typed line shows `$((6 * 7))`. Any renderer console error or page error
+  fails it. Cmd+Shift+T opens the shell in one step, where Cmd+T would also
+  need an Enter in the picker.
 - After `bun run check`, the `check` workflow now builds the app and runs
   the smoke test. New workflows: `audit` runs `bun audit --audit-level=high`,
   which reads `bun.lock` without an install, and `codeql` scans the

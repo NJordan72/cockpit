@@ -53,11 +53,18 @@ try {
   })
   page.on('pageerror', (err) => errors.push(`page: ${err.message}`))
 
-  await page.waitForSelector('.launcher', { timeout: 30_000 })
+  // The start screen focuses its filter box once it has mounted, so wait for
+  // that before pressing any key.
+  await page.waitForFunction(
+    () => document.querySelector('.launcher')?.contains(document.activeElement) ?? false,
+    null,
+    { timeout: 30_000 }
+  )
   step('start screen is up')
 
-  await page.keyboard.press('Meta+t')
-  await page.keyboard.press('Enter')
+  // Cmd+Shift+T opens a shell tab in one step. Cmd+T would also need an Enter
+  // in the picker.
+  await page.keyboard.press('Meta+Shift+T')
   await page.waitForFunction(() => (window.__cockpitDebug?.ids().length ?? 0) > 0, null, {
     timeout: 15_000
   })
