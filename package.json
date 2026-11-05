@@ -23,7 +23,7 @@
     "lint:shell": "git ls-files -z '*.sh' | xargs -0 shellcheck",
     "test": "bun test --parallel",
     "verify": "bun check --no-script && bun run lint && bun run lint:actions && bun run lint:shell && bun fmt --check --no-script && bun run test",
-    "postinstall": "install-electron && electron-rebuild -f -o node-pty",
+    "postinstall": "install-electron && electron-builder install-app-deps",
     "smoke": "node scripts/smoke.mjs",
     "package": "electron-vite build && electron-builder --config electron-builder.config.ts --mac --publish never",
     "package:app": "electron-vite build && electron-builder --config electron-builder.config.ts --mac --dir --publish never",
@@ -42,7 +42,6 @@
   "devDependencies": {
     "@changesets/changelog-github": "1",
     "@changesets/cli": "3",
-    "@electron/rebuild": "4",
     "@eslint/js": "10",
     "@types/bun": "1",
     "@types/node": "24",
