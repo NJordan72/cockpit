@@ -40,8 +40,11 @@ assets from other apps.
   Electron 44 downloads its binary lazily, so `postinstall` runs
   `install-electron` before the rebuild. `mise.toml` pins the bun and Node
   versions, with Node at the version inside Electron.
-- Strict TypeScript (`strict`, `noUncheckedIndexedAccess`), typescript-eslint
-  `strictTypeChecked` with `--max-warnings 0`, and Prettier.
+- Strict TypeScript (`strict`, `noUncheckedIndexedAccess`) and
+  typescript-eslint `strictTypeChecked` with `--max-warnings 0`. Bun's
+  built-ins do the rest: `bun check` typechecks, `bun fmt` formats in
+  Prettier's style (from `.prettierrc.json`), and `bun test` runs the tests.
+  `bun run verify` runs all of it.
 - App chrome UI: React. Keep the chrome small. The terminals and widgets are
   the point.
 - Secrets: Electron `safeStorage` (the key lives in the macOS Keychain). No
@@ -1114,3 +1117,38 @@ the project they were opened in.
   Dashboard now covers the `node` in `mise.toml` too.
 - `jdx/mise-action` is pinned at v5.2.5 rather than v5.2.6, which was under
   the 3-day minimum release age that the Renovate config sets.
+
+### Bun's type checker, formatter, and test runner (added 2026-11-05, not in the original plan)
+
+- `bun check` replaces `tsc`, `bun fmt` replaces Prettier, and `bun test`
+  replaces Vitest. On this repo, a type check takes about 40 ms against 0.7 s
+  for `tsc`, a format check about 40 ms against 1.35 s, and the tests about
+  1.4 s with `--parallel` against 1.75 s. ESLint stays; `bun lint` is only in
+  canary builds. `bun run verify` runs all four, and CI runs it in place of
+  the old `check` script. With a `check` script in `package.json`, `bun check`
+  would run that script instead of type checking, so the aggregate script has
+  a different name.
+- `bun check` rejects `baseUrl` as a removed option (TS5102), so
+  `tsconfig.base.json` drops it and writes the `@shared/*` path relative to
+  itself, which `tsc` 5.9 accepts too. `tsconfig.json` extends the
+  base config so `bun test` finds `paths` there. `src/preload/index.d.ts` is
+  now `window.d.ts`, since `bun check` skips a `.d.ts` that sits next to a
+  `.ts` of the same name, and `src/renderer/src/css.d.ts` declares `*.css` for
+  the CSS that the renderer imports for its side effects.
+- Tests import from `bun:test`. `bunfig.toml` limits `bun test` to `src/` and
+  preloads `test/setup.ts`, which mocks the `electron` module before any test
+  file loads. Bun's `vi.mock` call doesn't get hoisted above imports the way
+  Vitest's does, and outside Electron the `electron` package exports only the
+  binary's path, so named imports such as `protocol` fail to load. Bun's `vi`
+  has no `setSystemTime`; the tests use `setSystemTime` from `bun:test`.
+  Bun's `.rejects` matchers return nothing and wait for the promise
+  themselves, so the tests no longer `await` them.
+- Test files left `tsconfig.node.json` and `tsconfig.web.json` for a third
+  project, `tsconfig.test.json`, which has the DOM library and Bun's types and
+  includes all of `src/`. App code is still checked without Bun's globals.
+  Bun's `expect` requires the expected value to have the received value's
+  type, which found nine fixtures typed looser than the values they stood for.
+- Changesets' `format: "auto"` ran `bun x prettier`, which fails without
+  Prettier installed, so `.changeset/config.json` turns formatting off and the
+  release workflow's version step runs `bun run version-packages`
+  (`changeset version`, then `bun fmt` on `CHANGELOG.md`).

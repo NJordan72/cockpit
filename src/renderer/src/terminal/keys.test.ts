@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'bun:test'
 import { classifyKey, NEWLINE_SEQUENCE, type KeyLike } from './keys'
 
 const key = (k: string, mods: Partial<KeyLike> = {}, type = 'keydown'): KeyLike => ({

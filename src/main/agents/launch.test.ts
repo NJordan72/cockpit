@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'bun:test'
 import { agentLaunch, CODEX_SETTINGS, detectAgent, shQuote } from './launch'
 
 const files = { claudeSettings: '/Users/me/.cockpit/agents/claude-settings.json' }

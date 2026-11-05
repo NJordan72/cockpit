@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'bun:test'
 import { cpuShare, memoryUsed, parseVmStat } from './system'
 
 const VM_STAT = `Mach Virtual Memory Statistics: (page size of 16384 bytes)

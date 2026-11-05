@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'bun:test'
 import { panel, type FrameSplit } from '@shared/frame'
 import { formatBytes, formatShare, formatUptime, meterLevel } from './format'
 import { cellSize, cellStyle, slotName } from './layout'

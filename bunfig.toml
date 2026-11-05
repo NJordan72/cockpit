@@ -1,0 +1,5 @@
+[test]
+# Tests live next to the code they test. Keeping bun test out of the rest of
+# the tree skips the test files inside node_modules and dist/.
+root = "src"
+preload = ["./test/setup.ts"]

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'bun:test'
 import { contentType, injectIntoHtml, resolveWidgetFile, widgetCsp } from './serve'
 
 const root = '/Users/me/dev/hello'

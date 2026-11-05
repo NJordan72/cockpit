@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'bun:test'
 import { QUIET_MS, queueRun, runWhenReady, takeRun, type ShellTerminal } from './run'
 
 /** A terminal the test writes shell output to. */

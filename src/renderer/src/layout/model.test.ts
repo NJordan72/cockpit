@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'bun:test'
 import type { LayoutNode, PaneNode, SplitNode } from '@shared/config'
 import { allPanes, arrange, dragSizes, neighbor, removePane, splitPane } from './model'
 

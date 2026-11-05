@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'bun:test'
 import { filterPrs } from '@shared/prs'
 import { parsePrs, rollup } from './prs'
 

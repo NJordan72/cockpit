@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it } from 'bun:test'
 import { PTY_ACK_CHARS } from '@shared/ipc'
 import { OutputAcks } from './acks'
 

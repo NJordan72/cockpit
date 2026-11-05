@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'bun:test'
 import { codexTitleState, CodexWatcher, OscScanner, parseCodexNotification } from './codex'
 
 const title = (t: string): string => `\x1b]0;${t}\x07`

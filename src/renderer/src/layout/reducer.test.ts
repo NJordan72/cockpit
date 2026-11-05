@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'bun:test'
 import type { Layout, PaneNode } from '@shared/config'
 import { allPanes, findPane } from './model'
 import { layoutReducer, type LayoutAction } from './reducer'
@@ -14,7 +14,7 @@ describe('layoutReducer', () => {
       { type: 'newTab', pane: pane('b') }
     ])
     expect(l.tabs).toHaveLength(2)
-    expect(l.activeTabId).toBe(l.tabs[1]?.id)
+    expect(l.activeTabId).toBe(l.tabs[1]?.id ?? null)
   })
 
   it('splits and focuses the new pane', () => {
@@ -87,8 +87,10 @@ describe('layoutReducer', () => {
       { type: 'newTab', pane: pane('b') }
     ])
     const next = layoutReducer(base, { type: 'cycleTab', delta: 1 })
-    expect(next.activeTabId).toBe(base.tabs[0]?.id)
-    expect(layoutReducer(next, { type: 'cycleTab', delta: -1 }).activeTabId).toBe(base.tabs[1]?.id)
+    expect(next.activeTabId).toBe(base.tabs[0]?.id ?? null)
+    expect(layoutReducer(next, { type: 'cycleTab', delta: -1 }).activeTabId).toBe(
+      base.tabs[1]?.id ?? null
+    )
   })
 
   it('moves focus by direction', () => {

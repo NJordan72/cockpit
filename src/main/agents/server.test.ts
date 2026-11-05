@@ -3,7 +3,7 @@ import fs from 'node:fs'
 import http from 'node:http'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { claudeSettings, HOOK_SCRIPT } from './files'
 import { EventServer, MAX_EVENT_BYTES, socketPath, type IncomingEvent } from './server'
 
@@ -149,7 +149,7 @@ describe('the hook script', () => {
 
   it('is registered for every hook with a quoted path', () => {
     const settings = claudeSettings('/a b/cockpit-hook') as {
-      hooks: Record<string, { hooks: { command: string; timeout: number }[] }[]>
+      hooks: Record<string, { hooks: { type: string; command: string; timeout: number }[] }[]>
     }
     expect(settings.hooks.Stop?.[0]?.hooks[0]).toEqual({
       type: 'command',

@@ -509,11 +509,22 @@ and only paths that exist get underlined.
 ## Checks
 
 ```sh
-bun run check   # typecheck + lint + format:check + test
-bun run format  # apply Prettier
+bun check        # typecheck the node, web, and test projects
+bun fmt          # format; bun fmt --check only reports
+bun test         # run the tests; bun run test runs them in parallel
+bun run lint     # ESLint
+bun run verify   # all four, the way CI runs them
 bun run build && bun run smoke   # launch the built app and run a command in a shell
 bun run package:app && bun run smoke dist/mac-arm64/Cockpit.app   # the same, packaged
 ```
+
+`bun check`, `bun fmt`, and `bun test` are bun's built-in type checker,
+formatter, and test runner. `bun fmt` follows `.prettierrc.json` and
+`.prettierignore`, so its output matches Prettier's. Tests sit next to the code
+they test as `*.test.ts` and import from `bun:test`. `test/setup.ts` stands in
+for the `electron` module, which only works inside Electron. Test files are
+typechecked as their own project, `tsconfig.test.json`, which is the only one
+with Bun's types.
 
 TypeScript runs in strict mode with `noUncheckedIndexedAccess`, and ESLint
 uses typescript-eslint's `strictTypeChecked` rules with zero warnings allowed.
@@ -527,7 +538,7 @@ icon from inside `app.asar`.
 
 GitHub Actions runs:
 
-- `check` on every pull request and push to `main`: `bun run check`, the
+- `check` on every pull request and push to `main`: `bun run verify`, the
   build, and the smoke test against `out/` and against the packaged app, on
   macOS. On pull requests, a `changeset` job also fails a PR that changes the
   app without a changeset (see [Releases](#releases)).
@@ -622,7 +633,7 @@ builds.
 
 Issues are welcome. For anything bigger than a small fix, open an issue before
 a pull request, since Cockpit still changes shape as it gets used. Run
-`bun run check` before you send one, and add a changeset if it changes the app
+`bun run verify` before you send one, and add a changeset if it changes the app
 (see [Releases](#releases)). CI runs the same checks, plus the smoke tests. To
 report a security problem, see [SECURITY.md](SECURITY.md).
 

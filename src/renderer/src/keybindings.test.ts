@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'bun:test'
 import { DEFAULT_KEYBINDINGS } from '@shared/config'
 import { actionFor, chordLabel, compileKeymap, parseChord } from './keybindings'
 

@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi, setSystemTime } from 'bun:test'
 import type { AgentReport, AgentSignal } from './events'
 import { DEFAULT_TIMINGS, StatusTracker, type PaneStatus } from './tracker'
 
@@ -28,7 +28,7 @@ function stream(ms: number, id = 'p1'): void {
 
 beforeEach(() => {
   vi.useFakeTimers()
-  vi.setSystemTime(1_000_000)
+  setSystemTime(1_000_000)
   changes = []
   tracker = new StatusTracker((id, prev, next) => {
     changes.push([id, prev?.status ?? null, next.status])

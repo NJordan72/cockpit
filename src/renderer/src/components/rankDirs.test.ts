@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'bun:test'
 import type { DirEntry } from '@shared/ipc'
 import { fuzzyScore, rankDirs } from './rankDirs'
 

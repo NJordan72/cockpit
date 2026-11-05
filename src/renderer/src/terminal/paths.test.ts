@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'bun:test'
 import { findPathCandidates } from './paths'
 
 const paths = (line: string): string[] => findPathCandidates(line).map((c) => c.path)
