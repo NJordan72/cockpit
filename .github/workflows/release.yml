@@ -1,0 +1,145 @@
+# Cuts releases with Changesets (see .changeset/README.md). On every push to
+# main, the `mode` job picks one of three outcomes:
+#
+# - version, when main has changesets. The `version` job opens or updates the
+#   "Version Packages" PR, which bumps package.json, writes CHANGELOG.md, and
+#   deletes the changesets. Merging that PR cuts the release.
+# - publish, when main has no changesets and package.json's version has no
+#   tag, which happens right after a Version Packages PR is merged. The
+#   `release` job packages the app on macOS, smoke tests the packaged app, and
+#   creates the vX.Y.Z tag and a GitHub release with the .dmg and .zip.
+# - none, otherwise.
+#
+# Running it by hand (Actions > release > Run workflow) retries a release that
+# failed. Once the tag exists, a run does nothing.
+name: release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  mode:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      mode: ${{ steps.mode.outputs.mode }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.2
+      # Changesets only needs its own JavaScript here, not Electron or the
+      # node-pty build that postinstall does.
+      - run: bun install --frozen-lockfile --ignore-scripts
+      - uses: changesets/action/select-mode@ae32849d5ba541f9ae29e40e22a623bc13562f51 # v2.1.2
+        id: mode
+
+  version:
+    needs: mode
+    if: needs.mode.outputs.mode == 'version'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write # push the changeset-release/main branch
+      pull-requests: write # open the Version Packages PR
+      actions: write # start the checks on it
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.2
+      - run: bun install --frozen-lockfile --ignore-scripts
+      - uses: changesets/action/version@ae32849d5ba541f9ae29e40e22a623bc13562f51 # v2.1.2
+        id: version
+        with:
+          commit-message: 'chore: version packages'
+      # A PR opened with GITHUB_TOKEN doesn't start pull_request workflows,
+      # so the required checks would never report on it. A workflow_dispatch
+      # run on the PR's branch reports on the same commit.
+      - name: Run the checks on the Version Packages PR
+        if: steps.version.outputs.pr-number != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run check.yml --repo "$GITHUB_REPOSITORY" --ref changeset-release/main
+
+  release:
+    needs: mode
+    if: needs.mode.outputs.mode == 'publish'
+    runs-on: macos-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write # create the tag and the release
+      id-token: write # sign the build provenance
+      attestations: write # store it
+      artifact-metadata: write # record the attested files, as actions/attest asks
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.2
+      - run: bun install --frozen-lockfile
+      - run: bun run check
+      # Signs with a Developer ID and notarizes when these secrets are set,
+      # and signs ad hoc when they aren't (see electron-builder.config.ts). Unset
+      # secrets arrive as empty strings, which electron-builder would take as
+      # values, so they're unset first.
+      - name: Package
+        id: package
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          for name in CSC_LINK CSC_KEY_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID; do
+            [ -n "${!name}" ] || unset "$name"
+          done
+          if [ -n "${CSC_LINK:-}" ]; then
+            echo "signed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+          fi
+          bun run package
+      - name: Smoke test the packaged app
+        run: bun run smoke dist/mac-arm64/Cockpit.app
+      - uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: |
+            dist/*.dmg
+            dist/*.zip
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SIGNED: ${{ steps.package.outputs.signed }}
+        run: |
+          version=$(node -p "require('./package.json').version")
+          if [ "$SIGNED" = true ]; then
+            node scripts/release-notes.mjs "$version" > "$RUNNER_TEMP/notes.md"
+          else
+            node scripts/release-notes.mjs "$version" --unsigned > "$RUNNER_TEMP/notes.md"
+          fi
+          gh release create "v$version" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "Cockpit $version" \
+            --notes-file "$RUNNER_TEMP/notes.md" \
+            dist/*.dmg dist/*.zip

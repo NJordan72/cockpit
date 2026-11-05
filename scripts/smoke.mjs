@@ -2,6 +2,9 @@
 // a command's output reaches the terminal. Exits non-zero on a timeout or on
 // any renderer error. Run `bun run build` first.
 //
+//   node scripts/smoke.mjs                              # out/, through electron
+//   node scripts/smoke.mjs dist/mac-arm64/Cockpit.app   # a packaged app
+//
 // The app runs with a scratch HOME, COCKPIT_HOME, and Chromium profile, so it
 // never reads or writes your real config.
 import { _electron as electron } from 'playwright-core'
@@ -26,9 +29,21 @@ const EXPECTED = 'cockpit-smoke-42'
 const errors = []
 const step = (msg) => console.log(`smoke: ${msg}`)
 
+const bundle = process.argv[2] ? path.resolve(process.argv[2]) : null
+const target = bundle
+  ? {
+      executablePath: path.join(bundle, 'Contents', 'MacOS', 'Cockpit'),
+      args: [`--user-data-dir=${userData}`],
+      cwd: home
+    }
+  : { args: [APP_DIR, `--user-data-dir=${userData}`], cwd: APP_DIR }
+if (bundle && !fs.existsSync(target.executablePath)) {
+  throw new Error(`no app at ${target.executablePath}; run bun run package:app first`)
+}
+step(bundle ? `launching ${bundle}` : 'launching out/')
+
 const app = await electron.launch({
-  args: [APP_DIR, `--user-data-dir=${userData}`],
-  cwd: APP_DIR,
+  ...target,
   env: {
     PATH: '/usr/bin:/bin:/usr/sbin:/sbin',
     HOME: home,
@@ -45,6 +60,19 @@ try {
   const ud = await app.evaluate(({ app }) => app.getPath('userData'))
   if (!fs.realpathSync(ud).startsWith(userData)) {
     throw new Error(`the app is using ${ud}, not the scratch profile`)
+  }
+  if (bundle) {
+    // An icon that fails to load is just an empty image, with no error.
+    const info = await app.evaluate(({ app, nativeImage }) => ({
+      packaged: app.isPackaged,
+      version: app.getVersion(),
+      icon: !nativeImage
+        .createFromPath(`${process.resourcesPath}/app.asar/resources/icon.png`)
+        .isEmpty()
+    }))
+    if (!info.packaged) throw new Error('the app does not say it is packaged')
+    if (!info.icon) throw new Error('the app could not load resources/icon.png from app.asar')
+    step(`packaged app ${info.version} is up`)
   }
 
   const page = await app.firstWindow()

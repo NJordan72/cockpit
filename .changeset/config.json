@@ -1,0 +1,19 @@
+{
+  "$schema": "https://unpkg.com/@changesets/config@4.0.1/schema.json",
+  "baseBranch": "main",
+  "commit": false,
+  "changelog": [
+    "@changesets/changelog-github",
+    { "repo": "NJordan72/cockpit", "template": "\n\n- {summary} {ref}" }
+  ],
+  "privatePackages": { "version": true, "tag": true },
+  "changedFilePatterns": [
+    "src/**",
+    "!**/*.test.ts",
+    "resources/**",
+    "package.json",
+    "bun.lock",
+    "electron.vite.config.ts",
+    "electron-builder.config.ts"
+  ]
+}

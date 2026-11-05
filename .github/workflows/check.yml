@@ -1,13 +1,20 @@
 # Typecheck, lint, format check, and tests on every push to main and every
 # pull request, then a production build and a launch of the built app
-# (scripts/smoke.mjs). macOS, because node-pty is built against Electron there
-# and the smoke test opens a real window.
+# (scripts/smoke.mjs), first from out/ and then packaged as Cockpit.app.
+# macOS, because node-pty is built against Electron there and the smoke test
+# opens a real window. The release workflow starts this workflow with
+# workflow_dispatch on the Version Packages PR's branch, since GitHub doesn't
+# run pull_request workflows for a PR that GITHUB_TOKEN opened.
+#
+# The `changeset` job fails a pull request that changes the app without
+# adding a changeset (see .changeset/README.md).
 name: check
 
 on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -19,7 +26,7 @@ concurrency:
 jobs:
   check:
     runs-on: macos-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -32,3 +39,36 @@ jobs:
       - run: bun run build
       - name: Smoke test the built app
         run: bun run smoke
+      # Cockpit.app alone, without the .dmg and .zip a release adds.
+      - run: bun run package:app
+        env:
+          # electron-builder skips signing on pull requests unless told
+          # otherwise. This workflow has no certificate, so the app gets the
+          # same ad-hoc signature and hardened runtime as a release build.
+          CSC_FOR_PULL_REQUEST: 'true'
+      - name: Smoke test the packaged app
+        run: bun run smoke dist/mac-arm64/Cockpit.app
+
+  changeset:
+    # Renovate's dependency PRs are exempt. A changeset added to one by hand
+    # still goes into the next release. The Version Packages PR is exempt
+    # because it deletes the changesets.
+    if: >-
+      github.event_name == 'pull_request' &&
+      !startsWith(github.head_ref, 'renovate/') &&
+      github.head_ref != 'changeset-release/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # changeset status diffs against where the PR branched from main.
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.2
+      - run: bun install --frozen-lockfile --ignore-scripts
+      # Passes when the PR adds a changeset, or only touches files outside
+      # changedFilePatterns in .changeset/config.json (docs, tests, CI).
+      - run: bun run changeset status --since=origin/main
