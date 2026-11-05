@@ -24,7 +24,8 @@
     "postinstall": "install-electron && electron-rebuild -f -o node-pty",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "check": "bun run typecheck && bun run lint && bun run format:check && bun run test"
+    "check": "bun run typecheck && bun run lint && bun run format:check && bun run test",
+    "smoke": "node scripts/smoke.mjs"
   },
   "trustedDependencies": [
     "electron",
