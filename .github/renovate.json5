@@ -1,0 +1,63 @@
+{
+  $schema: 'https://docs.renovatebot.com/renovate-schema.json',
+  extends: [
+    'config:recommended',
+    // One weekly PR for every minor and patch update. Majors still come one
+    // PR each, or one per group below.
+    'group:allNonMajor',
+    // Keeps the workflows' actions pinned to commit SHAs, with the version in
+    // a comment.
+    'helpers:pinGitHubActionDigests'
+  ],
+  timezone: 'America/New_York',
+  schedule: ['before 6am on monday'],
+  // A release has to be out for 3 days before Renovate proposes it, so a broken
+  // or compromised version is likely to be pulled first.
+  minimumReleaseAge: '3 days',
+  // A security fix for a direct dependency comes as its own PR right away,
+  // outside the schedule.
+  osvVulnerabilityAlerts: true,
+  // A weekly PR that refreshes bun.lock, which is how fixes reach indirect
+  // dependencies such as undici.
+  lockFileMaintenance: {
+    enabled: true
+  },
+  packageRules: [
+    {
+      // @types/node follows the Node version inside Electron (Node 24 in
+      // Electron 44), so a major waits for approval on the Dependency
+      // Dashboard.
+      matchPackageNames: ['@types/node'],
+      matchUpdateTypes: ['major'],
+      dependencyDashboardApproval: true
+    },
+    {
+      groupName: 'eslint',
+      matchUpdateTypes: ['major'],
+      matchPackageNames: [
+        'eslint',
+        '@eslint/**',
+        'typescript-eslint',
+        'eslint-config-prettier',
+        'eslint-plugin-react-hooks',
+        'globals'
+      ]
+    },
+    {
+      groupName: 'react',
+      matchUpdateTypes: ['major'],
+      matchPackageNames: ['react', 'react-dom', '@types/react', '@types/react-dom']
+    },
+    {
+      // electron-vite and vitest each support a range of vite majors.
+      groupName: 'vite',
+      matchUpdateTypes: ['major'],
+      matchPackageNames: ['vite', 'vitest', '@vitejs/**', 'electron-vite']
+    },
+    {
+      groupName: 'xterm',
+      matchUpdateTypes: ['major'],
+      matchPackageNames: ['@xterm/**']
+    }
+  ]
+}
