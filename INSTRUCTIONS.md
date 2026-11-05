@@ -1152,3 +1152,21 @@ the project they were opened in.
   Prettier installed, so `.changeset/config.json` turns formatting off and the
   release workflow's version step runs `bun run version-packages`
   (`changeset version`, then `bun fmt` on `CHANGELOG.md`).
+
+### Workflow and shell linters (added 2026-11-05, not in the original plan)
+
+- `mise.toml` pins actionlint 1.7.12, ShellCheck 0.11.0, and zizmor 1.31.1.
+  zizmor 1.32.0 was under the 3-day minimum release age. `bun run lint:actions`
+  runs actionlint, which runs ShellCheck on each workflow `run:` step when
+  ShellCheck is on the PATH, and then `zizmor .github`. `bun run lint:shell`
+  runs ShellCheck on every tracked `.sh` file. `bun run verify` runs both, and
+  CI passes `GH_TOKEN` to it so zizmor's online audits run too.
+- ShellCheck found one problem (SC2046) in `examples/widgets/install.sh`: the
+  list of example folders went through `set -- $(…)`, which splits on spaces.
+  The loop now adds each folder name as its own argument, and it links the
+  same widgets as before.
+- Verified locally: both scripts pass on the repository and fail on planted
+  problems. actionlint reported an unquoted variable in a `run:` step
+  (SC2086), ShellCheck reported an unguarded `rm -rf $DEST/$name` (SC2115),
+  and zizmor reported a third-party action pinned to a tag (`unpinned-uses`,
+  high).
