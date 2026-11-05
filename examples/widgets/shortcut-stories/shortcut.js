@@ -9,17 +9,12 @@
   // {me} is replaced with your Shortcut mention name; `owner:me` doesn't work in the API.
   var DEFAULT_QUERY = 'owner:{me} !is:done !is:archived !is:backlog'
   var MAX_STORIES = 50
-  // Extra tabs, each fed by its own fixed search. Their stories show in board
-  // order (Shortcut's position). Search results come back in relevance order,
-  // so a feed is fetched in full, up to FEED_MAX_STORIES, before sorting.
+  // Extra tabs from the gear's settings (prefs.tabs), each fed by its own
+  // search. Their stories show in board order (Shortcut's position). Search
+  // results come back in relevance order, so a feed is fetched in full, up to
+  // FEED_MAX_STORIES, before sorting.
   var FEED_MAX_STORIES = 250
-  var FEEDS = [
-    {
-      id: 'fe-defined',
-      label: 'FE Defined',
-      query: 'team:frontend state:"Backlog: Defined" !is:archived'
-    }
-  ]
+  var MAX_TABS = 8
 
   // The search box runs its text as a Shortcut search and lists the results in
   // a Search tab, up to SEARCH_MAX_STORIES of them.
@@ -28,8 +23,10 @@
   // Searching waits for a pause in typing this long.
   var SEARCH_DEBOUNCE_MS = 400
 
-  // What right-click > Start story sends to an agent. {id} is the story's number.
-  var START_STORY = '/start-story sc-{id}'
+  // What right-click > Start story sends to an agent, unless the gear's
+  // settings say otherwise (prefs.start). {id} is the story's number, {name}
+  // its title, and {url} its link.
+  var DEFAULT_START = 'Work on Shortcut story sc-{id}: {name} ({url})'
 
   // The wheel (🎰) picks a story from the tab and starts it. Its panels are
   // filled from the tab's stories: repeated when there are fewer, a random
@@ -176,7 +173,7 @@
         return Promise.all([
           searchStories(token, query, MAX_STORIES),
           Promise.all(
-            FEEDS.map(function (feed) {
+            tabSpecs(prefs).map(function (feed) {
               return searchStories(token, feed.query, FEED_MAX_STORIES).then(function (result) {
                 return {
                   id: feed.id,
@@ -375,6 +372,54 @@
     return sync && Array.isArray(sync.feeds) ? sync.feeds : []
   }
 
+  // The gear's extra tabs as { id, label, query }. The id comes from the
+  // label, so the tab you were on is still selected after its query changes.
+  function tabSpecs(p) {
+    var taken = {}
+    taken[SEARCH_VIEW] = true
+    VIEWS.forEach(function (v) {
+      taken[v.id] = true
+    })
+    var specs = []
+    ;(p && Array.isArray(p.tabs) ? p.tabs : []).forEach(function (t) {
+      if (specs.length >= MAX_TABS || !t) return
+      var label = typeof t.label === 'string' ? t.label.trim() : ''
+      var query = typeof t.query === 'string' ? t.query.trim() : ''
+      if (!label || !query) return
+      var base =
+        label
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '-')
+          .replace(/^-+|-+$/g, '') || 'tab'
+      var id = base
+      for (var n = 2; taken[id]; n++) id = base + '-' + n
+      taken[id] = true
+      specs.push({ id: id, label: label, query: query })
+    })
+    return specs
+  }
+
+  // The settings' tabs box holds one tab per line: "Label = search".
+  function parseTabs(text) {
+    var tabs = []
+    text.split('\n').forEach(function (line) {
+      var at = line.indexOf('=')
+      if (at < 0) return
+      var label = line.slice(0, at).trim()
+      var query = line.slice(at + 1).trim()
+      if (label && query) tabs.push({ label: label, query: query })
+    })
+    return tabs.slice(0, MAX_TABS)
+  }
+
+  function formatTabs(tabs) {
+    return (Array.isArray(tabs) ? tabs : [])
+      .map(function (t) {
+        return t.label + ' = ' + t.query
+      })
+      .join('\n')
+  }
+
   function allViews() {
     var views = VIEWS.concat(
       feeds().map(function (f) {
@@ -566,7 +611,14 @@
   }
 
   function startPrompt(s) {
-    return START_STORY.replace('{id}', String(s.id))
+    var template = (prefs.start || '').trim() || DEFAULT_START
+    return template
+      .split('{id}')
+      .join(String(s.id))
+      .split('{name}')
+      .join(s.name || '')
+      .split('{url}')
+      .join(s.url || '')
   }
 
   function showStoryMenu(s, x, y) {
@@ -951,16 +1003,25 @@
     }
   })
 
-  // ---- query editor ----
+  // ---- settings: your query, extra tabs, and what Start story sends ----
 
   var form = $('queryForm')
   var input = $('queryInput')
+  var tabsInput = $('tabsInput')
+  var startInput = $('startInput')
 
-  function saveQuery() {
+  function saveSettings() {
     form.hidden = true
     var query = input.value.trim() || DEFAULT_QUERY
-    if (query === (prefs.query || DEFAULT_QUERY)) return
-    savePrefs({ query: query }).then(function () {
+    var tabs = parseTabs(tabsInput.value)
+    var start = startInput.value.trim()
+    if (start === DEFAULT_START) start = ''
+    var resync =
+      query !== (prefs.query || DEFAULT_QUERY) ||
+      JSON.stringify(tabs) !== JSON.stringify(Array.isArray(prefs.tabs) ? prefs.tabs : [])
+    if (!resync && start === (prefs.start || '')) return
+    savePrefs({ query: query, tabs: tabs, start: start || undefined }).then(function () {
+      if (!resync) return
       failures = 0
       runSync()
     })
@@ -970,17 +1031,27 @@
     form.hidden = !form.hidden
     if (!form.hidden) {
       input.value = prefs.query || (sync && sync.queryTemplate) || DEFAULT_QUERY
+      tabsInput.value = formatTabs(prefs.tabs)
+      startInput.value = prefs.start || DEFAULT_START
       input.focus()
     }
   })
-  // Widgets can't submit forms, so Enter is handled here.
-  input.addEventListener('keydown', function (e) {
-    if (e.key === 'Enter') saveQuery()
-    if (e.key === 'Escape') form.hidden = true
+  // Widgets can't submit forms, so Enter is handled here. In the tabs box,
+  // Enter starts a new line and Cmd+Enter saves.
+  ;[input, startInput, tabsInput].forEach(function (el) {
+    el.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' && (el !== tabsInput || e.metaKey)) {
+        e.preventDefault()
+        saveSettings()
+      }
+      if (e.key === 'Escape') form.hidden = true
+    })
   })
-  $('querySave').addEventListener('click', saveQuery)
+  $('querySave').addEventListener('click', saveSettings)
   $('queryReset').addEventListener('click', function () {
     input.value = DEFAULT_QUERY
+    tabsInput.value = ''
+    startInput.value = DEFAULT_START
   })
 
   $('age').addEventListener('click', function () {

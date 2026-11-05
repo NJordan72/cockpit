@@ -49,14 +49,19 @@ export function filterPrs(prs: readonly PullRequest[], filter: PrFilter): PullRe
   }
 }
 
-/** Skills the PRs panel can run on a pull request. Each gets the PR's URL. */
-export const PR_ACTIONS: { skill: string; label: string }[] = [
-  { skill: 'review-pr', label: 'Review' },
-  { skill: 'prep-review', label: 'Prep review' },
-  { skill: 'propose-ship', label: 'Propose ship' },
-  { skill: 'approve-ship', label: 'Approve ship' },
-  { skill: 'ship-pr', label: 'Ship' }
-]
+/**
+ * A prompt the PRs panel's right-click menu sends to an agent about a pull
+ * request: `command` with the PR's URL added at the end.
+ */
+export interface PrAction {
+  label: string
+  command: string
+}
 
-export const prPrompt = (skill: string, pr: Pick<PullRequest, 'url'>): string =>
-  `/${skill} ${pr.url}`
+/** config.json's `prActions` replaces these. */
+export const DEFAULT_PR_ACTIONS: PrAction[] = [{ label: 'Review', command: '/code-review' }]
+
+export const MAX_PR_ACTIONS = 20
+
+export const prPrompt = (action: PrAction, pr: Pick<PullRequest, 'url'>): string =>
+  `${action.command} ${pr.url}`

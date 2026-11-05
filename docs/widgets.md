@@ -254,7 +254,7 @@ With `"sessions": "prompt"`:
   Codex.
 
 ```js
-await cockpit.sessions.start('/start-story sc-1234')
+await cockpit.sessions.start('Work on Shortcut story sc-1234')
 ```
 
 ```js

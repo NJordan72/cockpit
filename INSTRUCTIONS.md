@@ -1,5 +1,10 @@
 # Cockpit: build instructions
 
+> This is the plan Claude Code built Cockpit from, milestone by milestone, with
+> the status notes it wrote as each one landed. It's kept as a record of how
+> the app was built and as the working brief for further changes. "The user"
+> is the author.
+
 Cockpit is a personal macOS desktop app for running Claude Code and Codex
 side by side. It's a terminal host with a widget sidebar. The agents run in
 their normal terminal interfaces. Cockpit adds the parts around them: tabs and
@@ -945,3 +950,26 @@ the project they were opened in.
 - Not covered: the Sessions panel still names panes by preset and folder, not
   by tab name. A `projectsDir` written as an absolute path, while pane cwds
   use `~`, groups tabs by their exact directory instead of by project.
+
+### Public release prep (added 2026-11-05, not in the original plan)
+
+- Settings that only fit the author's setup moved out of the code. The PRs
+  panel's right-click prompts come from `prActions` in `config.json` (a
+  `label` and a `command` that gets the PR's URL added), replacing
+  `PR_ACTIONS`; the default is Review, `/code-review <url>`, and an empty list
+  turns them off. The Shortcut widget's FE Defined tab and its
+  `/start-story sc-{id}` prompt became gear settings (`prefs.tabs`,
+  `prefs.start` in its storage), with no extra tabs and a plain-language
+  prompt by default. A tab's id comes from its label, so a saved FE Defined
+  tab keeps its id and stays selected.
+- Added `LICENSE` (MIT), `SECURITY.md`, a GitHub Actions workflow that runs
+  `bun run check` on macOS, and license and repository fields in
+  `package.json`. The README now opens with what Cockpit is and ends with
+  contributing and license notes. Mentions of another app came out of
+  `CLAUDE.md`, this file, and the widget.
+- Verified: `bun run check`, and the widget in the built app with a scratch
+  HOME, COCKPIT_HOME, and `--user-data-dir`, seeded storage, and a fake
+  `claude`: a saved FE Defined tab still shows and is selected, Start story
+  sends the saved command, reset and save store the defaults and then send
+  the default prompt, and the tabs box parses `Label = search` lines.
+  Not verified: the new PR actions against a real `gh` login.

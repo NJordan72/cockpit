@@ -2,7 +2,17 @@
   "name": "cockpit",
   "version": "0.1.0",
   "private": true,
-  "description": "Personal Electron terminal host for Claude Code and Codex, with a sandboxed widget sidebar",
+  "description": "A macOS terminal host for Claude Code and Codex, with agent status, an activity log, and a sandboxed widget sidebar",
+  "license": "MIT",
+  "author": "Nick Jordan (https://github.com/NJordan72)",
+  "homepage": "https://github.com/NJordan72/cockpit",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/NJordan72/cockpit.git"
+  },
+  "bugs": {
+    "url": "https://github.com/NJordan72/cockpit/issues"
+  },
   "main": "./out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",

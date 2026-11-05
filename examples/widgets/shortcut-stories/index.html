@@ -21,13 +21,18 @@
         >
           &#127920;
         </button>
-        <button class="sc-gear" id="gear" title="Search query">&#9881;</button>
+        <button class="sc-gear" id="gear" title="Settings">&#9881;</button>
       </header>
 
       <div class="sc-query" id="queryForm" hidden>
+        <label class="sc-label" for="queryInput">Your stories ({me} = you)</label>
         <input id="queryInput" spellcheck="false" autocomplete="off" />
+        <label class="sc-label" for="tabsInput">More tabs, one per line: Label = search</label>
+        <textarea id="tabsInput" rows="3" spellcheck="false" autocomplete="off"></textarea>
+        <label class="sc-label" for="startInput">Start story sends ({id}, {name}, {url})</label>
+        <input id="startInput" spellcheck="false" autocomplete="off" />
         <div class="sc-query-row">
-          <span class="sc-hint">{me} = you. Enter saves.</span>
+          <span class="sc-hint">Enter saves.</span>
           <button type="button" id="queryReset">reset</button>
           <button type="button" id="querySave">save</button>
         </div>

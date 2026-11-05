@@ -1,9 +1,18 @@
 # Cockpit
 
-A personal macOS app for running Claude Code and Codex side by side: a
-terminal host with tabs, splits, presets, and panels of sandboxed widgets,
-arranged by a layout and styled by a theme.
-See `INSTRUCTIONS.md` for the build plan and current status.
+[![check](https://github.com/NJordan72/cockpit/actions/workflows/check.yml/badge.svg)](https://github.com/NJordan72/cockpit/actions/workflows/check.yml)
+
+A macOS app for running Claude Code and Codex side by side. Each agent runs in
+its own terminal with its usual interface, and Cockpit adds what goes around
+them: tabs, splits, and presets; a status for every pane (working, needs
+input, done) with notifications; an Activity panel that shows what each agent
+read, changed, and ran; and a sidebar of sandboxed widgets that can call out
+to services like Shortcut. Layouts arrange the window, and themes style it.
+
+It's a personal project, built around one person's setup. It runs on macOS
+only, and from source, since there's no signed or packaged build. It was built
+with Claude Code, working from [INSTRUCTIONS.md](INSTRUCTIONS.md): the build
+plan, plus a status note for every feature as it landed.
 
 ## Install
 
@@ -226,9 +235,10 @@ failing), and the second line shows the author, draft, review state, and age.
 **All**, **Mine**, **To review** (you're a requested reviewer), **Others**,
 and **Bots** (authors gh marks as bots, or with `[bot]` or `app/` in the
 name) filter it. Click a pull request to open it on GitHub. Right-click it to
-run a skill on it, in a new agent tab or in the focused pane: Review
-(`/review-pr`), Prep review, Propose ship, Approve ship, or Ship. Each gets
-the PR's URL. The list is in `PR_ACTIONS` in `src/shared/prs.ts`.
+send a prompt about it, in a new agent tab or in the focused pane. The prompts
+come from `prActions` in `config.json` (see [Config](#config)). Each is a
+command with the PR's URL added at the end, and the default is one,
+**Review**, which sends `/code-review <url>`.
 
 **Commands** lists Claude Code slash commands from the repository's
 `.claude/commands/` and from `~/.claude/commands/`. Click one to run it in the
@@ -265,7 +275,8 @@ examples/widgets/install.sh shortcut-stories   # just one
 `shortcut-stories` lists your Shortcut stories. The first time it runs,
 Cockpit asks for a Shortcut API token and keeps it encrypted; see
 [its README](examples/widgets/shortcut-stories/README.md). Right-click a story
-to run `/start-story` on it in a new agent tab or in any open agent pane.
+to start an agent on it, in a new tab or in any open agent pane. The widget's
+gear sets the prompt that sends and adds tabs of your own Shortcut searches.
 
 New widgets go into the layout's Widgets group, stacked by default. Each one
 collapses from its header, and the line between two widgets drags to resize
@@ -429,7 +440,8 @@ to `config.json.broken-<time>` before being replaced.
   "projectsDir": "~/dev",
   "launcher": { "presetId": "claude" },
   "kids": { "name": "", "exitWord": "grownup", "volume": 0.6, "sound": "songs", "speak": true },
-  "editor": "zed"
+  "editor": "zed",
+  "prActions": [{ "label": "Review", "command": "/code-review" }]
 }
 ```
 
@@ -453,6 +465,11 @@ your copy of the Classic layout.
 and the toolbar (`zed`, `code -g`, `cursor`). It runs through the login shell
 like a preset command, with the path added at the end. Leave it `null` (the
 default) to open files in their default app and projects in Finder.
+`prActions` is what the Pull requests panel's right-click menu can send about
+a pull request: a `label` for the menu and a `command`, which gets the PR's
+URL added at the end. Point them at your own skills or slash commands, such as
+`{ "label": "Ship", "command": "/ship-pr" }`. An empty list leaves only Open
+on GitHub and Copy URL.
 Set `COCKPIT_HOME` to use a different directory than `~/.cockpit`.
 
 ## Terminal keys
@@ -512,3 +529,16 @@ driver> screen
 
 The app opens on the start screen; `Meta+t` then `Enter` opens a shell in the
 top project. Screenshots go to `out/shots/`.
+
+## Contributing
+
+Issues are welcome. For anything bigger than a small fix, open an issue before
+a pull request, since Cockpit still changes shape as it gets used. Run
+`bun run check` before you send one; CI runs the same checks. To report a
+security problem, see [SECURITY.md](SECURITY.md).
+
+## License
+
+[MIT](LICENSE). The bundled fonts keep their own licenses, which are in
+`src/renderer/src/fonts/`: 0xProto is under the SIL Open Font License 1.1, and
+the Nerd Fonts symbols are under MIT.

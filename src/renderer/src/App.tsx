@@ -918,7 +918,12 @@ export function App(): React.JSX.Element {
         ) : null
       case 'prs':
         return (
-          <PrPanel session={focused} visible={windowVisible && place.visible} onRun={runPrompt} />
+          <PrPanel
+            session={focused}
+            visible={windowVisible && place.visible}
+            actions={config.prActions}
+            onRun={runPrompt}
+          />
         )
       case 'commands':
         return (

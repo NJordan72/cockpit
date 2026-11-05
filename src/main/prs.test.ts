@@ -23,13 +23,13 @@ describe('parsePrs', () => {
         pr({ login: 'app/claude', is_bot: true }),
         pr({ login: 'renovate[bot]', is_bot: false }),
         pr({ login: 'app-user', name: 'Dependabot [bot]' }),
-        pr({ login: 'NJordan72', name: 'Nick' })
+        pr({ login: 'octocat', name: 'Mona' })
       ],
-      'NJordan72'
+      'octocat'
     )
     expect(prs.map((p) => p.bot)).toEqual([true, true, true, false])
     expect(filterPrs(prs, 'bots')).toHaveLength(3)
-    expect(filterPrs(prs, 'mine').map((p) => p.author)).toEqual(['NJordan72'])
+    expect(filterPrs(prs, 'mine').map((p) => p.author)).toEqual(['octocat'])
     expect(filterPrs(prs, 'others')).toHaveLength(0)
   })
 

@@ -3,6 +3,7 @@
 import { ACTIVITY_TABS, type ActivityTab } from './activity'
 import { readFrame, type FrameNode } from './frame'
 import { builtInLayout, classicFromSidebar, DEFAULT_LAYOUT_ID } from './layouts'
+import { DEFAULT_PR_ACTIONS, MAX_PR_ACTIONS, type PrAction } from './prs'
 import { DEFAULT_THEME_ID, readTokens, type ThemeOverrides } from './theme'
 import { isWebUrl } from './web'
 
@@ -250,6 +251,8 @@ export interface CockpitConfig {
    * login shell with the path added. null opens them in their default app.
    */
   editor: string | null
+  /** What the PRs panel's right-click menu can send to an agent about a pull request. */
+  prActions: PrAction[]
   /** The first one is the main window: it reopens when the Dock icon is clicked. */
   windows: WindowState[]
 }
@@ -359,6 +362,7 @@ export function defaultConfig(): CockpitConfig {
     launcher: { presetId: 'claude' },
     kids: { ...DEFAULT_KIDS },
     editor: null,
+    prActions: DEFAULT_PR_ACTIONS.map((a) => ({ ...a })),
     windows: [defaultWindow()]
   }
 }
@@ -548,6 +552,22 @@ export function readKids(v: unknown): KidsSettings {
     sound: v.sound === 'notes' ? 'notes' : 'songs',
     speak: typeof v.speak === 'boolean' ? v.speak : def.speak
   }
+}
+
+/**
+ * A list, even an empty one, replaces the defaults. Entries without a label
+ * and a command are dropped.
+ */
+export function readPrActions(v: unknown): PrAction[] {
+  if (!Array.isArray(v)) return DEFAULT_PR_ACTIONS.map((a) => ({ ...a }))
+  const actions: PrAction[] = []
+  for (const a of v) {
+    if (!isObj(a) || !isStr(a.label) || !isStr(a.command)) continue
+    const label = a.label.trim().slice(0, 40)
+    const command = a.command.trim()
+    if (label && command) actions.push({ label, command })
+  }
+  return actions.slice(0, MAX_PR_ACTIONS)
 }
 
 /** Theme and layout names: folder names and config.json keys. */
@@ -756,6 +776,7 @@ export function migrateConfig(raw: unknown): CockpitConfig {
     },
     kids: readKids(raw.kids),
     editor: isStr(raw.editor) && raw.editor.trim() ? raw.editor.trim() : null,
+    prActions: readPrActions(raw.prActions),
     windows: readWindows(raw, appearance, new Set(presets.map((p) => p.id)))
   }
 }

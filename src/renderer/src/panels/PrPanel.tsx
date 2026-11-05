@@ -2,9 +2,9 @@ import { useCallback, useEffect, useState } from 'react'
 import type { MenuItem, PaneSession } from '@shared/ipc'
 import {
   filterPrs,
-  PR_ACTIONS,
   PR_FILTERS,
   prPrompt,
+  type PrAction,
   type PrFilter,
   type PrList,
   type PullRequest
@@ -18,6 +18,8 @@ export type RunWhere = 'new' | 'here'
 interface Props {
   session: PaneSession | null
   visible: boolean
+  /** config.json's prActions: what the right-click menu can send about a PR. */
+  actions: readonly PrAction[]
   /** Send a prompt to a new agent tab or to the focused pane's agent. */
   onRun: (prompt: string, where: RunWhere) => void
 }
@@ -35,8 +37,8 @@ function age(ms: number): string {
   return `${String(Math.round(min / 1440))}d`
 }
 
-/** The focused pane's repository's open pull requests, with skills to run on each. */
-export function PrPanel({ session, visible, onRun }: Props): React.JSX.Element {
+/** The focused pane's repository's open pull requests, with prompts to send about each. */
+export function PrPanel({ session, visible, actions, onRun }: Props): React.JSX.Element {
   const api = window.cockpit
   const paneId = session?.id ?? null
   const cwd = session?.cwd ?? null
@@ -77,12 +79,12 @@ export function PrPanel({ session, visible, onRun }: Props): React.JSX.Element {
     const items: MenuItem[] = [
       { id: 'open', label: 'Open on GitHub' },
       { id: 'copy', label: 'Copy URL' },
-      { type: 'separator' },
-      ...PR_ACTIONS.map((a): MenuItem => ({
+      ...(actions.length > 0 ? [{ type: 'separator' } as const] : []),
+      ...actions.map((a, i): MenuItem => ({
         label: a.label,
         submenu: [
-          { id: `new:${a.skill}`, label: 'In a new session' },
-          { id: `here:${a.skill}`, label: 'In this session', enabled: hasAgent }
+          { id: `new:${String(i)}`, label: 'In a new session' },
+          { id: `here:${String(i)}`, label: 'In this session', enabled: hasAgent }
         ]
       }))
     ]
@@ -90,8 +92,9 @@ export function PrPanel({ session, visible, onRun }: Props): React.JSX.Element {
     if (chosen === 'open') api.prs.open(pr.url)
     else if (chosen === 'copy') api.clipboard.writeText(pr.url)
     else if (chosen) {
-      const [where, skill] = chosen.split(':') as [RunWhere, string]
-      onRun(prPrompt(skill, pr), where)
+      const [where, index] = chosen.split(':') as [RunWhere, string]
+      const action = actions[Number(index)]
+      if (action) onRun(prPrompt(action, pr), where)
     }
   }
 

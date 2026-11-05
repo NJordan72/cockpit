@@ -290,6 +290,25 @@ describe('migrateConfig: recent dirs and launcher', () => {
     expect(migrateConfig({ editor: '  ' }).editor).toBeNull()
     expect(migrateConfig({ editor: ['zed'] }).editor).toBeNull()
   })
+
+  it('keeps PR actions with a label and a command, defaulting to a review', () => {
+    expect(migrateConfig({}).prActions).toEqual([{ label: 'Review', command: '/code-review' }])
+    expect(migrateConfig({ prActions: 'x' }).prActions).toEqual([
+      { label: 'Review', command: '/code-review' }
+    ])
+    expect(
+      migrateConfig({
+        prActions: [
+          { label: ' Ship ', command: ' /ship-pr ' },
+          { label: '', command: '/x' },
+          { label: 'No command' },
+          'Review'
+        ]
+      }).prActions
+    ).toEqual([{ label: 'Ship', command: '/ship-pr' }])
+    // An empty list turns the actions off.
+    expect(migrateConfig({ prActions: [] }).prActions).toEqual([])
+  })
 })
 
 describe('migrateConfig: appearance', () => {

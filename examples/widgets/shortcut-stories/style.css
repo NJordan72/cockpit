@@ -90,7 +90,15 @@ button:hover {
 .sc-query[hidden] {
   display: none;
 }
+.sc-label {
+  font-size: 0.75em;
+  color: var(--muted);
+}
+.sc-query textarea {
+  resize: vertical;
+}
 .sc-query input,
+.sc-query textarea,
 .sc-search {
   font: inherit;
   font-size: 0.9em;
@@ -103,6 +111,7 @@ button:hover {
   min-width: 0;
 }
 .sc-query input:focus,
+.sc-query textarea:focus,
 .sc-search:focus {
   border-color: var(--accent);
 }
