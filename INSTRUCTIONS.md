@@ -903,3 +903,45 @@ display, each with its own tabs and layout, over a single stretched window
   several windows.
 - Tests: config v3 → v4 migration and window repairs, layouts without
   terminals, widget homes, and display arrangement (406 total).
+
+### Tab names, colors, pins, and the folder filter (added 2026-11-05, not in the original plan)
+
+The user keeps some tabs open for one long-running job each and wanted to
+label them, set them apart, and keep them out of the way; and to hide tabs by
+the project they were opened in.
+
+- Tabs have optional `name`, `color` (a theme token: red, yellow, green,
+  cyan, blue, magenta), and `pinned`, saved with the tabs. Right-clicking a
+  tab opens a native menu (Rename, Color, Pin to the right, Close);
+  double-clicking renames in place. `MenuItem` gained `checked`, which becomes
+  a checkbox item in main's template.
+- Pinned tabs come after the others in `tabs` (the reducer and `readLayout`
+  keep it that way), so numbering, Cmd+1 … 9, and cycling follow the bar's
+  order with no special case. The bar renders them as a second group after a
+  draggable spacer; each group reorders within itself. Pinned tabs have no
+  close button; Cmd+W and the menu still close them.
+- A window's `hiddenDirs` (in `WindowView`, saved by `window:save`) lists the
+  project folders the tab bar leaves out. `layout/tabs.ts` decides a pane's
+  folder: the folder right under `projectsDir` that holds its cwd, or the cwd
+  itself. A tab is hidden when it isn't pinned or active and all its panes are
+  in hidden folders. The renderer passes the shown tab ids to `cycleTab`,
+  `selectTabIndex`, `closeTab`, and `closePane`, so shortcuts skip hidden tabs
+  and closing the active tab picks a shown one.
+  - Hiding the active tab's folder selects the first shown tab. A tab opened
+    alone in a hidden folder unhides it (a restore, which adds every tab at
+    once, doesn't), and folders with no tabs left are dropped, so a stale
+    entry can't hide a later tab. On the start screen nothing is dropped.
+- Verified in the built app with a scratch COCKPIT_HOME (shells in three
+  project folders, one in a subfolder) and the native menu stubbed from the
+  driver: rename from the menu and by double-click, Escape and an unchanged
+  Enter saving no name, the green strip's color, pinning flush right with no
+  close button and Cmd+5 reaching it, drags staying in their group, Show only
+  switching away from a hidden active tab and keeping the keyboard there,
+  "2 hidden" and renumbered tabs, Cmd+Shift+] and Cmd+3 over shown tabs, the
+  last shown folder disabled in the menu, Cmd+W landing on a shown tab, a
+  Cmd+Shift+T tab in a hidden folder unhiding it, a hidden tab focused from
+  main showing in italics, names, colors, pins, and the filter surviving a
+  relaunch and restore, Show all, and unpinning. No console errors.
+- Not covered: the Sessions panel still names panes by preset and folder, not
+  by tab name. A `projectsDir` written as an absolute path, while pane cwds
+  use `~`, groups tabs by their exact directory instead of by project.

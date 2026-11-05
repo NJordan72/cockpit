@@ -158,6 +158,80 @@ kbd {
   color: var(--muted);
 }
 
+/* Empty title bar between the tabs and the pinned tabs; it still drags the window. */
+.titlebar-space {
+  flex: 1;
+  min-width: 24px;
+}
+
+.tabs-pinned {
+  flex: none;
+  max-width: 60%;
+}
+
+/* A pinned tab has no close button, so a stray click can't close it. */
+.tabs-pinned .tab {
+  padding-right: 10px;
+}
+
+/* The color strip along a tab's top edge. */
+.tab[data-color] {
+  position: relative;
+}
+
+.tab[data-color]::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: 3px;
+  background: var(--tab-color);
+  pointer-events: none;
+}
+
+/* The active tab while its folder is hidden. It leaves the bar once another tab is chosen. */
+.tab.filtered .tab-label {
+  font-style: italic;
+}
+
+.tab-name-input {
+  field-sizing: content;
+  min-width: 8ch;
+  max-width: 200px;
+  padding: 1px 4px;
+  font: inherit;
+  color: var(--fg);
+  background: var(--bg);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  outline: none;
+  user-select: text;
+}
+
+.tab-filter {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: 4px 0;
+  padding: 0 6px;
+  border: 0;
+  border-radius: var(--radius);
+  background: none;
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
+  cursor: default;
+}
+
+.tab-filter:hover {
+  background: var(--bg-hover);
+  color: var(--fg);
+}
+
+.tab-filter.on {
+  color: var(--accent);
+}
+
 /* ---- session status ---- */
 
 .status-dot {
@@ -2020,7 +2094,6 @@ button.icon:hover,
 }
 
 .kids-hint {
-  margin-left: auto;
   align-self: center;
   padding: 0 14px;
   white-space: nowrap;

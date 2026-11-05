@@ -118,7 +118,7 @@ export interface OpenSessionRequest {
 
 /** A native context menu. The chosen item's id comes back, or null. */
 export type MenuItem =
-  | { id: string; label: string; enabled?: boolean }
+  | { id: string; label: string; enabled?: boolean; checked?: boolean }
   | { type: 'separator' }
   | { label: string; submenu: MenuItem[] }
 

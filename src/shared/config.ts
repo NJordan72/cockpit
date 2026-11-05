@@ -77,10 +77,22 @@ export interface SplitNode {
 
 export type LayoutNode = PaneNode | SplitNode
 
+/** Colors a tab's strip can take: theme tokens, so they follow the theme. */
+export const TAB_COLORS = ['red', 'yellow', 'green', 'cyan', 'blue', 'magenta'] as const
+export type TabColor = (typeof TAB_COLORS)[number]
+
+export const MAX_TAB_NAME = 80
+
 export interface Tab {
   id: string
   root: LayoutNode
   activePaneId: string
+  /** Shown instead of the preset and folder. */
+  name?: string
+  /** A strip along the tab's top edge. */
+  color?: TabColor
+  /** Kept at the right end of the tab bar. Pinned tabs come after the others in `tabs`. */
+  pinned?: boolean
 }
 
 export interface Layout {
@@ -207,6 +219,8 @@ export interface WindowView {
   layout: string
   /** Cmd+B: only the terminals and the tab bar show. */
   panelsHidden: boolean
+  /** Project folders whose tabs the tab bar leaves out. A pane's folder is the one under `projectsDir` it started in. */
+  hiddenDirs: string[]
 }
 
 /** One window: its layout, its terminal tabs, and where it goes. */
@@ -329,7 +343,7 @@ export function defaultAppearance(): AppearanceSettings {
 export const MAIN_WINDOW_ID = 'main'
 
 export function defaultWindow(id = MAIN_WINDOW_ID, layout = DEFAULT_LAYOUT_ID): WindowState {
-  return { id, layout, panelsHidden: false, tabs: [], activeTabId: null }
+  return { id, layout, panelsHidden: false, hiddenDirs: [], tabs: [], activeTabId: null }
 }
 
 export function defaultConfig(): CockpitConfig {
@@ -446,8 +460,16 @@ function readLayout(v: unknown, presetIds: Set<string>, seen = new Set<string>()
     const ids = paneIds(fixed)
     const active =
       isStr(t.activePaneId) && ids.includes(t.activePaneId) ? t.activePaneId : firstPaneId(fixed)
-    tabs.push({ id: t.id, root: fixed, activePaneId: active })
+    const tab: Tab = { id: t.id, root: fixed, activePaneId: active }
+    const name = isStr(t.name) ? t.name.trim().slice(0, MAX_TAB_NAME) : ''
+    if (name) tab.name = name
+    const color = TAB_COLORS.find((c) => c === t.color)
+    if (color) tab.color = color
+    if (t.pinned === true) tab.pinned = true
+    tabs.push(tab)
   }
+  // Pinned tabs go last, in the order they were in.
+  tabs.sort((a, b) => Number(a.pinned === true) - Number(b.pinned === true))
   const activeTabId =
     isStr(v.activeTabId) && tabs.some((t) => t.id === v.activeTabId)
       ? v.activeTabId
@@ -585,6 +607,14 @@ function readDisplay(v: unknown): WindowDisplay | undefined {
   return { id: v.id, label: isStr(v.label) ? v.label.slice(0, 200) : '' }
 }
 
+const MAX_HIDDEN_DIRS = 50
+
+function readHiddenDirs(v: unknown): string[] {
+  if (!Array.isArray(v)) return []
+  const dirs = v.filter((d): d is string => nonEmpty(d) && d.length <= 1024)
+  return [...new Set(dirs)].slice(0, MAX_HIDDEN_DIRS)
+}
+
 /**
  * Version 4 has a list of windows. Before it, the one window's tabs were the
  * top-level `layout`, and its layout and Cmd+B state were in `appearance`.
@@ -597,7 +627,8 @@ function readWindows(
   const seen = new Set<string>()
   const view = (v: Obj): WindowView => ({
     layout: layoutExists(appearance, v.layout) ? v.layout : DEFAULT_LAYOUT_ID,
-    panelsHidden: v.panelsHidden === true
+    panelsHidden: v.panelsHidden === true,
+    hiddenDirs: readHiddenDirs(v.hiddenDirs)
   })
   const windows: WindowState[] = []
   if (Array.isArray(raw.windows)) {

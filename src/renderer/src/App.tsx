@@ -6,6 +6,7 @@ import {
   type CockpitConfig,
   type Layout,
   type PaneNode,
+  type Tab,
   type WindowView
 } from '@shared/config'
 import {
@@ -45,6 +46,7 @@ import { findPane, makePane, makeWebPane } from './layout/model'
 import { CommandsPanel } from './panels/CommandsPanel'
 import { PrPanel, type RunWhere } from './panels/PrPanel'
 import { activeTab, layoutReducer } from './layout/reducer'
+import { shownTabs, tabDirs, tabFolders } from './layout/tabs'
 import { terminals } from './terminal/registry'
 import { queueRun } from './terminal/run'
 import { applyTheme } from './theme'
@@ -75,6 +77,8 @@ const PICKER_TITLES: Record<PickerState['mode'], string> = {
 }
 
 const SAVE_DELAY_MS = 150
+
+const tabIds = (tabs: readonly Tab[]): string[] => tabs.map((t) => t.id)
 
 /** Actions a window without terminals still runs itself; it forwards the rest. */
 const OWN_ACTIONS: readonly Action[] = ['toggleSidebar', 'kidsMode']
@@ -185,8 +189,18 @@ export function App(): React.JSX.Element {
     windowVisible &&
     (tree ? panels(tree) : []).some((p) => p.panel === 'monitor' && visible.has(p.id))
 
+  const projectsDir = config?.projectsDir ?? '~/dev'
+  const hiddenDirs = view?.hiddenDirs
+  // The tabs the tab bar shows; the tab shortcuts go through these only.
+  const shown = useMemo(
+    () => shownTabs(layout, hiddenDirs ?? [], projectsDir),
+    [layout, hiddenDirs, projectsDir]
+  )
+  const folders = useMemo(() => tabFolders(layout, projectsDir), [layout, projectsDir])
+
   const configRef = useRef(config)
   const layoutRef = useRef(layout)
+  const shownRef = useRef(shown)
   const pickerRef = useRef(picker)
   const promptRef = useRef(prompt)
   const savingRef = useRef(saving)
@@ -196,6 +210,7 @@ export function App(): React.JSX.Element {
   useEffect(() => {
     configRef.current = config
     layoutRef.current = layout
+    shownRef.current = shown
     pickerRef.current = picker
     promptRef.current = prompt
     savingRef.current = saving
@@ -231,7 +246,11 @@ export function App(): React.JSX.Element {
     const takeView = (c: CockpitConfig): void => {
       const mine = c.windows.find((w) => w.id === id)
       if (!mine) return
-      const next: WindowView = { layout: mine.layout, panelsHidden: mine.panelsHidden }
+      const next: WindowView = {
+        layout: mine.layout,
+        panelsHidden: mine.panelsHidden,
+        hiddenDirs: mine.hiddenDirs
+      }
       savedView.current = JSON.stringify(next)
       setView(next)
     }
@@ -296,6 +315,21 @@ export function App(): React.JSX.Element {
   const updateView = useCallback((fn: (v: WindowView) => WindowView) => {
     setView((v) => v && fn(v))
   }, [])
+
+  // Opening a tab in a hidden folder unhides that folder. Hidden folders with
+  // no tabs left are dropped, so they can't hide a tab opened there later. The
+  // start screen has no tabs, so the saved filter is kept until a restore.
+  const tabsBefore = useRef(new Set<string>())
+  useEffect(() => {
+    const added = layout.tabs.filter((t) => !tabsBefore.current.has(t.id))
+    tabsBefore.current = new Set(tabIds(layout.tabs))
+    if (!hiddenDirs?.length || layout.tabs.length === 0) return
+    const live = new Set(tabFolders(layout, projectsDir).map((f) => f.dir))
+    // A restore adds every tab at once; a new tab comes alone.
+    const opened = added.length === 1 && added[0] ? tabDirs(added[0], projectsDir) : []
+    const next = hiddenDirs.filter((d) => live.has(d) && !opened.includes(d))
+    if (next.length !== hiddenDirs.length) updateView((v) => ({ ...v, hiddenDirs: next }))
+  }, [layout, hiddenDirs, projectsDir, updateView])
 
   // This window's view, saved the same way.
   useEffect(() => {
@@ -418,6 +452,25 @@ export function App(): React.JSX.Element {
     else launcherInput.current?.focus()
   }, [])
 
+  /**
+   * Sets the hidden folders. When they hide the active tab, the first tab
+   * still shown becomes active, and that tab's terminal takes the keyboard by
+   * itself. Calling focusWorkspace here would focus the old pane, which makes
+   * the old tab active again.
+   */
+  const setHiddenDirs = useCallback(
+    (dirs: string[]) => {
+      updateView((v) => ({ ...v, hiddenDirs: dirs }))
+      const l = layoutRef.current
+      const left = shownTabs({ ...l, activeTabId: null }, dirs, projectsDir)
+      const first = left[0]
+      if (first && !left.some((t) => t.id === l.activeTabId)) {
+        dispatch({ type: 'selectTab', tabId: first.id })
+      } else requestAnimationFrame(focusWorkspace)
+    },
+    [updateView, projectsDir, focusWorkspace]
+  )
+
   const runAppearance = useCallback(
     (command: AppearanceCommand) => {
       switch (command.type) {
@@ -526,7 +579,12 @@ export function App(): React.JSX.Element {
           void openPicker('column')
           return
         case 'closePane':
-          if (tab) dispatch({ type: 'closePane', paneId: tab.activePaneId })
+          if (tab)
+            dispatch({
+              type: 'closePane',
+              paneId: tab.activePaneId,
+              shown: tabIds(shownRef.current)
+            })
           return
         case 'clearPane':
           if (tab) dispatch({ type: 'clearPane', paneId: tab.activePaneId })
@@ -550,10 +608,10 @@ export function App(): React.JSX.Element {
           dispatch({ type: 'focusDirection', direction: 'down' })
           return
         case 'nextTab':
-          dispatch({ type: 'cycleTab', delta: 1 })
+          dispatch({ type: 'cycleTab', delta: 1, shown: tabIds(shownRef.current) })
           return
         case 'prevTab':
-          dispatch({ type: 'cycleTab', delta: -1 })
+          dispatch({ type: 'cycleTab', delta: -1, shown: tabIds(shownRef.current) })
           return
         case 'toggleSidebar':
           runAppearance({ type: 'togglePanels' })
@@ -563,7 +621,12 @@ export function App(): React.JSX.Element {
           return
         default: {
           const n = /^goToTab(\d)$/.exec(action)?.[1]
-          if (n) dispatch({ type: 'selectTabIndex', index: Number(n) - 1 })
+          if (n)
+            dispatch({
+              type: 'selectTabIndex',
+              index: Number(n) - 1,
+              shown: tabIds(shownRef.current)
+            })
         }
       }
     },
@@ -799,6 +862,10 @@ export function App(): React.JSX.Element {
         return (
           <TabBar
             layout={layout}
+            shown={shown}
+            folders={folders}
+            hiddenDirs={view.hiddenDirs}
+            projectsDir={projectsDir}
             presets={config.presets}
             statuses={statuses}
             kids={
@@ -812,7 +879,9 @@ export function App(): React.JSX.Element {
             }
             dispatch={dispatch}
             onNewTab={() => void openPicker('tab')}
-            onCloseTab={(tabId) => dispatch({ type: 'closeTab', tabId })}
+            onCloseTab={(tabId) => dispatch({ type: 'closeTab', tabId, shown: tabIds(shown) })}
+            onHiddenDirs={setHiddenDirs}
+            onDone={() => requestAnimationFrame(focusWorkspace)}
           />
         )
       case 'sessions':
