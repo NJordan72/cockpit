@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'bun:test'
 import {
   ACTIVITY_MIN_HEIGHT,
   activeLayout,
@@ -15,7 +15,9 @@ import {
   readSidebar,
   SIDEBAR_MAX_WIDTH,
   terminalFontStack,
+  type ActivitySettings,
   type CockpitConfig,
+  type PaneNode,
   type RecentDir,
   type WindowState
 } from './config'
@@ -127,7 +129,7 @@ describe('migrateConfig', () => {
   })
 
   it("keeps tabs' names, colors, and pins, with pinned tabs last", () => {
-    const p = (id: string): object => ({ type: 'pane', id, presetId: 'shell', cwd: '~' })
+    const p = (id: string): PaneNode => ({ type: 'pane', id, presetId: 'shell', cwd: '~' })
     const c = migrateConfig({
       windows: [
         {
@@ -411,7 +413,7 @@ describe('readSidebar (version 2)', () => {
   })
 
   it('keeps the Activity panel settings', () => {
-    const activity = { collapsed: false, height: 410, tab: 'git' }
+    const activity: ActivitySettings = { collapsed: false, height: 410, tab: 'git' }
     expect(readSidebar({ activity }).activity).toEqual(activity)
     expect(readSidebar({ activity: 'big' }).activity).toEqual(defaultSidebar().activity)
   })
@@ -491,7 +493,7 @@ describe('terminalFontStack', () => {
 })
 
 describe('migrateConfig: windows', () => {
-  const pane = (id: string): unknown => ({ type: 'pane', id, presetId: 'shell', cwd: '~' })
+  const pane = (id: string): PaneNode => ({ type: 'pane', id, presetId: 'shell', cwd: '~' })
   const tab = (id: string, paneId: string): unknown => ({
     id,
     root: pane(paneId),

@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi, setSystemTime } from 'bun:test'
 import type { ActivityUpdate } from '@shared/activity'
 import {
   ActivityLog,
@@ -27,7 +27,7 @@ const entries = (): { kind: string; label: string; text: string; agent: string |
 
 beforeEach(() => {
   vi.useFakeTimers()
-  vi.setSystemTime(1_000_000)
+  setSystemTime(1_000_000)
   updates = []
   log = new ActivityLog((u) => updates.push(u), HOME)
   log.started('p1', 'claude')

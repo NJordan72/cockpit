@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { claudeLastUsed, claudeProjectDir, codexLastUsed, parseCodexCwd } from './history'
 
 const T = Date.UTC(2026, 9, 17) / 1000

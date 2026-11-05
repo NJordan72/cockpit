@@ -2,3 +2,7 @@ out/
 dist/
 node_modules/
 bun.lock
+# Changesets writes these and the release workflow deletes them; the
+# changelog they turn into is formatted.
+.changeset/*.md
+!.changeset/README.md

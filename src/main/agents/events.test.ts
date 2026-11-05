@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'bun:test'
 import { parseClaudeHook, toolKey, toolScope } from './events'
 
 const base = {

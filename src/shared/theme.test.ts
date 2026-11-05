@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'bun:test'
 import { DEFAULT_THEME, mixHex, resolveTheme, themeVars, type ThemeDefinition } from './theme'
 import { BUILT_IN_THEMES } from './themes'
 

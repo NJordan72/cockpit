@@ -1,6 +1,6 @@
 import http from 'node:http'
 import type { AddressInfo } from 'node:net'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
 import { brokerFetch, MAX_RESPONSE_BYTES, type FetchPolicy } from './fetch'
 import { parseHostPattern } from './permissions'
 
@@ -85,10 +85,10 @@ describe('brokerFetch', () => {
     expect(res).toMatchObject({ ok: false, status: 404, body: 'nope' })
   })
 
-  it('refuses a host that is not listed, naming the host and what is listed', async () => {
+  it('refuses a host that is not listed, naming the host and what is listed', () => {
     const err = brokerFetch('https://example.org/', undefined, policy())
-    await expect(err).rejects.toMatchObject({ code: 'permission_denied' })
-    await expect(err).rejects.toThrow(/example\.org.*permissions\.network.*127\.0\.0\.1/)
+    expect(err).rejects.toMatchObject({ code: 'permission_denied' })
+    expect(err).rejects.toThrow(/example\.org.*permissions\.network.*127\.0\.0\.1/)
   })
 
   it('follows redirects within the allowlist', async () => {
@@ -101,51 +101,51 @@ describe('brokerFetch', () => {
     expect(JSON.parse(res.body)).toMatchObject({ method: 'GET', body: '' })
   })
 
-  it('refuses a redirect to a host that is not listed', async () => {
-    await expect(brokerFetch(`${base}/to-elsewhere`, undefined, policy())).rejects.toMatchObject({
+  it('refuses a redirect to a host that is not listed', () => {
+    expect(brokerFetch(`${base}/to-elsewhere`, undefined, policy())).rejects.toMatchObject({
       code: 'permission_denied',
       message: expect.stringContaining('redirect') as unknown
     })
   })
 
-  it('reports a malformed redirect as a network error', async () => {
-    await expect(brokerFetch(`${base}/bad-location`, undefined, policy())).rejects.toMatchObject({
+  it('reports a malformed redirect as a network error', () => {
+    expect(brokerFetch(`${base}/bad-location`, undefined, policy())).rejects.toMatchObject({
       code: 'network_error'
     })
   })
 
-  it('stops redirect loops', async () => {
-    await expect(brokerFetch(`${base}/loop`, undefined, policy())).rejects.toMatchObject({
+  it('stops redirect loops', () => {
+    expect(brokerFetch(`${base}/loop`, undefined, policy())).rejects.toMatchObject({
       code: 'network_error'
     })
   })
 
-  it('caps the response size', async () => {
-    await expect(brokerFetch(`${base}/huge`, undefined, policy())).rejects.toMatchObject({
+  it('caps the response size', () => {
+    expect(brokerFetch(`${base}/huge`, undefined, policy())).rejects.toMatchObject({
       code: 'too_large'
     })
   })
 
-  it('times out', async () => {
-    await expect(brokerFetch(`${base}/slow`, { timeoutMs: 50 }, policy())).rejects.toMatchObject({
+  it('times out', () => {
+    expect(brokerFetch(`${base}/slow`, { timeoutMs: 50 }, policy())).rejects.toMatchObject({
       code: 'timeout'
     })
   })
 
-  it('validates arguments', async () => {
-    await expect(brokerFetch(42, undefined, policy())).rejects.toMatchObject({
+  it('validates arguments', () => {
+    expect(brokerFetch(42, undefined, policy())).rejects.toMatchObject({
       code: 'invalid_argument'
     })
-    await expect(brokerFetch('/relative', undefined, policy())).rejects.toMatchObject({
+    expect(brokerFetch('/relative', undefined, policy())).rejects.toMatchObject({
       code: 'invalid_argument'
     })
-    await expect(
+    expect(
       brokerFetch(`${base}/echo`, { method: 'GET', body: 'x' }, policy())
     ).rejects.toMatchObject({ code: 'invalid_argument' })
-    await expect(brokerFetch(`${base}/echo`, { method: 'TRACE' }, policy())).rejects.toMatchObject({
+    expect(brokerFetch(`${base}/echo`, { method: 'TRACE' }, policy())).rejects.toMatchObject({
       code: 'invalid_argument'
     })
-    await expect(
+    expect(
       brokerFetch(`${base}/echo`, { method: 7 as unknown as string }, policy())
     ).rejects.toMatchObject({ code: 'invalid_argument' })
   })
@@ -156,7 +156,7 @@ describe('brokerFetch', () => {
     const p = (closed.address() as AddressInfo).port
     closed.close()
     const listed = [`http://127.0.0.1:${p}`]
-    await expect(
+    expect(
       brokerFetch(`http://127.0.0.1:${p}/`, undefined, {
         listed,
         patterns: listed.map(parseHostPattern)

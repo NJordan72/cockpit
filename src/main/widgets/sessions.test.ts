@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'bun:test'
 import type { Layout } from '@shared/config'
 import { DEFAULT_PRESETS } from '@shared/config'
 import type { PaneStatus } from '../agents/tracker'

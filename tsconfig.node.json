@@ -8,9 +8,9 @@
   "include": [
     "electron.vite.config.ts",
     "electron-builder.config.ts",
-    "vitest.config.mts",
     "src/main/**/*",
     "src/preload/**/*",
     "src/shared/**/*"
-  ]
+  ],
+  "exclude": ["src/**/*.test.ts"]
 }

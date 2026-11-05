@@ -49,10 +49,10 @@
       matchPackageNames: ['react', 'react-dom', '@types/react', '@types/react-dom']
     },
     {
-      // electron-vite and vitest each support a range of vite majors.
+      // electron-vite and @vitejs/plugin-react each support a range of vite majors.
       groupName: 'vite',
       matchUpdateTypes: ['major'],
-      matchPackageNames: ['vite', 'vitest', '@vitejs/**', 'electron-vite']
+      matchPackageNames: ['vite', '@vitejs/**', 'electron-vite']
     },
     {
       groupName: 'xterm',

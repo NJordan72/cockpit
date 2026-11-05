@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'bun:test'
 import { arrange, findDisplay, fitInto, mostlyOn, type DisplayInfo } from './displays'
 
 const area = (x: number, width = 1000, height = 800, y = 0): DisplayInfo['workArea'] => ({

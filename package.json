@@ -18,17 +18,15 @@
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "start": "electron-vite preview",
-    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "lint": "eslint . --max-warnings 0",
-    "test": "vitest run",
+    "test": "bun test --parallel",
+    "verify": "bun check --no-script && bun run lint && bun fmt --check --no-script && bun run test",
     "postinstall": "install-electron && electron-rebuild -f -o node-pty",
-    "format": "prettier --write .",
-    "format:check": "prettier --check .",
-    "check": "bun run typecheck && bun run lint && bun run format:check && bun run test",
     "smoke": "node scripts/smoke.mjs",
     "package": "electron-vite build && electron-builder --config electron-builder.config.ts --mac --publish never",
     "package:app": "electron-vite build && electron-builder --config electron-builder.config.ts --mac --dir --publish never",
-    "changeset": "changeset"
+    "changeset": "changeset",
+    "version-packages": "changeset version && bun fmt --no-script CHANGELOG.md"
   },
   "trustedDependencies": [
     "electron",
@@ -43,6 +41,7 @@
     "@changesets/cli": "3",
     "@electron/rebuild": "4",
     "@eslint/js": "10",
+    "@types/bun": "1",
     "@types/node": "24",
     "@types/react": "19",
     "@types/react-dom": "19",
@@ -61,12 +60,10 @@
     "eslint-plugin-react-hooks": "^7.1.1",
     "globals": "^17.13.0",
     "playwright-core": "^1.64.1",
-    "prettier": "^3.9.10",
     "react": "19",
     "react-dom": "19",
     "typescript": "~5.9",
     "typescript-eslint": "^8.71.2",
-    "vite": "8",
-    "vitest": "^5.0.4"
+    "vite": "8"
   }
 }

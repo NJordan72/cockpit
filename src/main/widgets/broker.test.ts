@@ -1,15 +1,13 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'bun:test'
 import type { WidgetCallResult } from '@shared/widgets'
 import { WidgetBroker, type BrokerDeps } from './broker'
 import { parseManifest } from './manifest'
 import type { LoadedWidget } from './registry'
 import type { SecretStore } from './secrets'
 import { WidgetStorage } from './storage'
-
-vi.mock('electron', () => ({ safeStorage: {} }))
 
 function widget(id: string, permissions: Record<string, unknown>): LoadedWidget {
   const parsed = parseManifest({ id, name: id, permissions }, id)

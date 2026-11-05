@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'bun:test'
 import { parseManifest } from './manifest'
 
 const base = {
@@ -6,13 +6,13 @@ const base = {
   name: 'Shortcut Stories',
   version: '1.0.0',
   entry: 'index.html',
-  sizing: 'fill',
+  sizing: 'fill' as const,
   permissions: {
     network: ['api.app.shortcut.com'],
     openExternal: ['https://app.shortcut.com/*'],
     secrets: ['shortcut-token'],
     storage: true,
-    sessions: 'read'
+    sessions: 'read' as const
   }
 }
 

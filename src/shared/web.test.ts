@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'bun:test'
 import { canOpenExternally, isWebUrl, pageLabel, toWebUrl } from './web'
 
 describe('toWebUrl', () => {
