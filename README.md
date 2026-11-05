@@ -591,10 +591,12 @@ or `resources/`, the dependencies, or the build and packaging config without
 adding a changeset. Docs, tests, and CI changes don't need one, and Renovate's PRs are
 exempt; the patterns are `changedFilePatterns` in `.changeset/config.json`.
 
-To cut a release, merge the **Version Packages** pull request. The `release`
-workflow keeps that PR up to date while `main` has changesets. The PR bumps
-the version in `package.json`, moves the notes into `CHANGELOG.md`, and gets
-the same checks as any other PR. Once it's merged, the workflow packages the app on macOS,
+To cut a release, open the **Version Packages** pull request, click **Approve
+and run workflows** so its checks run, and merge it once they pass. GitHub
+holds the checks on that PR until someone approves them, because
+github-actions[bot] opened it. The `release` workflow keeps the PR up to date
+while `main` has changesets. The PR bumps the version in `package.json` and
+moves the notes into `CHANGELOG.md`. Once it's merged, the workflow packages the app on macOS,
 runs the smoke test against the packaged app, and creates the `vX.Y.Z` tag and
 a GitHub release with the `.dmg`, the `.zip`, and build provenance for both.
 If a release fails partway, fix the cause and run the `release` workflow from
