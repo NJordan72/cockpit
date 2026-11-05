@@ -938,7 +938,15 @@ export function App(): React.JSX.Element {
       case 'clock':
         return <Clock panel={p} visible={windowVisible && place.visible} />
       case 'image':
-        return <ImagePanel panel={p} themeId={resolved.id} revision={imagesRevision} />
+        return (
+          <ImagePanel
+            panel={p}
+            themeId={resolved.id}
+            revision={imagesRevision}
+            sessions={sessions}
+            visible={windowVisible && place.visible}
+          />
+        )
       case 'monitor':
         return <Monitor />
       default:

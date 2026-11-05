@@ -1135,6 +1135,185 @@ kbd {
   color: var(--fg);
 }
 
+/* The built-in banner (Hud.tsx): a head-up display in the theme's accent. */
+.hud {
+  flex: 1 1 0px;
+  min-height: 0;
+  width: 100%;
+  overflow: hidden;
+  user-select: none;
+  pointer-events: none;
+  background: radial-gradient(
+    ellipse 60% 90% at 50% 60%,
+    color-mix(in srgb, var(--accent) 9%, transparent),
+    transparent
+  );
+}
+
+.hud svg {
+  display: block;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  overflow: visible;
+}
+
+:root[data-effects~='glow'] .hud svg {
+  filter: drop-shadow(
+    0 0 calc(var(--glow) * 3px) color-mix(in srgb, var(--accent) 70%, transparent)
+  );
+}
+
+.hud-line {
+  fill: none;
+  stroke: var(--accent);
+  stroke-linecap: round;
+}
+
+.hud-line.minor {
+  opacity: 0.55;
+}
+
+.hud-label {
+  fill: var(--accent);
+}
+
+.hud-label.minor {
+  fill: var(--muted);
+}
+
+.hud-fill {
+  fill: var(--accent);
+}
+
+.hud-box {
+  fill: var(--bg);
+  stroke: var(--accent);
+}
+
+.hud-readout {
+  fill: var(--fg);
+  font-weight: 700;
+}
+
+.hud-glyph {
+  fill: currentColor;
+  stroke: currentColor;
+}
+
+.hud-blip {
+  color: var(--muted);
+}
+
+.hud-blip.idle .hud-glyph,
+.hud-blip.exited .hud-glyph {
+  fill: none;
+}
+
+.hud-blip.exited {
+  color: var(--red);
+  opacity: 0.7;
+}
+
+.hud-blip.working {
+  color: var(--blue);
+}
+
+.hud-blip.working .hud-glyph {
+  animation: status-pulse 1.4s ease-in-out infinite;
+}
+
+.hud-blip.needs-input {
+  color: var(--yellow);
+}
+
+.hud-blip.needs-input .hud-glyph {
+  animation: status-blink 1s steps(2, jump-none) infinite;
+}
+
+.hud-blip.done {
+  color: var(--green);
+}
+
+.hud-tag {
+  fill: currentColor;
+}
+
+.hud-name {
+  fill: var(--fg);
+}
+
+.hud-blip.idle .hud-name,
+.hud-blip.exited .hud-name {
+  fill: var(--muted);
+}
+
+.hud-target {
+  fill: none;
+  stroke: var(--fg);
+  opacity: 0.7;
+}
+
+.hud-ann rect {
+  fill: none;
+  stroke: var(--border);
+}
+
+.hud-ann text {
+  fill: var(--muted);
+  opacity: 0.6;
+  letter-spacing: 0.1em;
+}
+
+.hud-ann.on text {
+  opacity: 1;
+}
+
+.hud-ann.working.on rect {
+  stroke: var(--blue);
+}
+
+.hud-ann.working.on text {
+  fill: var(--blue);
+}
+
+.hud-ann.needs-input.on rect {
+  fill: var(--yellow);
+  stroke: var(--yellow);
+}
+
+.hud-ann.needs-input.on text {
+  /* Dark yellow on yellow reads in light themes as well as dark ones. */
+  fill: color-mix(in srgb, var(--yellow) 20%, #000);
+  font-weight: 700;
+}
+
+.hud-ann.needs-input.on {
+  animation: status-blink 1s steps(2, jump-none) infinite;
+}
+
+.hud-ann.done.on rect {
+  stroke: var(--green);
+}
+
+.hud-ann.done.on text {
+  fill: var(--green);
+}
+
+.hud-ctx {
+  fill: var(--fg);
+}
+
+.hud-ctx-label {
+  fill: var(--muted);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hud-blip .hud-glyph,
+  .hud-ann.needs-input.on {
+    animation: none;
+  }
+}
+
 .monitor {
   display: flex;
   flex-direction: column;

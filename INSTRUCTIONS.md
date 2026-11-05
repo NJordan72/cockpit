@@ -973,3 +973,24 @@ the project they were opened in.
   sends the saved command, reset and save store the defaults and then send
   the default prompt, and the tabs box parses `Label = search` lines.
   Not verified: the new PR actions against a real `gh` login.
+
+### Head-up display banner (added 2026-11-05, not in the original plan)
+
+- The Cockpit layout's banner has a built-in default: with no
+  `~/.cockpit/images/banner.*`, the `image` panel draws a head-up display
+  (`frame/Hud.tsx`, geometry and data in `frame/hudModel.ts`), and
+  `"src": "builtin:hud"` asks for it outright. It's an inline SVG in the
+  theme's tokens, so every theme restyles it, and Amber's glow applies.
+- A heading tape and a horizon with a pitch ladder drift through a calm
+  flight (`attitudeAt`): a rAF loop at about 30 fps sets two transforms and
+  the heading readout without rendering, only while the panel is visible, and
+  not at all with Reduce motion on. Each agent pane is a traffic blip in tab
+  order, colored by status, with its folder and context size; lights along
+  the bottom count working, needs-input, and done panes; the bottom right adds
+  up context.
+- Verified in the built app with a scratch HOME, COCKPIT_HOME, and
+  `--user-data-dir`, and a fake `claude` that sends hook events through
+  `cockpit-hook` and writes a transcript: five panes in working, needs-input,
+  done, and idle states in Midnight, Amber, and Paper, and the empty state.
+  The banner costs about 1% CPU (renderer plus GPU) while it moves, against
+  0% for the Classic layout.
