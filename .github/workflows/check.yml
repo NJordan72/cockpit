@@ -41,6 +41,11 @@ jobs:
         run: bun run smoke
       # Cockpit.app alone, without the .dmg and .zip a release adds.
       - run: bun run package:app
+        env:
+          # electron-builder skips signing on pull requests unless told
+          # otherwise. This workflow has no certificate, so the app gets the
+          # same ad-hoc signature and hardened runtime as a release build.
+          CSC_FOR_PULL_REQUEST: 'true'
       - name: Smoke test the packaged app
         run: bun run smoke dist/mac-arm64/Cockpit.app
 
