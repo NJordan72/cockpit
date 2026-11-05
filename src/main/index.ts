@@ -68,9 +68,11 @@ import { PtyManager } from './pty'
 import { registerSchemes } from './schemes'
 import { SystemMonitor } from './system'
 import { ThemeStore } from './themes'
+import { restartPrompt, signedWithDeveloperId, Updates } from './updater'
 import { TreeWatcher } from './watch'
 import { WidgetHost } from './widgets/host'
 import iconPath from '../../resources/icon.png?asset'
+import { autoUpdater } from 'electron-updater'
 import { listSessions, widgetSession } from './widgets/sessions'
 
 // PTYs only start once the app is ready, by which time agents exists.
@@ -101,6 +103,8 @@ let kidsActive = false
 let kidsWindow: CockpitWindow | null = null
 /** Set from before-quit: windows closing now are kept for the next launch. */
 let quitting = false
+/** Null in builds that can't install updates (see startUpdates). */
+let updates: Updates | null = null
 /** When a display was last added, removed, or changed. */
 let displaysChangedAt = 0
 
@@ -364,6 +368,10 @@ function applyMenu(): void {
       ? buildKidsMenu({ onAbout: showAbout })
       : buildMenu({
           onAbout: showAbout,
+          update: updates && {
+            ...updates.menuItem(),
+            onClick: () => updates?.checkNow()
+          },
           onKidsMode: () => setKids(true, currentWindow()),
           themes: themes.list(),
           theme: currentTheme().id,
@@ -395,6 +403,37 @@ function showDialog(options: MessageBoxOptions): Promise<MessageBoxReturnValue> 
   return win && !win.isDestroyed()
     ? dialog.showMessageBox(win, options)
     : dialog.showMessageBox(options)
+}
+
+/**
+ * Checks GitHub Releases for a newer Cockpit. macOS only installs an update
+ * signed by the same Developer ID as the running app, so development and
+ * ad-hoc builds leave updates off.
+ */
+async function startUpdates(): Promise<void> {
+  if (!app.isPackaged || !(await signedWithDeveloperId(process.execPath))) return
+  const u = new Updates({
+    currentVersion: app.getVersion(),
+    check: () => autoUpdater.checkForUpdates(),
+    install: () => {
+      prepareToQuit()
+      autoUpdater.quitAndInstall()
+    },
+    askToRestart: async (version) =>
+      (await showDialog(restartPrompt(version, sessions()))).response === 0,
+    tell: (message, detail) => void showDialog({ message, detail, buttons: ['OK'] }),
+    canAsk: () => !kidsActive,
+    onChange: applyMenu
+  })
+  autoUpdater.autoDownload = true
+  autoUpdater.autoInstallOnAppQuit = true
+  autoUpdater.on('update-available', (info) => u.available(info.version))
+  autoUpdater.on('update-not-available', () => u.notAvailable())
+  autoUpdater.on('update-downloaded', (info) => u.downloaded(info.version))
+  autoUpdater.on('error', (err) => u.failed(err))
+  updates = u
+  u.start()
+  applyMenu()
 }
 
 /**
@@ -1116,6 +1155,7 @@ async function startup(): Promise<void> {
   applyMenu()
   registerIpc()
   for (const state of config.get().windows) createWindow(state)
+  void startUpdates()
 
   // The Dock icon reopens the main window.
   app.on('activate', () => {
@@ -1154,15 +1194,22 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
 })
 
-app.on('before-quit', () => {
+/**
+ * Runs before windows close on the way out, so they're kept for the next
+ * launch. An update's restart closes the windows before before-quit fires,
+ * so it calls this first.
+ */
+function prepareToQuit(): void {
   quitting = true
   captureCwds()
   ptys.killAll()
-})
+}
+
+app.on('before-quit', prepareToQuit)
 
 app.on('will-quit', () => {
   // A startup that failed partway leaves some of these unset.
-  const parts = [config, themes, images, system, widgets, agents] as (
+  const parts = [config, themes, images, system, widgets, agents, updates] as (
     { close: () => void } | undefined
   )[]
   for (const part of parts) part?.close()
