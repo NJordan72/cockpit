@@ -97,6 +97,9 @@ jobs:
           cache: false
       - run: bun install --frozen-lockfile
       - run: bun run verify
+        env:
+          # zizmor's online audits, such as known-vulnerable action versions.
+          GH_TOKEN: ${{ github.token }}
       # Signs with a Developer ID and notarizes when these secrets are set,
       # and signs ad hoc when they aren't (see electron-builder.config.ts). Unset
       # secrets arrive as empty strings, which electron-builder would take as

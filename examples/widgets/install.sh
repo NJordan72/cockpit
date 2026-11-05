@@ -12,7 +12,9 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 DEST="${COCKPIT_HOME:-$HOME/.cockpit}/widgets"
 
 if [[ $# -eq 0 ]]; then
-  set -- $(cd "$HERE" && for d in */; do [[ -f "$d/widget.json" ]] && echo "${d%/}"; done)
+  for d in "$HERE"/*/; do
+    if [[ -f "${d}widget.json" ]]; then set -- "$@" "$(basename "$d")"; fi
+  done
 fi
 
 mkdir -p "$DEST"

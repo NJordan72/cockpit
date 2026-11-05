@@ -529,10 +529,19 @@ bun check        # typecheck the node, web, and test projects
 bun fmt          # format; bun fmt --check only reports
 bun test         # run the tests; bun run test runs them in parallel
 bun run lint     # ESLint
-bun run verify   # all four, the way CI runs them
+bun run lint:actions   # actionlint and zizmor on .github/
+bun run lint:shell     # ShellCheck on the shell scripts
+bun run verify   # all of the above, the way CI runs them
 bun run build && bun run smoke   # launch the built app and run a command in a shell
 bun run package:app && bun run smoke dist/mac-arm64/Cockpit.app   # the same, packaged
 ```
+
+actionlint checks the workflows' syntax and expressions, and runs ShellCheck
+on their `run:` steps. zizmor looks for security problems in them, such as
+an action that isn't pinned to a commit or untrusted input expanded into a
+script; with `GH_TOKEN` set, as in CI, it also checks the pinned actions
+against GitHub's advisories. `mise.toml` pins all three tools, so `mise install`
+sets them up.
 
 `bun check`, `bun fmt`, and `bun test` are bun's built-in type checker,
 formatter, and test runner. `bun fmt` follows `.prettierrc.json` and
