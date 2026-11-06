@@ -1207,3 +1207,70 @@ the project they were opened in.
   (SC2086), ShellCheck reported an unguarded `rm -rf $DEST/$name` (SC2115),
   and zizmor reported a third-party action pinned to a tag (`unpinned-uses`,
   high).
+
+### Plans (added 2026-11-06, not in the original plan)
+
+The user asked for a way to pull up Claude's plan later in the session, then
+for it to read well when long, and then for a toolbar button that opens it
+rather than an Activity tab.
+
+- What Claude Code 2.1.319 sends, recorded by driving the TUI in a
+  pseudo-terminal with a scratch hook that saved each payload:
+  - While planning, every hook has `permission_mode: "plan"`, and Claude
+    writes the plan to `~/.claude/plans/<slug>.md` with an ordinary Write.
+  - PreToolUse and then PermissionRequest for `ExitPlanMode` carry
+    `tool_input.plan` and `tool_input.planFilePath`. PermissionRequest has no
+    `tool_use_id`. A Notification ("needs your approval for the plan")
+    follows.
+  - Approving sends PostToolUse with `tool_input: {}` and the plan in
+    `tool_response` (`plan`, `filePath`, `isAgent`, `hasTaskTool`).
+  - "Tell Claude what to change" sends no hook. Claude rewrites the same file
+    and calls ExitPlanMode again with a new `tool_use_id`.
+  - `claude -p` doesn't offer ExitPlanMode, so print mode can't be used to
+    record this.
+- `ActivityLog` (`src/main/agents/activity.ts`) keeps up to 20 plans per pane,
+  one per plan file, newest first, each up to 200,000 characters, with status
+  (`proposed` or `approved`), when it was first proposed, and how many rounds
+  it took. A new ExitPlanMode call is a new round; the PermissionRequest for
+  the same call isn't. The approved text wins, since the user can edit the
+  plan before approving. Calls from subagents are ignored. There's no
+  `rejected`: nothing reports it. Plans survive `/clear`, which resets the
+  rest of the pane's activity, because a plan is most wanted after clearing
+  the conversation that made it. They ride in `PaneActivity` and
+  `ActivityUpdate`, only when they changed.
+- The toolbar's **▤ Plan** button (`components/Toolbar.tsx`) appears once the
+  pane the toolbar names has a plan, yellow while proposed and green once
+  approved, with a count when there are several. It and the new `showPlan`
+  action (Cmd+Shift+P, one of the actions a window of panels runs itself)
+  open `PlanDialog`, as does **Show plan** on an ExitPlanMode log row. The
+  dialog follows the pane's plans through `usePanePlans`, which renders only
+  for updates that carry plans, so the toolbar doesn't redraw on every log
+  batch. App shortcuts are off while it's open, as for the other dialogs, and
+  kids mode closes it.
+- An Activity tab came first and was dropped: five tabs with counts don't fit
+  a 290 px sidebar, and letting the labels shrink cut every one to a letter or
+  two.
+- Markdown is drawn by `activity/Markdown.tsx` from `marked`'s lexer tokens
+  as React elements, never as an HTML string: raw HTML shows as text, images
+  as their alt text, and only http(s) links open, through `web.openExternal`.
+  The lexer leaves entities as written, so text runs decode the common ones.
+  `bun fmt` turns a ` ` escape into a literal no-break space, so the code
+  writes it as `String.fromCharCode(0xa0)`.
+- Verified in the built app with a scratch HOME, COCKPIT_HOME, and
+  `--user-data-dir`, ExitPlanMode hooks shaped like the recorded ones sent
+  through `cockpit-hook` with a shell pane's `COCKPIT_*` variables, and main's
+  context menu stubbed from the driver: the button appearing yellow, its
+  tooltip, the dialog at 960 px with 14 px text and the keyboard inside, Cmd+T
+  doing nothing while it was open, an approval turning it and the button
+  green, raw `<b>` drawn as text, Esc and a click outside closing it with the
+  keyboard back in the terminal, Cmd+Shift+P, Show plan from the log row,
+  two plans across a `/clear` with the newest shown and the picker switching,
+  selectable text, Paper, and the Activity panel back to four tabs. No
+  console errors or warnings. Not verified: a real Claude session in Cockpit,
+  Open (it would open a file on the desktop), and Copy (it would replace the
+  clipboard).
+- Tests: plan titles, a plan's rounds and approval from the recorded hook
+  sequence, keeping plans through `/clear`, updates carrying plans only when
+  they changed, subagents and empty calls, plans without a file, the cap, the
+  renderer's merge, choosing and describing a plan, and Markdown rendering,
+  including raw HTML and `javascript:` links (476 total).

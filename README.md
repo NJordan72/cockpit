@@ -137,6 +137,7 @@ address.
 | Cmd+Shift+Backspace | Clear pane: restart its preset fresh       |
 | Cmd+Shift+R         | Resume: pick an old session for the pane   |
 | Cmd+Shift+E         | Open the pane's project in your editor     |
+| Cmd+Shift+P         | Read the pane's plan (see [Plans](#plans)) |
 | Cmd+Alt+Arrow       | Move focus between panes                   |
 | Cmd+Shift+] / [     | Next / previous tab                        |
 | Cmd+1 … Cmd+9       | Go to tab                                  |
@@ -144,7 +145,8 @@ address.
 
 The toolbar along the bottom of the window shows the focused pane: its status,
 preset (or Claude Code's name for the conversation), directory, and git branch
-with commits ahead and behind and the number of changed files. Its buttons open
+with commits ahead and behind and the number of changed files, and a Plan
+button once its agent has proposed a plan (see [Plans](#plans)). Its buttons open
 a new tab, a plain shell tab (no agent) in the focused pane's directory, split right or down, clear the pane, and hide or show the panels, and its menu
 switches layouts. Clear ends the pane's process and starts its preset again in
 the same directory, with a new terminal and an empty status, activity log, and
@@ -252,7 +254,31 @@ Right-click a line in the Log for what you can do with it:
   tab says so and runs nothing.
 - A Read, Edit, or Write call: **Open in editor** or **Copy path**. Files in the
   Files tab have the same menu.
+- An ExitPlanMode call: **Show plan** opens that plan (see [Plans](#plans)),
+  and **Open in editor** and **Copy path** act on the plan file.
 - One of your prompts: save it as a slash command (see below), or copy it.
+
+### Plans
+
+When Claude Code finishes planning and asks you to approve its plan, Cockpit
+keeps a copy for the rest of the session. A **▤ Plan** button appears in the
+toolbar for that pane. Its mark is yellow while the plan waits for your answer
+and green once you approve it. Click it, or press Cmd+Shift+P, to read the plan
+over the window as formatted Markdown. Esc or a click outside closes it.
+
+The plan view shows when Claude proposed the plan, whether you approved it,
+and how many rounds it took if you asked for changes. **Open** opens the plan
+file (`~/.claude/plans/<name>.md`) in your editor, and **Copy** copies the
+Markdown; right-click for the same and to copy a selection. A session that
+made more than one plan shows a count on the button and **1 of 2 ▾** to pick
+another.
+
+Plans stay through `/clear`, so a plan is still there while Claude carries it
+out in a fresh conversation. Toolbar Clear and closing the pane drop them, as
+does quitting Cockpit, though the plan files stay in `~/.claude/plans/`.
+Claude Code sends no hook when you turn a plan down, so a plan you didn't
+approve stays marked as proposed. Raw HTML in a plan shows as text, images show
+as their alt text, and only http(s) links open, in your browser.
 
 ## Pull requests and commands
 

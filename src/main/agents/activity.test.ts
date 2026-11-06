@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi, setSystemTime } from 'bun:test'
-import type { ActivityUpdate } from '@shared/activity'
+import { ACTIVITY_MAX_PLANS, type ActivityUpdate } from '@shared/activity'
 import {
   ActivityLog,
   clip,
@@ -8,7 +8,8 @@ import {
   FLUSH_MS,
   MAX_ENTRIES,
   parseTaskNotification,
-  patchCounts
+  patchCounts,
+  planTitle
 } from './activity'
 
 const HOME = '/Users/me'
@@ -496,6 +497,185 @@ describe('ActivityLog', () => {
     expect(kept.at(-1)?.seq).toBe(MAX_ENTRIES + 5)
 
     log.remove('p1')
-    expect(log.snapshot('p1')).toEqual({ paneId: 'p1', entries: [], files: [], agents: [] })
+    expect(log.snapshot('p1')).toEqual({
+      paneId: 'p1',
+      entries: [],
+      plans: [],
+      files: [],
+      agents: []
+    })
+  })
+})
+
+describe('plans', () => {
+  const FILE = `${HOME}/.claude/plans/add-hello-purring-spark.md`
+  // Kept trimmed, as the hooks' other text is.
+  const FIRST = '# Add hello.txt\n- Create `hello.txt` with `hi`.'
+  const SECOND = '# Add hello.txt\n- Create `hello.txt` with `hi` and `bye`.'
+  const plans = (): { file: string | null; title: string; status: string; rounds: number }[] =>
+    log
+      .snapshot('p1')
+      .plans.map(({ file, title, status, rounds }) => ({ file, title, status, rounds }))
+
+  /** What Claude Code 2.1.319 sends from plan mode to approval (recorded, trimmed). */
+  function propose(text: string, toolUseId: string): void {
+    hook('PostToolUse', {
+      permission_mode: 'plan',
+      tool_name: 'Write',
+      tool_input: { file_path: FILE, content: text },
+      tool_response: { type: 'create', filePath: FILE, content: text, structuredPatch: [] }
+    })
+    hook('PreToolUse', {
+      permission_mode: 'plan',
+      tool_name: 'ExitPlanMode',
+      tool_input: { plan: text, planFilePath: FILE },
+      tool_use_id: toolUseId
+    })
+    hook('PermissionRequest', {
+      permission_mode: 'plan',
+      tool_name: 'ExitPlanMode',
+      tool_input: { plan: text, planFilePath: FILE }
+    })
+    hook('Notification', {
+      message: 'Claude Code needs your approval for the plan',
+      notification_type: 'permission_prompt'
+    })
+  }
+
+  function approve(text: string, toolUseId: string): void {
+    hook('PostToolUse', {
+      permission_mode: 'default',
+      tool_name: 'ExitPlanMode',
+      tool_input: {},
+      tool_response: { plan: text, isAgent: false, filePath: FILE, hasTaskTool: true },
+      tool_use_id: toolUseId
+    })
+  }
+
+  it('titles a plan by its first heading, or its first line', () => {
+    expect(planTitle('# Add `hello.txt`\n\nbody')).toBe('Add hello.txt')
+    expect(planTitle('\n## **Context** ##\n# Later')).toBe('Context')
+    expect(planTitle('Intro line\n- a step')).toBe('Intro line')
+    expect(planTitle('')).toBe('')
+    expect(planTitle('# ' + 'x'.repeat(200))).toHaveLength(120)
+  })
+
+  it('pins a proposed plan and marks it approved', () => {
+    propose(FIRST, 't1')
+    expect(plans()).toEqual([{ file: FILE, title: 'Add hello.txt', status: 'proposed', rounds: 1 }])
+    const [plan] = log.snapshot('p1').plans
+    expect(plan).toMatchObject({ text: FIRST, proposed: 1_000_000, at: 1_000_000 })
+    // The log names the plan, and its rows open the plan file.
+    const rows = log.snapshot('p1').entries.filter((e) => e.label === 'ExitPlanMode')
+    expect(rows.map((e) => [e.kind, e.text, e.file])).toEqual([
+      ['tool', 'Add hello.txt', FILE],
+      ['ask', 'Add hello.txt', FILE]
+    ])
+
+    setSystemTime(1_060_000)
+    approve(FIRST, 't1')
+    expect(plans()).toEqual([{ file: FILE, title: 'Add hello.txt', status: 'approved', rounds: 1 }])
+    expect(log.snapshot('p1').plans[0]).toMatchObject({ proposed: 1_000_000, at: 1_060_000 })
+  })
+
+  it('counts a round each time Claude proposes again after the user asks for changes', () => {
+    // Asking for changes sends no hook. Claude rewrites the file and proposes again.
+    propose(FIRST, 't1')
+    setSystemTime(1_030_000)
+    propose(SECOND, 't2')
+    expect(plans()).toEqual([{ file: FILE, title: 'Add hello.txt', status: 'proposed', rounds: 2 }])
+    expect(log.snapshot('p1').plans[0]).toMatchObject({
+      text: SECOND,
+      proposed: 1_000_000,
+      at: 1_030_000
+    })
+    // The text approved wins: the user can edit the plan before approving.
+    approve(SECOND + '\n- Edited by hand.', 't2')
+    expect(log.snapshot('p1').plans[0]).toMatchObject({
+      status: 'approved',
+      rounds: 2,
+      text: SECOND + '\n- Edited by hand.'
+    })
+  })
+
+  it('keeps plans through /clear, newest first, one per file', () => {
+    propose(FIRST, 't1')
+    approve(FIRST, 't1')
+    hook('SessionEnd', { reason: 'clear' })
+    hook('SessionStart', { source: 'clear' })
+    expect(plans()).toHaveLength(1)
+    vi.advanceTimersByTime(FLUSH_MS)
+    const reset = updates.find((u) => u.reset)
+    expect(reset?.plans?.map((p) => p.status)).toEqual(['approved'])
+
+    const other = `${HOME}/.claude/plans/second-plan.md`
+    hook('PreToolUse', {
+      tool_name: 'ExitPlanMode',
+      tool_input: { plan: '# Second\n', planFilePath: other },
+      tool_use_id: 't2'
+    })
+    expect(plans().map((p) => [p.title, p.status])).toEqual([
+      ['Second', 'proposed'],
+      ['Add hello.txt', 'approved']
+    ])
+    // A new pane id (the toolbar's Clear) starts with none.
+    log.remove('p1')
+    expect(log.snapshot('p1').plans).toEqual([])
+  })
+
+  it('sends plans only in the updates where they changed', () => {
+    propose(FIRST, 't1')
+    vi.advanceTimersByTime(FLUSH_MS)
+    expect(updates.at(-1)?.plans?.map((p) => p.status)).toEqual(['proposed'])
+    hook('PreToolUse', { tool_name: 'Bash', tool_input: { command: 'ls' } })
+    vi.advanceTimersByTime(FLUSH_MS)
+    expect(updates.at(-1)?.plans).toBeUndefined()
+    approve(FIRST, 't1')
+    vi.advanceTimersByTime(FLUSH_MS)
+    expect(updates.at(-1)?.plans?.map((p) => p.status)).toEqual(['approved'])
+  })
+
+  it('ignores subagents, calls without a plan, and approvals of nothing', () => {
+    hook('PreToolUse', {
+      agent_id: 'a1',
+      agent_type: 'Plan',
+      tool_name: 'ExitPlanMode',
+      tool_input: { plan: '# Theirs\n', planFilePath: FILE },
+      tool_use_id: 't1'
+    })
+    hook('PreToolUse', { tool_name: 'ExitPlanMode', tool_input: {}, tool_use_id: 't2' })
+    hook('PostToolUse', { tool_name: 'ExitPlanMode', tool_input: {}, tool_response: {} })
+    expect(plans()).toEqual([])
+  })
+
+  it('keeps a plan with no file, as Claude Code 1.x sent it', () => {
+    hook('PreToolUse', {
+      tool_name: 'ExitPlanMode',
+      tool_input: { plan: 'Do it' },
+      tool_use_id: 't1'
+    })
+    hook('PostToolUse', {
+      tool_name: 'ExitPlanMode',
+      tool_input: { plan: 'Do it' },
+      tool_response: { plan: 'Do it' }
+    })
+    expect(plans()).toEqual([{ file: null, title: 'Do it', status: 'approved', rounds: 1 }])
+  })
+
+  it('keeps the newest plans', () => {
+    for (let i = 0; i < ACTIVITY_MAX_PLANS + 3; i++) {
+      hook('PreToolUse', {
+        tool_name: 'ExitPlanMode',
+        tool_input: {
+          plan: `# Plan ${String(i)}`,
+          planFilePath: `${HOME}/.claude/plans/${String(i)}.md`
+        },
+        tool_use_id: `t${String(i)}`
+      })
+    }
+    const kept = plans()
+    expect(kept).toHaveLength(ACTIVITY_MAX_PLANS)
+    expect(kept[0]?.title).toBe(`Plan ${String(ACTIVITY_MAX_PLANS + 2)}`)
+    expect(kept.at(-1)?.title).toBe('Plan 3')
   })
 })

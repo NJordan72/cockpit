@@ -1,6 +1,7 @@
 import { MAX_WINDOWS, type Action, type Keybindings } from '@shared/config'
 import type { PaneSession } from '@shared/ipc'
-import { useGit } from '../activity/useActivity'
+import { planStatus } from '../activity/PlanDialog'
+import { useGit, usePanePlans } from '../activity/useActivity'
 import { chordLabel } from '../keybindings'
 import { STATUS_LABEL } from '../sessions'
 
@@ -23,6 +24,8 @@ interface Props {
   displays: number
   /** Open or close windows to make `count`, and arrange them on the displays. */
   onWindows: (count: number) => void
+  /** Open the plan dialog on the focused pane's newest plan. */
+  onShowPlan: () => void
 }
 
 const COUNTS = Array.from({ length: MAX_WINDOWS }, (_, i) => i + 1)
@@ -70,7 +73,8 @@ export function Toolbar({
   onLayout,
   windows,
   displays,
-  onWindows
+  onWindows,
+  onShowPlan
 }: Props): React.JSX.Element {
   const tip = (title: string, action: Action): string => {
     const keys = chordLabel(keybindings[action])
@@ -84,7 +88,16 @@ export function Toolbar({
   return (
     <div className="toolbar" role="toolbar" aria-label="Pane">
       <div className="toolbar-pane">
-        {focused ? <FocusedPane session={focused} active={active} /> : <span>No pane</span>}
+        {focused ? (
+          <FocusedPane
+            session={focused}
+            active={active}
+            planTip={tip('Click to read it', 'showPlan')}
+            onShowPlan={onShowPlan}
+          />
+        ) : (
+          <span>No pane</span>
+        )}
       </div>
       <div className="toolbar-actions">
         {BUTTONS.map((b) => (
@@ -148,10 +161,15 @@ export function Toolbar({
 
 function FocusedPane({
   session,
-  active
+  active,
+  planTip,
+  onShowPlan
 }: {
   session: PaneSession
   active: boolean
+  /** The last line of the Plan button's tooltip, with its shortcut. */
+  planTip: string
+  onShowPlan: () => void
 }): React.JSX.Element {
   // Read git again when the agent finishes something; it may have committed.
   const git = useGit(session.id, active, `${session.status}:${String(session.since)}`)
@@ -174,6 +192,47 @@ function FocusedPane({
           {git.changed > 0 && <span className="toolbar-changed"> ±{git.changed}</span>}
         </span>
       )}
+      <PlanButton paneId={session.id} tip={planTip} onShow={onShowPlan} />
     </>
+  )
+}
+
+/**
+ * Appears once the pane's agent has proposed a plan, and opens it. Its mark
+ * is yellow while the newest plan waits for approval (or was turned down,
+ * which Claude Code doesn't report) and green once it's approved.
+ */
+function PlanButton({
+  paneId,
+  tip,
+  onShow
+}: {
+  paneId: string
+  tip: string
+  onShow: () => void
+}): React.JSX.Element | null {
+  const plans = usePanePlans(paneId)
+  const plan = plans?.[0]
+  if (!plans || !plan) return null
+  const status = planStatus(plan)
+  const others = plans.length > 1 ? `\n${String(plans.length)} plans in this session` : ''
+  return (
+    <button
+      type="button"
+      tabIndex={-1}
+      className={`toolbar-plan ${plan.status}`}
+      title={`${plan.title || 'Plan'}\n${status.label} ${status.when}${others}\n${tip}`}
+      // Keeps the keyboard where it is until the dialog takes it.
+      onMouseDown={(e) => {
+        e.preventDefault()
+      }}
+      onClick={onShow}
+    >
+      <span className="toolbar-plan-mark" aria-hidden>
+        ▤
+      </span>
+      Plan
+      {plans.length > 1 && <span className="toolbar-plan-count">{plans.length}</span>}
+    </button>
   )
 }

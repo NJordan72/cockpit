@@ -26,6 +26,7 @@ import type { BashCommand } from '@shared/activity'
 import type { AppearanceCommand, PaneSession, WindowInfo } from '@shared/ipc'
 import type { SecretPrompt, SessionStatus, WidgetInfo } from '@shared/widgets'
 import { ActivityPanel } from './activity/ActivityPanel'
+import { PlanDialog } from './activity/PlanDialog'
 import { newSessionTarget } from './agentSessions'
 import { Launcher } from './components/Launcher'
 import { Picker } from './components/Picker'
@@ -81,7 +82,7 @@ const SAVE_DELAY_MS = 150
 const tabIds = (tabs: readonly Tab[]): string[] => tabs.map((t) => t.id)
 
 /** Actions a window without terminals still runs itself; it forwards the rest. */
-const OWN_ACTIONS: readonly Action[] = ['toggleSidebar', 'kidsMode']
+const OWN_ACTIONS: readonly Action[] = ['toggleSidebar', 'kidsMode', 'showPlan']
 
 /** Give a pane the keyboard, whether it's a terminal or a web page. */
 function focusPane(paneId: string): void {
@@ -115,6 +116,12 @@ export function App(): React.JSX.Element {
   const [kidsStatus, setKidsStatus] = useState<KidsStatus>('idle')
   /** The prompt being saved as a command, and the pane it came from. */
   const [saving, setSaving] = useState<{ prompt: string; paneId: string | null } | null>(null)
+  /** The plan dialog: whose plan, which one (null for the newest), and a line naming the pane. */
+  const [planShown, setPlanShown] = useState<{
+    paneId: string
+    key: string | null
+    label: string
+  } | null>(null)
   /** Bumped when a command is saved, so the Commands panel reads its list again. */
   const [commandsRevision, setCommandsRevision] = useState(0)
   /** The Open web page dialog is up. */
@@ -207,6 +214,7 @@ export function App(): React.JSX.Element {
   const sessionsRef = useRef(sessions)
   const kidsRef = useRef(kids)
   const openingUrlRef = useRef(openingUrl)
+  const planShownRef = useRef(planShown)
   useEffect(() => {
     configRef.current = config
     layoutRef.current = layout
@@ -217,6 +225,7 @@ export function App(): React.JSX.Element {
     sessionsRef.current = sessions
     kidsRef.current = kids
     openingUrlRef.current = openingUrl
+    planShownRef.current = planShown
   })
 
   // Pane statuses from the main process, for the tab badges and the session list.
@@ -551,6 +560,10 @@ export function App(): React.JSX.Element {
     dispatch({ type: 'newTab', pane })
   }, [])
 
+  const showPlan = useCallback((pane: PaneSession, key: string | null) => {
+    setPlanShown({ paneId: pane.id, key, label: `${pane.title ?? pane.name} · ${pane.cwd}` })
+  }, [])
+
   const runAction = useCallback(
     (action: Action) => {
       if (!terminals && !OWN_ACTIONS.includes(action)) {
@@ -595,6 +608,14 @@ export function App(): React.JSX.Element {
         case 'openEditor':
           if (tab) api.editor.openProject(tab.activePaneId)
           return
+        case 'showPlan': {
+          // The pane the toolbar names: this window's, or in a window of
+          // panels, the one the user works in. With no plan, nothing opens.
+          const id = terminals ? tab?.activePaneId : sessionsRef.current.find((s) => s.focused)?.id
+          const pane = sessionsRef.current.find((s) => s.id === id)
+          if (pane) showPlan(pane, null)
+          return
+        }
         case 'focusLeft':
           dispatch({ type: 'focusDirection', direction: 'left' })
           return
@@ -630,7 +651,7 @@ export function App(): React.JSX.Element {
         }
       }
     },
-    [api, terminals, openPicker, openShell, runAppearance]
+    [api, terminals, openPicker, openShell, runAppearance, showPlan]
   )
 
   // A window without terminals passed this one an action.
@@ -645,7 +666,8 @@ export function App(): React.JSX.Element {
         pickerRef.current ||
         promptRef.current ||
         savingRef.current ||
-        openingUrlRef.current
+        openingUrlRef.current ||
+        planShownRef.current
       )
         return
       const action = actionFor(keymap, e)
@@ -663,7 +685,8 @@ export function App(): React.JSX.Element {
         pickerRef.current ||
         promptRef.current ||
         savingRef.current ||
-        openingUrlRef.current
+        openingUrlRef.current ||
+        planShownRef.current
       )
         return
       const action = actionFor(keymap, key)
@@ -706,7 +729,8 @@ export function App(): React.JSX.Element {
           pickerRef.current ||
           promptRef.current ||
           savingRef.current ||
-          openingUrlRef.current
+          openingUrlRef.current ||
+          planShownRef.current
         )
           return
         const el = document.activeElement
@@ -732,6 +756,7 @@ export function App(): React.JSX.Element {
         setPicker(null)
         setOpeningUrl(false)
         setSaving(null)
+        setPlanShown(null)
       } else requestAnimationFrame(focusWorkspace)
     })
     void api.kids.active().then((active) => {
@@ -745,6 +770,12 @@ export function App(): React.JSX.Element {
 
   const closePicker = useCallback(() => {
     setPicker(null)
+    requestAnimationFrame(focusWorkspace)
+  }, [focusWorkspace])
+
+  // Stable, since the dialog closes itself from an effect when its plan is gone.
+  const closePlan = useCallback(() => {
+    setPlanShown(null)
     requestAnimationFrame(focusWorkspace)
   }, [focusWorkspace])
 
@@ -914,6 +945,9 @@ export function App(): React.JSX.Element {
             visible={windowVisible && place.visible}
             onSavePrompt={savePrompt}
             onRunCommand={runCommand}
+            onShowPlan={(file) => {
+              showPlan(focused, file)
+            }}
           />
         ) : null
       case 'prs':
@@ -1049,6 +1083,9 @@ export function App(): React.JSX.Element {
           windows={windowInfo.count}
           displays={windowInfo.displays}
           onWindows={(n) => api.window.setCount(n)}
+          onShowPlan={() => {
+            if (toolbarPane) showPlan(toolbarPane, null)
+          }}
         />
         {picker && (
           <Picker
@@ -1076,6 +1113,17 @@ export function App(): React.JSX.Element {
             key={prompt.promptId}
             prompt={prompt}
             onAnswer={(value) => answerPrompt(prompt, value)}
+          />
+        )}
+        {planShown && (
+          <PlanDialog
+            paneId={planShown.paneId}
+            chosen={planShown.key}
+            label={planShown.label}
+            onChoose={(key) => {
+              setPlanShown({ ...planShown, key })
+            }}
+            onClose={closePlan}
           />
         )}
         {saving && (

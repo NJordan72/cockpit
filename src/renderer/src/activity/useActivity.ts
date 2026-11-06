@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import type { GitStatus, PaneActivity } from '@shared/activity'
+import type { AgentPlan, GitStatus, PaneActivity } from '@shared/activity'
 import { applyUpdate } from './model'
 
 /** How often git is read while the Activity panel is on screen. */
@@ -33,6 +33,38 @@ export function usePaneActivity(paneId: string): PaneActivity | null {
   }, [api, paneId])
 
   return activity?.paneId === paneId ? activity : null
+}
+
+/**
+ * A pane's plans, newest first, kept current. null until main has answered.
+ * Only updates that carry plans cause a render, so the toolbar can follow a
+ * busy pane cheaply.
+ */
+export function usePanePlans(paneId: string | null): AgentPlan[] | null {
+  const api = window.cockpit
+  const [plans, setPlans] = useState<{ paneId: string; plans: AgentPlan[] } | null>(null)
+
+  useEffect(() => {
+    if (!paneId) return
+    let loaded = false
+    let cancelled = false
+    // As in usePaneActivity: updates sent before the snapshot are already in it.
+    const off = api.activity.onUpdate((u) => {
+      if (!loaded || u.paneId !== paneId || !u.plans) return
+      setPlans({ paneId, plans: u.plans })
+    })
+    void api.activity.get(paneId).then((a) => {
+      if (cancelled) return
+      loaded = true
+      setPlans({ paneId, plans: a.plans })
+    })
+    return () => {
+      cancelled = true
+      off()
+    }
+  }, [api, paneId])
+
+  return plans?.paneId === paneId ? plans.plans : null
 }
 
 /**
