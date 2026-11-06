@@ -35,7 +35,8 @@ assets from other apps.
 - Terminals: `@xterm/xterm` with `addon-fit`, `addon-webgl`, `addon-unicode11`,
   `addon-search`, `addon-web-links`. PTYs come from `node-pty` in the main
   process. `node-pty` is native, so rebuild it against Electron with
-  `@electron/rebuild` (wire this into `postinstall`).
+  `electron-builder install-app-deps`, which runs `@electron/rebuild` (wire
+  this into `postinstall`).
 - Package manager and script runner: bun (`bun install`, `bun run <script>`).
   Electron 44 downloads its binary lazily, so `postinstall` runs
   `install-electron` before the rebuild. `mise.toml` pins the bun and Node
