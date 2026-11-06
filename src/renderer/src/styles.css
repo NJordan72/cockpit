@@ -754,6 +754,38 @@ kbd {
   color: var(--yellow);
 }
 
+/* The focused pane's plan, once it has one. */
+.toolbar-plan {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 20px;
+  border: 0;
+  border-radius: var(--radius);
+  background: none;
+  padding: 0 6px;
+  color: var(--fg);
+  font-size: 12px;
+}
+
+.toolbar-plan:hover {
+  background: var(--bg-hover);
+}
+
+.toolbar-plan.proposed .toolbar-plan-mark {
+  color: var(--yellow);
+}
+
+.toolbar-plan.approved .toolbar-plan-mark {
+  color: var(--green);
+}
+
+.toolbar-plan-count {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
 .toolbar-actions {
   flex: none;
   display: flex;
@@ -1808,6 +1840,258 @@ button.icon:hover,
 
 .log-row.compact .log-kind {
   color: var(--muted);
+}
+
+/* plan dialog */
+
+.plan-backdrop {
+  padding: 4vh 0;
+  align-items: stretch;
+}
+
+.plan-dialog {
+  width: min(960px, calc(100vw - 64px));
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) * 2);
+  box-shadow: 0 16px 48px rgb(0 0 0 / 0.5);
+}
+
+.plan-dialog-head {
+  flex: none;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+  padding: 10px 16px 6px;
+}
+
+.plan-dialog-title {
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.plan-dialog-pane {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.plan-toolbar {
+  gap: 6px;
+  padding: 0 16px;
+}
+
+.plan-toolbar button {
+  flex: none;
+  white-space: nowrap;
+}
+
+.plan-status {
+  flex: none;
+  font-size: 10px;
+  letter-spacing: var(--header-tracking);
+  text-transform: var(--header-case);
+}
+
+.plan-status.approved {
+  color: var(--green);
+}
+
+.plan-status.proposed {
+  color: var(--yellow);
+}
+
+.plan-when {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.plan-actions {
+  flex: none;
+  display: flex;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.plan-dialog .activity-scroll:focus {
+  outline: none;
+}
+
+.plan {
+  padding: 8px 28px 28px;
+  user-select: text;
+  cursor: auto;
+}
+
+/* Markdown */
+
+.md {
+  max-width: 82ch;
+  font-size: 14px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.md > :first-child {
+  margin-top: 6px;
+}
+
+.md h1,
+.md h2,
+.md h3,
+.md h4,
+.md h5,
+.md h6 {
+  margin: 16px 0 6px;
+  line-height: 1.3;
+  font-weight: 600;
+}
+
+.md h1 {
+  font-size: 20px;
+}
+
+.md h2 {
+  font-size: 16px;
+  padding-bottom: 3px;
+  border-bottom: 1px solid var(--border);
+}
+
+.md h3,
+.md h4,
+.md h5,
+.md h6 {
+  font-size: 14px;
+}
+
+.md h4,
+.md h5,
+.md h6 {
+  color: var(--muted);
+}
+
+.md p,
+.md ul,
+.md ol,
+.md blockquote,
+.md pre,
+.md .md-table {
+  margin: 0 0 10px;
+}
+
+.md ul,
+.md ol {
+  padding-left: 22px;
+}
+
+.md li > ul,
+.md li > ol {
+  margin-bottom: 0;
+}
+
+.md li.md-task {
+  list-style: none;
+}
+
+.md-check {
+  display: inline-block;
+  width: 11px;
+  height: 11px;
+  margin: 0 7px 0 -18px;
+  border: 1px solid var(--muted);
+  border-radius: 2px;
+  vertical-align: -1px;
+}
+
+.md-check.on {
+  border-color: var(--green);
+  background: color-mix(in srgb, var(--green) 60%, transparent);
+}
+
+.md code {
+  padding: 0 3px;
+  border-radius: var(--radius);
+  background: var(--bg-hover);
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+}
+
+.md pre {
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  overflow-x: auto;
+  overflow-wrap: normal;
+}
+
+.md pre code {
+  padding: 0;
+  background: none;
+  white-space: pre;
+}
+
+.md blockquote {
+  padding-left: 10px;
+  border-left: 2px solid var(--border);
+  color: var(--muted);
+}
+
+.md hr {
+  margin: 14px 0;
+  border: 0;
+  border-top: 1px solid var(--border);
+}
+
+.md a {
+  color: var(--accent);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.md .md-raw {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+}
+
+.md-table {
+  overflow-x: auto;
+}
+
+.md table {
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.md th,
+.md td {
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+  overflow-wrap: normal;
+}
+
+.md th {
+  background: var(--bg-hover);
+  font-weight: 600;
 }
 
 /* files and git */

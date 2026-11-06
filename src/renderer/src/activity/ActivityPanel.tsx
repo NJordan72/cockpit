@@ -1,11 +1,12 @@
 import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import type {
-  ActivityEntry,
-  BashCommand,
-  FileTouch,
-  GitStatus,
-  PaneActivity,
-  SubagentRun
+import {
+  PLAN_TOOL,
+  type ActivityEntry,
+  type BashCommand,
+  type FileTouch,
+  type GitStatus,
+  type PaneActivity,
+  type SubagentRun
 } from '@shared/activity'
 import { ACTIVITY_TABS, type ActivityTab } from '@shared/config'
 import type { PaneSession } from '@shared/ipc'
@@ -41,6 +42,8 @@ interface Props {
   onSavePrompt: (prompt: string) => void
   /** Run a Bash command from the log in a new shell tab. */
   onRunCommand: (command: BashCommand) => void
+  /** Open the plan dialog on one of the pane's plans, by its file. */
+  onShowPlan: (file: string) => void
 }
 
 const TAB_LABEL: Record<ActivityTab, string> = {
@@ -66,7 +69,8 @@ export function ActivityPanel({
   canCollapse,
   visible,
   onSavePrompt,
-  onRunCommand
+  onRunCommand,
+  onShowPlan
 }: Props): React.JSX.Element {
   const activity = usePaneActivity(session.id)
   const [logFilter, setLogFilter] = useState<LogFilter>({ events: true, tools: true })
@@ -129,6 +133,7 @@ export function ActivityPanel({
             onFilter={setLogFilter}
             onSavePrompt={onSavePrompt}
             onRunCommand={onRunCommand}
+            onShowPlan={onShowPlan}
           />
         ) : settings.tab === 'files' ? (
           <FilesView
@@ -194,6 +199,18 @@ async function fileMenu(file: string): Promise<void> {
   else if (chosen === 'copy') api.clipboard.writeText(file)
 }
 
+async function planRowMenu(file: string, onShow: () => void): Promise<void> {
+  const api = window.cockpit
+  const chosen = await api.menu([
+    { id: 'show', label: 'Show plan' },
+    { id: 'edit', label: 'Open in editor' },
+    { id: 'copy', label: 'Copy path' }
+  ])
+  if (chosen === 'show') onShow()
+  else if (chosen === 'edit') api.editor.openFile(file)
+  else if (chosen === 'copy') api.clipboard.writeText(file)
+}
+
 async function promptMenu(prompt: string, onSave: () => void): Promise<void> {
   const api = window.cockpit
   const chosen = await api.menu([
@@ -209,9 +226,16 @@ function rowMenu(
   e: ActivityEntry,
   promptsSavable: boolean,
   onSavePrompt: (prompt: string) => void,
-  onRunCommand: (command: BashCommand) => void
+  onRunCommand: (command: BashCommand) => void,
+  onShowPlan: (file: string) => void
 ): RowMenu | undefined {
   const { command, file } = e
+  if (file && e.label === PLAN_TOOL) {
+    return {
+      hint: 'Right-click to show the plan',
+      open: () => void planRowMenu(file, () => onShowPlan(file))
+    }
+  }
   if (command) {
     return {
       hint: 'Right-click to copy or run the command',
@@ -264,7 +288,8 @@ function LogView({
   filter,
   onFilter,
   onSavePrompt,
-  onRunCommand
+  onRunCommand,
+  onShowPlan
 }: {
   session: PaneSession
   activity: PaneActivity | null
@@ -272,6 +297,7 @@ function LogView({
   onFilter: (f: LogFilter) => void
   onSavePrompt: (prompt: string) => void
   onRunCommand: (command: BashCommand) => void
+  onShowPlan: (file: string) => void
 }): React.JSX.Element {
   const entries = useMemo(() => activity?.entries ?? [], [activity])
   const shown = useMemo(() => filterLog(entries, filter), [entries, filter])
@@ -283,15 +309,18 @@ function LogView({
   const toggleRow = useCallback((key: string) => {
     setOpenRow((open) => (open === key ? null : key))
   }, [])
-  const callbacks = useRef({ onSavePrompt, onRunCommand })
+  const callbacks = useRef({ onSavePrompt, onRunCommand, onShowPlan })
   useLayoutEffect(() => {
-    callbacks.current = { onSavePrompt, onRunCommand }
+    callbacks.current = { onSavePrompt, onRunCommand, onShowPlan }
   })
   const savePrompt = useCallback((prompt: string) => {
     callbacks.current.onSavePrompt(prompt)
   }, [])
   const runCommand = useCallback((command: BashCommand) => {
     callbacks.current.onRunCommand(command)
+  }, [])
+  const showPlan = useCallback((file: string) => {
+    callbacks.current.onShowPlan(file)
   }, [])
 
   return (
@@ -325,6 +354,7 @@ function LogView({
                   promptsSavable={session.agent === 'claude'}
                   onSavePrompt={savePrompt}
                   onRunCommand={runCommand}
+                  onShowPlan={showPlan}
                 />
               )
             })}
@@ -348,7 +378,8 @@ const LogRow = memo(function LogRow({
   onToggle,
   promptsSavable,
   onSavePrompt,
-  onRunCommand
+  onRunCommand,
+  onShowPlan
 }: {
   rowKey: string
   entry: ActivityEntry
@@ -357,9 +388,10 @@ const LogRow = memo(function LogRow({
   promptsSavable: boolean
   onSavePrompt: (prompt: string) => void
   onRunCommand: (command: BashCommand) => void
+  onShowPlan: (file: string) => void
 }): React.JSX.Element {
   const when = new Date(e.at).toLocaleString()
-  const menu = rowMenu(e, promptsSavable, onSavePrompt, onRunCommand)
+  const menu = rowMenu(e, promptsSavable, onSavePrompt, onRunCommand, onShowPlan)
   return (
     <li>
       <button

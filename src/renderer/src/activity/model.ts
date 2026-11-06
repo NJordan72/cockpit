@@ -19,6 +19,7 @@ export function applyUpdate(a: PaneActivity, u: ActivityUpdate): PaneActivity {
     return {
       paneId: a.paneId,
       entries: u.entries.slice(-ACTIVITY_MAX_ENTRIES),
+      plans: u.plans ?? a.plans,
       files: u.files ?? [],
       agents: u.agents ?? []
     }
@@ -27,7 +28,13 @@ export function applyUpdate(a: PaneActivity, u: ActivityUpdate): PaneActivity {
   const fresh = u.entries.filter((e) => e.seq > last)
   let entries = fresh.length > 0 ? [...a.entries, ...fresh] : a.entries
   if (entries.length > ACTIVITY_MAX_ENTRIES) entries = entries.slice(-ACTIVITY_MAX_ENTRIES)
-  return { paneId: a.paneId, entries, files: u.files ?? a.files, agents: u.agents ?? a.agents }
+  return {
+    paneId: a.paneId,
+    entries,
+    plans: u.plans ?? a.plans,
+    files: u.files ?? a.files,
+    agents: u.agents ?? a.agents
+  }
 }
 
 /** Every entry the pane has logged, including ones dropped to stay under the cap. */

@@ -31,6 +31,7 @@ export type Action =
   | 'clearPane'
   | 'resumePane'
   | 'openEditor'
+  | 'showPlan'
   | 'focusLeft'
   | 'focusRight'
   | 'focusUp'
@@ -274,6 +275,7 @@ export const DEFAULT_KEYBINDINGS: Keybindings = {
   clearPane: 'Cmd+Shift+Backspace',
   resumePane: 'Cmd+Shift+R',
   openEditor: 'Cmd+Shift+E',
+  showPlan: 'Cmd+Shift+P',
   focusLeft: 'Cmd+Alt+Left',
   focusRight: 'Cmd+Alt+Right',
   focusUp: 'Cmd+Alt+Up',

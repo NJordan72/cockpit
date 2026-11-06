@@ -1,6 +1,7 @@
 // What the Activity panel shows about a pane: a log of what its
 // agent did, the files it touched, the subagents it started, and the git
-// state of its directory. Only the chrome gets this. Widgets don't, since the
+// state of its directory. Also the plans it proposed, which the toolbar
+// offers and the plan dialog shows. Only the chrome gets this. Widgets don't, since the
 // log quotes commands and prompts.
 
 export type ActivityTab = 'log' | 'files' | 'agents' | 'git'
@@ -83,10 +84,39 @@ export interface SubagentRun {
   background: boolean
 }
 
+/** Claude Code's tool for putting a plan to the user. */
+export const PLAN_TOOL = 'ExitPlanMode'
+
+/**
+ * A plan Claude Code put to the user with ExitPlanMode. There's no hook for
+ * the user turning one down, so a plan that wasn't approved stays proposed.
+ */
+export interface AgentPlan {
+  /**
+   * Where Claude Code saved it (~/.claude/plans/<name>.md). A plan is
+   * replaced by the next one for the same file. null when the hook didn't
+   * name one, as Claude Code 1.x didn't.
+   */
+  file: string | null
+  /** The plan, in Markdown, as last proposed or approved. */
+  text: string
+  /** Its first heading, or its first line. */
+  title: string
+  status: 'proposed' | 'approved'
+  /** When it was first proposed (ms since the epoch). */
+  proposed: number
+  /** When it was last proposed or approved. */
+  at: number
+  /** How many times it was proposed. Claude proposes again after the user asks for changes. */
+  rounds: number
+}
+
 export interface PaneActivity {
   paneId: string
   /** The newest entries, oldest first. The last one's seq counts every entry so far. */
   entries: ActivityEntry[]
+  /** Most recently proposed or approved first. A /clear keeps them. */
+  plans: AgentPlan[]
   /** Most recently touched first. */
   files: FileTouch[]
   /** In the order they started. */
@@ -99,6 +129,7 @@ export interface ActivityUpdate {
   /** New entries, oldest first. */
   entries: ActivityEntry[]
   /** The whole list, when it changed. */
+  plans?: AgentPlan[]
   files?: FileTouch[]
   agents?: SubagentRun[]
   /**
@@ -145,5 +176,8 @@ export interface GitStatus {
 
 /** Entries kept per pane, in main and in the chrome. */
 export const ACTIVITY_MAX_ENTRIES = 1000
+
+/** Plans kept per pane. */
+export const ACTIVITY_MAX_PLANS = 20
 
 export const GIT_MAX_FILES = 300

@@ -1,12 +1,15 @@
 // Each pane's activity for the Activity panel: a log of what Claude
-// Code's hooks and Codex's notifications report, the files Claude's tools
-// touched, and the subagents it started. It's kept in memory only and goes
+// Code's hooks and Codex's notifications report, the plans Claude proposed,
+// the files its tools touched, and the subagents it started. It's kept in memory only and goes
 // to the chrome, never to widgets, since the log quotes commands and prompts.
 import os from 'node:os'
 import path from 'node:path'
 import {
   ACTIVITY_MAX_ENTRIES,
+  ACTIVITY_MAX_PLANS,
+  PLAN_TOOL,
   type ActivityEntry,
+  type AgentPlan,
   type ActivityUpdate,
   type FileChange,
   type FileTouch,
@@ -28,6 +31,10 @@ const MAX_TEXT = 300
 const MAX_DETAIL = 4000
 /** A Bash command longer than this can't be copied or run from the log. */
 const MAX_COMMAND = 20_000
+/** A plan is kept up to this length. */
+const MAX_PLAN = 200_000
+/** A plan's title is cut to this length. */
+const MAX_TITLE = 120
 /** Updates are batched, so a burst of parallel tool calls goes out as one. */
 export const FLUSH_MS = 100
 
@@ -94,8 +101,17 @@ const FILE_INPUTS = new Map([
   ['MultiEdit', 'file_path'],
   ['Write', 'file_path'],
   ['NotebookEdit', 'notebook_path'],
-  ['NotebookRead', 'notebook_path']
+  ['NotebookRead', 'notebook_path'],
+  [PLAN_TOOL, 'planFilePath']
 ])
+
+/** A plan's first heading, or its first line when it has none. Inline code and bold marks go. */
+export function planTitle(text: string): string {
+  const lines = text.split('\n').map((l) => l.trim())
+  const heading = lines.map((l) => /^#{1,6}\s+(.+?)(?:\s+#+)?$/.exec(l)?.[1]).find(Boolean)
+  const line = heading ?? lines.find(Boolean) ?? ''
+  return cut(line.replace(/`|\*\*|__/g, '').trim(), MAX_TITLE)
+}
 
 /** What the log can do with a call: copy or rerun a Bash command, open a file. */
 export function actionable(
@@ -173,6 +189,11 @@ export function describeTool(
       case 'Skill':
         text = str(i.skill) ?? str(i.name)
         break
+      case PLAN_TOOL: {
+        const plan = str(i.plan)
+        text = plan ? planTitle(plan) : null
+        break
+      }
       default:
         text = firstString(i)
     }
@@ -246,6 +267,10 @@ interface PaneLog {
   files: Map<string, FileTouch>
   /** Insertion order is start order. */
   agents: Map<string, SubagentRun>
+  /** By file ('' for a plan without one). Insertion order is update order, oldest first. */
+  plans: Map<string, AgentPlan>
+  /** The ExitPlanMode call each proposed plan came from, so a second hook for it isn't a new round. */
+  planCalls: Map<string, string>
   /** Agent tool calls whose subagent hasn't started yet. */
   spawns: Spawn[]
   /** Every recent Agent tool call's description, by tool_use_id. */
@@ -256,6 +281,7 @@ interface PaneLog {
   fresh: ActivityEntry[]
   filesDirty: boolean
   agentsDirty: boolean
+  plansDirty: boolean
   /** Cleared since the last update, so the next one replaces everything. */
   reset: boolean
 }
@@ -301,8 +327,14 @@ export class ActivityLog {
 
   snapshot(paneId: string): PaneActivity {
     const pane = this.panes.get(paneId)
-    if (!pane) return { paneId, entries: [], files: [], agents: [] }
-    return { paneId, entries: [...pane.entries], files: fileList(pane), agents: agentList(pane) }
+    if (!pane) return { paneId, entries: [], plans: [], files: [], agents: [] }
+    return {
+      paneId,
+      entries: [...pane.entries],
+      plans: planList(pane),
+      files: fileList(pane),
+      agents: agentList(pane)
+    }
   }
 
   /** A Claude Code hook, already matched to its pane. A null payload has only the event name. */
@@ -349,6 +381,9 @@ export class ActivityLog {
         break
       }
       case 'PreToolUse': {
+        if (tool === PLAN_TOOL && !agentId) {
+          this.proposed(pane, p.tool_input, str(p.tool_use_id))
+        }
         this.add(pane, { kind: 'tool', ...call(), agent })
         if (run) {
           run.tools++
@@ -375,6 +410,8 @@ export class ActivityLog {
         break
       }
       case 'PermissionRequest':
+        // PreToolUse has already pinned it; this is the same call.
+        if (tool === PLAN_TOOL && !agentId) this.proposed(pane, p.tool_input, null)
         this.add(pane, { kind: 'ask', ...call(), agent })
         break
       case 'PermissionDenied': {
@@ -383,6 +420,7 @@ export class ActivityLog {
         break
       }
       case 'PostToolUse':
+        if (tool === PLAN_TOOL && !agentId) this.approved(pane, p.tool_response, p.tool_input)
         this.touch(pane, tool, p.tool_input, p.tool_response, where)
         if (SPAWN_TOOLS.has(tool)) this.spawned(pane, p, 'done')
         break
@@ -453,22 +491,28 @@ export class ActivityLog {
         pane.fresh = []
         pane.filesDirty = false
         pane.agentsDirty = false
+        pane.plansDirty = false
         this.onUpdate({
           paneId,
           entries: [...pane.entries],
+          plans: planList(pane),
           files: fileList(pane),
           agents: agentList(pane),
           reset: true
         })
         continue
       }
-      if (pane.fresh.length === 0 && !pane.filesDirty && !pane.agentsDirty) continue
+      if (pane.fresh.length === 0 && !pane.filesDirty && !pane.agentsDirty && !pane.plansDirty) {
+        continue
+      }
       const update: ActivityUpdate = { paneId, entries: pane.fresh }
+      if (pane.plansDirty) update.plans = planList(pane)
       if (pane.filesDirty) update.files = fileList(pane)
       if (pane.agentsDirty) update.agents = agentList(pane)
       pane.fresh = []
       pane.filesDirty = false
       pane.agentsDirty = false
+      pane.plansDirty = false
       this.onUpdate(update)
     }
   }
@@ -486,12 +530,15 @@ export class ActivityLog {
         entries: [],
         files: new Map(),
         agents: new Map(),
+        plans: new Map(),
+        planCalls: new Map(),
         spawns: [],
         calls: new Map(),
         cwd: null,
         fresh: [],
         filesDirty: false,
         agentsDirty: false,
+        plansDirty: false,
         reset: false
       }
       this.panes.set(paneId, pane)
@@ -518,7 +565,11 @@ export class ActivityLog {
     this.schedule()
   }
 
-  /** Start the pane's log, files, and subagents over. Its directory still holds. */
+  /**
+   * Start the pane's log, files, and subagents over. Its directory and plans
+   * still hold: a plan is most wanted after clearing the conversation that
+   * made it.
+   */
   private reset(pane: PaneLog): void {
     pane.seq = 0
     pane.entries = []
@@ -537,6 +588,72 @@ export class ActivityLog {
     this.timer ??= setTimeout(() => {
       this.flush()
     }, FLUSH_MS)
+  }
+
+  /**
+   * Claude asked the user to approve a plan. The same call fires PreToolUse
+   * and then PermissionRequest; only a new call starts a new round.
+   */
+  private proposed(pane: PaneLog, input: unknown, toolUseId: string | null): void {
+    const i = isObj(input) ? input : {}
+    const text = str(i.plan)
+    if (!text) return
+    const file = str(i.planFilePath)
+    const key = file ?? ''
+    const prev = pane.plans.get(key)
+    const sameCall =
+      prev?.status === 'proposed' &&
+      (toolUseId === null || (pane.planCalls.get(key) ?? null) === toolUseId)
+    const now = Date.now()
+    if (toolUseId) pane.planCalls.set(key, toolUseId)
+    this.pin(pane, key, {
+      file,
+      ...planText(text),
+      status: 'proposed',
+      proposed: prev?.proposed ?? now,
+      at: sameCall ? prev.at : now,
+      rounds: (prev?.rounds ?? 0) + (sameCall ? 0 : 1)
+    })
+  }
+
+  /**
+   * The user approved a plan. PostToolUse names it in tool_response;
+   * tool_input is empty. The text may differ from what was proposed, since
+   * the user can edit the plan before approving.
+   */
+  private approved(pane: PaneLog, response: unknown, input: unknown): void {
+    const r = isObj(response) ? response : {}
+    const i = isObj(input) ? input : {}
+    const file = str(r.filePath) ?? str(i.planFilePath)
+    const key = file ?? ''
+    const prev = pane.plans.get(key)
+    const text = str(r.plan) ?? str(i.plan)
+    if (!text && !prev) return
+    const now = Date.now()
+    pane.planCalls.delete(key)
+    this.pin(pane, key, {
+      file,
+      ...(text ? planText(text) : { text: prev?.text ?? '', title: prev?.title ?? '' }),
+      status: 'approved',
+      proposed: prev?.proposed ?? now,
+      at: now,
+      rounds: Math.max(1, prev?.rounds ?? 0)
+    })
+  }
+
+  /** Keep a plan, newest last in the map, and drop the oldest past the cap. */
+  private pin(pane: PaneLog, key: string, plan: AgentPlan): void {
+    pane.plans.delete(key)
+    pane.plans.set(key, plan)
+    if (pane.plans.size > ACTIVITY_MAX_PLANS) {
+      const oldest = pane.plans.keys().next().value
+      if (oldest !== undefined) {
+        pane.plans.delete(oldest)
+        pane.planCalls.delete(oldest)
+      }
+    }
+    pane.plansDirty = true
+    this.schedule()
   }
 
   /** A tool call finished; note the file it read or changed. */
@@ -731,6 +848,15 @@ export class ActivityLog {
     }
     if (pane.agentsDirty) this.schedule()
   }
+}
+
+/** A plan's text, cut to what's kept, and its title. */
+function planText(plan: string): { text: string; title: string } {
+  return { text: cut(plan, MAX_PLAN), title: planTitle(plan) }
+}
+
+function planList(pane: PaneLog): AgentPlan[] {
+  return [...pane.plans.values()].reverse().map((p) => ({ ...p }))
 }
 
 function fileList(pane: PaneLog): FileTouch[] {
