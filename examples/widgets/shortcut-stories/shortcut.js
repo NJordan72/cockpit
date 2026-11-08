@@ -129,6 +129,7 @@
       estimate: story.estimate == null ? null : story.estimate,
       blocked: !!story.blocked,
       blocker: !!story.blocker,
+      epicId: story.epic_id == null ? null : story.epic_id,
       deadline: story.deadline || null,
       updatedAt: story.updated_at,
       url: story.app_url
@@ -302,6 +303,7 @@
           failures = 0
           retryAfterMs = 0
           labelSessions(true)
+          markOutsideDone(t)
           // A saved feed tab only exists once its feed has loaded.
           if (
             view !== SEARCH_VIEW &&
@@ -652,6 +654,159 @@
       )
   }
 
+  // ---- runs: Burn down epic ----
+
+  var epicRun = window.shortcutEpicRun
+  // How many stories are read at once when building a run.
+  var EPIC_READS = 4
+
+  function readAll(ids, read) {
+    var out = {}
+    var queue = ids.slice()
+    function worker() {
+      var id = queue.shift()
+      if (id == null) return Promise.resolve()
+      return read(id).then(
+        function (v) {
+          out[id] = v
+          return worker()
+        },
+        function () {
+          return worker()
+        }
+      )
+    }
+    var workers = []
+    for (var i = 0; i < Math.min(EPIC_READS, ids.length); i++) workers.push(worker())
+    return Promise.all(workers).then(function () {
+      return out
+    })
+  }
+
+  function statesFor(t) {
+    if (workflowStates) return Promise.resolve(workflowStates)
+    return api(t, '/api/v3/workflows').then(readStates)
+  }
+
+  function isDoneIn(states) {
+    return function (stateId) {
+      var st = states[stateId]
+      return !!st && st.type === 'done'
+    }
+  }
+
+  // Reads the epic's stories and their links, and submits them to Cockpit as
+  // a run. Cockpit shows the whole run and starts nothing until it's confirmed.
+  function burnDownEpic(epicId) {
+    return getToken(true).then(function (t) {
+      if (!t) return
+      return Promise.all([
+        api(t, '/api/v3/epics/' + epicId),
+        api(t, '/api/v3/epics/' + epicId + '/stories'),
+        statesFor(t)
+      ]).then(function (r) {
+        var epic = r[0]
+        var states = r[2]
+        var isDone = isDoneIn(states)
+        var open = (r[1] || []).filter(function (s) {
+          return !s.archived && !isDone(s.workflow_state_id)
+        })
+        if (open.length === 0) throw new Error('every story in the epic is done')
+        // The full stories, for their branch names and links.
+        return readAll(
+          open.map(function (s) {
+            return s.id
+          }),
+          function (id) {
+            return api(t, '/api/v3/stories/' + id)
+          }
+        ).then(function (full) {
+          var stories = (r[1] || []).map(function (s) {
+            return full[s.id] || s
+          })
+          var inEpic = {}
+          stories.forEach(function (s) {
+            inEpic[s.id] = true
+          })
+          var outsideIds = []
+          stories.forEach(function (s) {
+            ;(s.story_links || []).forEach(function (l) {
+              if (l.verb === 'blocks' && l.object_id === s.id && !inEpic[l.subject_id]) {
+                if (outsideIds.indexOf(l.subject_id) < 0) outsideIds.push(l.subject_id)
+              }
+            })
+          })
+          return readAll(outsideIds, function (id) {
+            return api(t, '/api/v3/stories/' + id)
+          }).then(function (outside) {
+            var graph = epicRun({
+              epic: { id: epic.id, name: epic.name },
+              stories: stories,
+              outside: outside,
+              isDone: isDone,
+              branch: function (s) {
+                return s.formatted_vcs_branch_name || builtBranch(s)
+              },
+              prompt: function (s) {
+                return startPrompt({ id: s.id, name: s.name, url: s.app_url })
+              }
+            })
+            return cockpit.runs.submit(graph)
+          })
+        })
+      })
+    })
+  }
+
+  // External items stand for stories outside the epic. One is done once its
+  // story reaches a done state.
+  function markOutsideDone(t) {
+    if (!cockpit.runs) return
+    cockpit.runs
+      .list()
+      .then(function (runs) {
+        var waiting = []
+        runs.forEach(function (run) {
+          if (run.pending || run.cancelled || run.finished) return
+          run.items.forEach(function (item) {
+            var m = /^sc-(\d+)$/.exec(item.id)
+            if (item.external && item.phase !== 'done' && m) {
+              waiting.push({ run: run.id, item: item.id, story: Number(m[1]) })
+            }
+          })
+        })
+        if (waiting.length === 0) return
+        var ids = waiting
+          .map(function (w) {
+            return w.story
+          })
+          .filter(function (id, i, all) {
+            return all.indexOf(id) === i
+          })
+        return Promise.all([
+          statesFor(t),
+          readAll(ids, function (id) {
+            return api(t, '/api/v3/stories/' + id)
+          })
+        ]).then(function (r) {
+          var isDone = isDoneIn(r[0])
+          return Promise.all(
+            waiting
+              .filter(function (w) {
+                var story = r[1][w.story]
+                return story && isDone(story.workflow_state_id)
+              })
+              .map(function (w) {
+                return cockpit.runs.markDone(w.run, w.item)
+              })
+          )
+        })
+      })
+      .catch(function () {
+        // Tried again at the next sync.
+      })
+  }
+
   function showStoryMenu(s, x, y) {
     closeMenu()
     var prompt = startPrompt(s)
@@ -673,6 +828,23 @@
               .catch(failed)
           },
           'own worktree'
+        )
+      )
+    }
+    // Every story in the epic, each in a task once the stories it waits on are done.
+    if (s.epicId && cockpit.runs && epicRun) {
+      items.push(
+        menuItem(
+          'Burn down epic',
+          function () {
+            burnDownEpic(s.epicId).catch(function (err) {
+              var errEl = $('error')
+              errEl.textContent =
+                'Could not burn down the epic: ' + String((err && err.message) || err)
+              errEl.hidden = false
+            })
+          },
+          'one run'
         )
       )
     }
