@@ -18,6 +18,8 @@ export interface TaskPr {
   review: PrReview
   /** The commit GitHub has at the head of the pull request's branch. */
   head: string
+  /** The branch the pull request merges into. */
+  base: string
 }
 
 export interface TaskInfo {
@@ -47,6 +49,12 @@ export interface NewTask {
   /** A directory in the repository: its main checkout, a worktree, or a folder in one. */
   repo: string
   branch: string
+  /**
+   * The branch a new branch starts from, instead of the remote's default
+   * branch: the remote's copy when it has one, else the local one. A branch
+   * that exists already ignores it.
+   */
+  base?: string
 }
 
 export type NewTaskResult =

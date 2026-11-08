@@ -32,7 +32,8 @@ const merged = {
   draft: false,
   checks: null,
   review: null,
-  head: 'h'
+  head: 'h',
+  base: 'main'
 }
 
 describe('validBranch', () => {
