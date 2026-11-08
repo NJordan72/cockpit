@@ -111,6 +111,11 @@ try {
     step(`packaged app ${info.version} is up`)
   }
 
+  // What main prints, shown when a step fails.
+  const mainOutput = []
+  app.process().stdout?.on('data', (d) => mainOutput.push(String(d)))
+  app.process().stderr?.on('data', (d) => mainOutput.push(String(d)))
+
   const page = await app.firstWindow()
   page.on('console', (msg) => {
     if (msg.type() === 'error') errors.push(`console: ${msg.text()}`)
@@ -175,9 +180,19 @@ try {
   await page.fill('#task-repo', '~/dev/smoke')
   await page.click('.task-dialog [role="radio"]:text-is("Shell")')
   await page.press('#task-branch', 'Enter')
-  await page.waitForFunction(() => (window.__cockpitDebug?.ids().length ?? 0) > 1, null, {
-    timeout: 30_000
-  })
+  try {
+    await page.waitForFunction(() => (window.__cockpitDebug?.ids().length ?? 0) > 1, null, {
+      timeout: 30_000
+    })
+  } catch (err) {
+    // The dialog's error line says why git or main refused the task.
+    const dialog = await page.evaluate(
+      () => document.querySelector('.task-dialog .secret-hint')?.textContent ?? '(dialog closed)'
+    )
+    console.error(`smoke: no task tab opened. The dialog says: ${dialog}`)
+    console.error(`smoke: main printed:\n${mainOutput.join('') || '(nothing)'}`)
+    throw err
+  }
   await waitForScreen('cockpit-setup-42', 'the task')
   step('a task opened and ran its setup')
   if (git('-C', worktree, 'branch', '--show-current').trim() !== TASK_BRANCH) {

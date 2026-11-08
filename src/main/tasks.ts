@@ -16,7 +16,7 @@ import {
   type TaskPr
 } from '@shared/tasks'
 import { shQuote } from './agents/launch'
-import { parseStatus, runGit } from './git'
+import { parseStatus, runGit, type GitRun } from './git'
 import { abbreviateHome, expandHome } from './paths'
 import { gh as runGh, review, rollup } from './prs'
 
@@ -92,6 +92,16 @@ export function withSetup(setup: string, command: string | undefined): string {
   return `/bin/sh -c ${shQuote(script)}`
 }
 
+/**
+ * git with a longer limit than the Activity panel's. /usr/bin/git is an Xcode
+ * shim that can take seconds to start on a cold machine, and a timeout here
+ * would hide a task or fail to make one.
+ */
+const GIT_MS = 15_000
+
+const git = (cwd: string, args: string[], timeoutMs = GIT_MS): Promise<GitRun> =>
+  runGit(cwd, args, { timeoutMs })
+
 const firstLine = (s: string): string => s.trim().split('\n')[0]?.trim() ?? ''
 
 const exists = (p: string): Promise<boolean> =>
@@ -111,12 +121,12 @@ async function readdir(dir: string): Promise<string[]> {
 }
 
 async function refExists(repo: string, ref: string): Promise<boolean> {
-  return (await runGit(repo, ['show-ref', '--verify', '--quiet', ref])).code === 0
+  return (await git(repo, ['show-ref', '--verify', '--quiet', ref])).code === 0
 }
 
 /** `origin`, or else the first remote, or null without any. */
 async function pickRemote(repo: string): Promise<string | null> {
-  const r = await runGit(repo, ['remote'])
+  const r = await git(repo, ['remote'])
   const remotes = r.code === 0 ? r.stdout.split('\n').filter(Boolean) : []
   return remotes.includes('origin') ? 'origin' : (remotes[0] ?? null)
 }
@@ -124,7 +134,7 @@ async function pickRemote(repo: string): Promise<string | null> {
 /** Where a new branch starts: the remote's default branch, or else the main checkout's HEAD (null). */
 async function baseRef(repo: string, remote: string | null): Promise<string | null> {
   if (!remote) return null
-  const head = await runGit(repo, [
+  const head = await git(repo, [
     'symbolic-ref',
     '--quiet',
     '--short',
@@ -145,7 +155,7 @@ async function headInPr(
 ): Promise<boolean> {
   if (!head || !pr?.head) return false
   if (head === pr.head) return true
-  return (await runGit(worktree, ['merge-base', '--is-ancestor', head, pr.head])).code === 0
+  return (await git(worktree, ['merge-base', '--is-ancestor', head, pr.head])).code === 0
 }
 
 type Gh = typeof runGh
@@ -239,13 +249,13 @@ export class TaskStore {
       const fail = (error: string): NewTaskResult => ({ ok: false, error })
       const from = expandHome(req.repo.trim())
       if (!from || !(await exists(from))) return fail(`${req.repo || 'That folder'} doesn't exist`)
-      const list = await runGit(from, ['worktree', 'list', '--porcelain', '-z'])
+      const list = await git(from, ['worktree', 'list', '--porcelain', '-z'])
       const main = list.code === 0 ? parseWorktrees(list.stdout)[0] : undefined
       if (!main) return fail(`${abbreviateHome(from)} isn't in a git repository`)
       if (main.bare) return fail("Tasks can't be made in a bare repository")
 
       const wanted = req.branch.trim()
-      const checked = await runGit(main.path, ['check-ref-format', '--branch', wanted])
+      const checked = await git(main.path, ['check-ref-format', '--branch', wanted])
       const branch = checked.stdout.trim()
       if (!wanted || wanted.startsWith('-') || checked.code !== 0 || branch !== wanted) {
         return fail(`"${wanted}" isn't a branch name git accepts`)
@@ -262,7 +272,7 @@ export class TaskStore {
       }
 
       const remote = await pickRemote(main.path)
-      if (remote) await runGit(main.path, ['fetch', '--quiet', remote], { timeoutMs: FETCH_MS })
+      if (remote) await git(main.path, ['fetch', '--quiet', remote], FETCH_MS)
       const local = await refExists(main.path, `refs/heads/${branch}`)
       const tracked =
         !local && remote && (await refExists(main.path, `refs/remotes/${remote}/${branch}`))
@@ -283,7 +293,7 @@ export class TaskStore {
         const base = await baseRef(main.path, remote)
         args = ['worktree', 'add', '--no-track', '-b', branch, target, ...(base ? [base] : [])]
       }
-      const added = await runGit(main.path, args, { timeoutMs: ADD_MS })
+      const added = await git(main.path, args, ADD_MS)
       if (added.code !== 0) {
         await fs.rmdir(parent).catch(() => undefined)
         return fail(firstLine(added.stderr) || 'git worktree add failed')
@@ -310,15 +320,15 @@ export class TaskStore {
       if (!task || !abs.startsWith(root + path.sep))
         return { ok: false, error: 'That task is gone' }
       const main = expandHome(task.repo)
-      const r = await runGit(
+      const r = await git(
         main,
         ['worktree', 'remove', ...(opts.force ? ['--force'] : []), abs],
-        { timeoutMs: ADD_MS }
+        ADD_MS
       )
       if (r.code !== 0)
         return { ok: false, error: firstLine(r.stderr) || 'git worktree remove failed' }
-      if (opts.deleteBranch && task.branch) await runGit(main, ['branch', '-D', task.branch])
-      await runGit(main, ['worktree', 'prune'])
+      if (opts.deleteBranch && task.branch) await git(main, ['branch', '-D', task.branch])
+      await git(main, ['worktree', 'prune'])
       // The repository's folder, once its last task is gone.
       await fs.rmdir(path.dirname(abs)).catch(() => undefined)
       this.prs.delete(abs)
@@ -374,9 +384,9 @@ export class TaskStore {
     const dotGit = await fs.stat(path.join(dir, '.git')).catch(() => null)
     if (!dotGit?.isFile()) return null
     const [list, status, rev] = await Promise.all([
-      runGit(dir, ['worktree', 'list', '--porcelain', '-z']),
-      runGit(dir, ['status', '--porcelain=v2', '--branch', '-z', '--untracked-files=normal']),
-      runGit(dir, ['rev-parse', '--verify', '--quiet', 'HEAD'])
+      git(dir, ['worktree', 'list', '--porcelain', '-z']),
+      git(dir, ['status', '--porcelain=v2', '--branch', '-z', '--untracked-files=normal']),
+      git(dir, ['rev-parse', '--verify', '--quiet', 'HEAD'])
     ])
     if (list.code !== 0 || status.code !== 0) return null
     const worktrees = parseWorktrees(list.stdout)
@@ -385,7 +395,7 @@ export class TaskStore {
     const head = rev.code === 0 ? rev.stdout.trim() : null
     // Work merged into the main checkout locally isn't lost either.
     const unpushed = head
-      ? await runGit(dir, [
+      ? await git(dir, [
           'rev-list',
           '--count',
           'HEAD',
