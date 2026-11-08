@@ -152,6 +152,23 @@ describe('BranchTracker', () => {
     expect([asked, tracker.get('a')]).toEqual([2, 'dev'])
   })
 
+  it('keeps reading where a pane was last found when the lookup fails', async () => {
+    let dir: string | undefined = '/two'
+    const heads: Record<string, string> = { '/two': 'dev' }
+    const tracker = new BranchTracker(
+      () => Promise.resolve(dir),
+      () => undefined,
+      (d) => Promise.resolve(heads[d] ?? null)
+    )
+    await tracker.refresh(['a'])
+    dir = undefined
+    heads['/two'] = 'dev2'
+    await tracker.refresh(['a'])
+    expect(tracker.get('a')).toBe('dev2')
+    await tracker.refresh(['b'])
+    expect(tracker.get('b')).toBeNull()
+  })
+
   it('treats a failed read as no branch', async () => {
     const tracker = new BranchTracker(
       () => Promise.reject(new Error('lsof failed')),

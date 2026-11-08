@@ -753,21 +753,27 @@
     return membersRead
   }
 
+  // Epics and iterations get renamed now and then, so a name is read again after a while.
+  var NAME_TTL_MS = 30 * 60 * 1000
+
   function nameOf(t, kind, id) {
     if (id == null) return Promise.resolve(null)
     var cache = names[kind]
-    if (!cache[id]) {
-      cache[id] = api(t, '/api/v3/' + kind + '/' + id).then(
+    var hit = cache[id]
+    if (!hit || Date.now() - hit.at > NAME_TTL_MS) {
+      var entry = { at: Date.now(), name: null }
+      entry.name = api(t, '/api/v3/' + kind + '/' + id).then(
         function (x) {
           return x.name || null
         },
         function () {
-          delete cache[id]
+          if (cache[id] === entry) delete cache[id]
           return null
         }
       )
+      cache[id] = entry
     }
-    return cache[id]
+    return cache[id].name
   }
 
   function capitalize(s) {
@@ -789,7 +795,7 @@
     }
     var tags = (story.labels || [])
       .map(function (l) {
-        return l.name
+        return l && l.name
       })
       .filter(Boolean)
     var detail = [capitalize(story.story_type)]
@@ -829,9 +835,15 @@
           if (err.status === 404 || !labelStories[id]) labelStories[id] = { label: null }
         }
       )
-      .then(function () {
-        delete labelReads[id]
-      })
+      // Cleared whether or not the read worked, so a story that failed is read again next time.
+      .then(
+        function () {
+          delete labelReads[id]
+        },
+        function () {
+          delete labelReads[id]
+        }
+      )
     labelReads[id] = read
     return read
   }

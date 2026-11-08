@@ -105,7 +105,7 @@ let widgets: WidgetHost
 let agents: AgentMonitor
 let tasks: TaskStore
 let tasksTimer: NodeJS.Timeout | null = null
-const branches = new BranchTracker(paneCwd, () => sessionsChanged())
+const branches = new BranchTracker(branchDir, () => sessionsChanged())
 let branchesTimer: NodeJS.Timeout | null = null
 let lastSessions = ''
 let warnedNotifications = false
@@ -309,6 +309,20 @@ async function paneCwd(paneId: string): Promise<string | null> {
     cwd = pid === null ? null : await processCwd(pid)
   }
   return cwd ?? expandHome(pane.cwd)
+}
+
+/**
+ * Where to read a pane's branch: like paneCwd, but undefined when lsof
+ * couldn't say, so a slow lsof doesn't swap in the pane's start directory.
+ */
+async function branchDir(paneId: string): Promise<string | null | undefined> {
+  const pane = findPaneNode(paneId)
+  if (!pane) return null
+  const hooked = agents.activity.cwd(pane.id)
+  if (hooked) return hooked
+  const pid = ptys.pid(pane.id)
+  if (pid === null) return expandHome(pane.cwd)
+  return (await processCwd(pid)) ?? undefined
 }
 
 /** How long after a display change window moves are macOS's, not the user's. */

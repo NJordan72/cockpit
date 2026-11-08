@@ -57,8 +57,11 @@ export class BranchTracker {
   private reads = new Map<string, number>()
 
   constructor(
-    /** Where a pane's process is now, or null when the pane is gone. */
-    private readonly cwd: (paneId: string) => Promise<string | null>,
+    /**
+     * Where a pane's process is now: null when the pane is gone, undefined
+     * when that couldn't be found out this time.
+     */
+    private readonly cwd: (paneId: string) => Promise<string | null | undefined>,
     private readonly changed: () => void,
     private readonly read: (dir: string) => Promise<string | null> = readBranch
   ) {}
@@ -94,7 +97,10 @@ export class BranchTracker {
     let branch: string | null = null
     try {
       const known = this.dirs.get(paneId)
-      const dir = sameDir && known !== undefined ? known : await this.cwd(paneId)
+      const found = sameDir && known !== undefined ? known : await this.cwd(paneId)
+      // A lookup that failed reads where the pane was last found rather than guessing.
+      const dir = found === undefined ? known : found
+      if (dir === undefined) return false
       if (this.reads.get(paneId) === n) this.dirs.set(paneId, dir)
       if (dir !== null) branch = await this.read(dir)
     } catch {
