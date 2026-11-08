@@ -51,9 +51,16 @@ afterEach(() => {
 describe('AgentMonitor', () => {
   it('writes the hook script and settings, and launches Claude with them', () => {
     expect(fs.statSync(monitor.files.hook).mode & 0o777).toBe(0o755)
+    expect(fs.statSync(monitor.files.run).mode & 0o777).toBe(0o755)
     expect(monitor.launch('claude').command).toBe(
       `claude --settings ${monitor.files.claudeSettings}`
     )
+  })
+
+  it("puts cockpit-run's folder first on a pane's PATH", () => {
+    const env = monitor.spawn('pane-p', null)
+    expect(env.PATH?.split(':')[0]).toBe(monitor.files.dir)
+    expect(path.dirname(monitor.files.run)).toBe(monitor.files.dir)
   })
 
   it("leaves a finished turn done until it's seen, and idles one the user is watching", async () => {

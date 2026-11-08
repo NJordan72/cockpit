@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import type { RunDraft, RunView } from '@shared/runs'
 import type { NewTask, NewTaskResult, TaskInfo, TaskPr } from '@shared/tasks'
 import type { SessionStatus } from '@shared/widgets'
-import { formatRuns, RunStore, type RunStoreOptions } from './runs'
+import { formatRuns, runRequests, RunStore, type RunStoreOptions } from './runs'
 
 let tmp: string
 let tasks: TaskInfo[]
@@ -340,5 +340,32 @@ describe('formatRuns', () => {
       `${id}  Epic (merge, 0/2 done)\n  a   working  Story a\n  bb  waiting  Story bb (waits on a)\n`
     )
     expect(formatRuns([])).toBe('No runs.\n')
+  })
+})
+
+describe('runRequests', () => {
+  it('submits, lists, and marks done for cockpit-run, saying why a request fails', async () => {
+    const s = store()
+    const answer = runRequests(s)
+    const body = JSON.stringify(graph([item('a')]))
+    expect(await answer({ method: 'POST', path: '/v1/runs', body: '{' })).toEqual({
+      status: 400,
+      text: "cockpit-run: the run isn't JSON\n"
+    })
+    const sub = await answer({ method: 'POST', path: '/v1/runs', body })
+    expect(sub.status).toBe(200)
+    const id = drafts[0]?.id ?? ''
+    expect(sub.text).toBe(`Submitted run ${id}. Confirm it in Cockpit to start it.\n`)
+    expect((await answer({ method: 'GET', path: '/v1/runs', body: '' })).text).toContain(
+      'waiting for you to confirm it'
+    )
+    expect(await answer({ method: 'POST', path: `/v1/runs/${id}/items/a/done`, body: '' })).toEqual(
+      { status: 404, text: 'cockpit-run: No such run\n' }
+    )
+    await s.confirm({ id, mode: 'merge', maxParallel: 1, presetId: 'claude', repo: '~/dev/app' })
+    expect(await answer({ method: 'POST', path: `/v1/runs/${id}/items/a/done`, body: '' })).toEqual(
+      { status: 200, text: 'Marked a done.\n' }
+    )
+    expect((await answer({ method: 'GET', path: '/v1/runs/x', body: '' })).status).toBe(404)
   })
 })

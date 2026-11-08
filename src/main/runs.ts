@@ -36,6 +36,7 @@ import {
 } from '@shared/runs'
 import type { NewTask, NewTaskResult, TaskInfo, TaskPr } from '@shared/tasks'
 import type { SessionStatus } from '@shared/widgets'
+import type { RunRequestHandler } from './agents/server'
 
 export type Result = { ok: true } | { ok: false; error: string }
 
@@ -123,6 +124,11 @@ export class RunStore {
     return [...this.runs.values()]
       .sort((a, b) => b.createdAt - a.createdAt)
       .map((run) => this.view(run))
+  }
+
+  /** Every run, the ones still waiting for the user first. */
+  listAll(): RunView[] {
+    return [...[...this.pending.values()].map((p) => this.pendingView(p)), ...this.list()]
   }
 
   /** The runs a widget submitted, the ones still waiting for the user included. */
@@ -535,6 +541,39 @@ export class RunStore {
         console.warn(`runs: could not read ${name}:`, err)
       }
     }
+  }
+}
+
+const RUN_DONE_PATH = /^\/v1\/runs\/([^/]+)\/items\/([^/]+)\/done$/
+
+/** Answers cockpit-run's requests on the event socket. */
+export function runRequests(store: RunStore): RunRequestHandler {
+  return async ({ method, path: url, body }) => {
+    if (url === '/v1/runs' && method === 'GET') {
+      return { status: 200, text: formatRuns(store.listAll()) }
+    }
+    if (url === '/v1/runs' && method === 'POST') {
+      let graph: unknown
+      try {
+        graph = JSON.parse(body)
+      } catch {
+        return { status: 400, text: "cockpit-run: the run isn't JSON\n" }
+      }
+      const sub = store.submit(graph, { kind: 'script' }, 'cockpit-run')
+      return sub.ok
+        ? { status: 200, text: `Submitted run ${sub.id}. Confirm it in Cockpit to start it.\n` }
+        : { status: 400, text: `cockpit-run: ${sub.error}\n` }
+    }
+    const done = RUN_DONE_PATH.exec(url)
+    if (done && method === 'POST') {
+      const runId = done[1] ?? ''
+      const itemId = done[2] ?? ''
+      const r = await store.act(runId, 'markDone', itemId)
+      return r.ok
+        ? { status: 200, text: `Marked ${itemId} done.\n` }
+        : { status: 404, text: `cockpit-run: ${r.error}\n` }
+    }
+    return { status: 404, text: 'cockpit-run: Cockpit has no such request\n' }
   }
 }
 

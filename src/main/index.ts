@@ -98,7 +98,7 @@ import { buildKidsMenu, buildMenu, menuTemplate } from './menu'
 import { abbreviateHome, claudeHome, cockpitHome, codexHome, expandHome } from './paths'
 import { actOnPr, checkLog, listPrs, readPr, readPrAct } from './prs'
 import { PtyManager } from './pty'
-import { RunStore } from './runs'
+import { runRequests, RunStore } from './runs'
 import { registerSchemes } from './schemes'
 import { SystemMonitor } from './system'
 import { defaultBranch, mainCheckout, TaskStore, withSetup } from './tasks'
@@ -1607,6 +1607,7 @@ async function startup(): Promise<void> {
       void branches.refresh([paneId])
     },
     onActivity: (update) => broadcast(IPC.activityUpdate, update),
+    runRequests: runRequests(runs),
     // No notifications over kids mode; the tab badges have them afterwards.
     windowFocused: () => kidsActive || anyFocused(),
     describe: (paneId) => {
