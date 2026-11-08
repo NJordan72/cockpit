@@ -284,7 +284,10 @@ export interface ItemRecord {
   startedAt?: number
   /** The item whose branch this one's branch started from, in stack mode. */
   stackedOn?: string
-  /** When someone marked the item done. */
+  /**
+   * When Cockpit first saw the item done, or someone marked it done. It
+   * stays done after Clean up merged removes its worktree.
+   */
   doneAt?: number
   /** A pull request that closed without merging before a retry, which no longer counts. */
   ignoredPr?: number
@@ -554,6 +557,8 @@ export function readRun(raw: unknown): Run | null {
 export interface RunView {
   id: string
   title: string
+  /** Submitted, and waiting for the user to confirm it. */
+  pending: boolean
   mode: RunMode
   maxParallel: number
   presetId: string
