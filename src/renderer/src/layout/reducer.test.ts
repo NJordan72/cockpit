@@ -25,6 +25,8 @@ describe('layoutReducer', () => {
     ])
     expect(l.tabs.map((t) => t.activePaneId)).toEqual(['a', 'b', 'c'])
     expect(l.activeTabId).toBe(l.tabs[1]?.id ?? null)
+    const first = run([{ type: 'newTab', pane: pane('a'), background: true }])
+    expect(first.activeTabId).toBe(first.tabs[0]?.id ?? null)
   })
 
   it('splits and focuses the new pane', () => {
