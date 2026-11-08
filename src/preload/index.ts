@@ -6,6 +6,7 @@ import {
   type AppearanceCommand,
   type AppKey,
   type OpenSessionRequest,
+  type PrPaneRequest,
   type CockpitApi,
   type TaskOpenRequest,
   type PaneSession,
@@ -73,6 +74,7 @@ const onPanesClose: Subscribe<[string[]]> = channel(IPC.panesClose)
 const onTasksChanged: Subscribe<[TaskInfo[]]> = channel(IPC.tasksChanged)
 const onTaskOpen: Subscribe<[TaskOpenRequest]> = channel(IPC.tasksOpen)
 const onTaskDraft: Subscribe<[TaskDraft]> = channel(IPC.tasksDraft)
+const onPrPane: Subscribe<[PrPaneRequest]> = channel(IPC.prsPane)
 
 function subscribe<T>(map: Map<string, Set<T>>, id: string, cb: T): () => void {
   let set = map.get(id)
@@ -167,7 +169,12 @@ const api: CockpitApi = {
   },
   prs: {
     list: (paneId) => ipcRenderer.invoke(IPC.prsList, paneId),
-    open: (url) => ipcRenderer.send(IPC.openGitHub, url)
+    open: (url) => ipcRenderer.send(IPC.openGitHub, url),
+    view: (pr) => ipcRenderer.invoke(IPC.prsView, pr),
+    act: (pr, act) => ipcRenderer.invoke(IPC.prsAct, pr, act),
+    log: (pr, jobId) => ipcRenderer.invoke(IPC.prsLog, pr, jobId),
+    openPane: (req) => ipcRenderer.send(IPC.prsPane, req),
+    onOpenPane: onPrPane
   },
   files: {
     existing: (paneId, paths) => ipcRenderer.invoke(IPC.filesExisting, paneId, paths),

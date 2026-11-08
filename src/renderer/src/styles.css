@@ -2712,6 +2712,380 @@ button.icon:hover,
   font-size: 12px;
 }
 
+/* ---- pull request panes ---- */
+
+.pr-pane {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  color: var(--fg);
+  user-select: text;
+  cursor: auto;
+}
+
+.pr-pane:focus {
+  outline: none;
+}
+
+.pr-pane button {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-raised);
+  color: var(--fg);
+  padding: 2px 8px;
+  font: inherit;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.pr-pane button:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+
+.pr-pane button:disabled {
+  opacity: 0.45;
+}
+
+.pr-empty {
+  margin: 0;
+  padding: 16px;
+  color: var(--muted);
+}
+
+.pr-head {
+  flex: none;
+  padding: 8px 12px 6px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-raised);
+}
+
+.pane-slot:not(:only-child) .pr-pane:not(.focused) .pr-head {
+  opacity: 0.72;
+}
+
+.pr-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.pr-title-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.pr-number {
+  color: var(--muted);
+  font-weight: normal;
+}
+
+.pr-state {
+  flex: none;
+  padding: 1px 7px;
+  border-radius: 10px;
+  font-size: 11px;
+  color: var(--bg);
+  background: var(--green);
+}
+
+.pr-state.draft,
+.pr-state.closed {
+  background: var(--muted);
+}
+
+.pr-state.merged {
+  background: var(--accent);
+}
+
+.pr-head-actions,
+.pr-item-actions {
+  flex: none;
+  display: flex;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.pr-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.pr-meta .bad {
+  color: var(--red);
+}
+
+.pr-meta .wait {
+  color: var(--yellow);
+}
+
+.pr-meta .good {
+  color: var(--green);
+}
+
+.pr-tabs {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.pr-tabs-end {
+  margin-left: auto;
+}
+
+.pr-status {
+  flex: none;
+  padding: 4px 12px;
+  border-bottom: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.pr-status.error {
+  color: var(--danger);
+}
+
+.pr-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 8px 12px 16px;
+}
+
+.pr-description {
+  padding: 4px 4px 12px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 8px;
+}
+
+.pr-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.pr-thread {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-bottom: 8px;
+  background: var(--bg);
+}
+
+.pr-thread.resolved {
+  opacity: 0.75;
+}
+
+.pr-item-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 4px 8px;
+  background: var(--bg-raised);
+  border-radius: var(--radius) var(--radius) 0 0;
+}
+
+.pr-item-head input {
+  flex: none;
+  margin: 0;
+}
+
+.pr-pane .pr-place {
+  flex: none;
+  border: none;
+  background: none;
+  padding: 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.pr-pane .pr-place:hover:not(:disabled) {
+  background: none;
+  color: var(--accent);
+}
+
+.pr-item-kind {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.pr-peek {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.pr-tag {
+  flex: none;
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.pr-pane .pr-small {
+  padding: 1px 6px;
+  font-size: 11px;
+}
+
+.pr-item-body {
+  padding: 6px 10px 8px;
+}
+
+.pr-hunk {
+  margin: 0 0 8px;
+  padding: 4px 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-raised);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-x: auto;
+}
+
+.pr-hunk div {
+  padding: 0 8px;
+  white-space: pre;
+}
+
+.pr-hunk .add {
+  background: color-mix(in srgb, var(--green) 14%, transparent);
+}
+
+.pr-hunk .del {
+  background: color-mix(in srgb, var(--red) 14%, transparent);
+}
+
+.pr-note + .pr-note {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.pr-note-head {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin-bottom: 2px;
+  font-size: 12px;
+}
+
+.pr-author {
+  font-weight: 600;
+}
+
+.pr-verdict,
+.pr-when {
+  color: var(--muted);
+}
+
+.pr-note .md {
+  font-size: 13px;
+}
+
+.pr-pane .pr-reply {
+  margin-top: 8px;
+}
+
+.pr-compose {
+  margin-top: 8px;
+}
+
+.pr-compose textarea {
+  box-sizing: border-box;
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--fg);
+  padding: 6px 8px;
+  font: inherit;
+  font-size: 13px;
+  resize: vertical;
+}
+
+.pr-compose textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.pr-compose-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.pr-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 4px;
+  border-bottom: 1px solid var(--border);
+}
+
+.pr-check-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pr-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+
+.pr-dot.passing {
+  background: var(--green);
+}
+
+.pr-dot.failing {
+  background: var(--red);
+}
+
+.pr-dot.pending {
+  background: var(--yellow);
+}
+
+.pr-send {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-raised);
+  font-size: 12px;
+}
+
+.pr-pane .pr-primary {
+  border-color: color-mix(in srgb, var(--accent) 70%, transparent);
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
 /* ---- kids mode ---- */
 
 /* Over the workspace, above its terminals and any dialog. The rest of the
