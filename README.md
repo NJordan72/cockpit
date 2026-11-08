@@ -433,8 +433,8 @@ cockpit-run list                 # each run and its items' states
 cockpit-run done <run> <item>    # mark an item done
 ```
 
-A run is JSON. Each item becomes one task and lists the items it waits on in
-`after`:
+A run is JSON. Each item becomes a task of its own, and an item's `after`
+lists the ids of the items it waits on:
 
 ```jsonc
 {
@@ -512,11 +512,12 @@ alone, **Cancel**, which ends the run and leaves its tasks in place, and
 **Remove** once it's finished or cancelled.
 
 Cockpit saves each run to `~/.cockpit/runs/<id>.json`, so a run survives a
-restart. Agents don't, since panes start fresh. An item whose agent was
-working shows **No agent running**, and clicking it opens one in its
-worktree. While a run has items working or in review, Cockpit keeps reading
-their pull requests with no window on screen, so a run left going overnight
-still sees its merges. Nothing starts while kids mode is on.
+restart. Agents don't, because each pane starts a new process when Cockpit
+relaunches. An item whose agent was working shows **No agent running**, and
+clicking it opens one in its worktree. While a run has items working or in
+review, Cockpit keeps reading their pull requests with no window on screen, so
+a run left going overnight still sees its merges. Nothing starts while kids
+mode is on.
 
 Cockpit doesn't rebase a stack. When the pull request under a stacked item
 merges, the item's row says its branch needs a rebase, which is yours to do
