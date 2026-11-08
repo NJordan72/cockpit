@@ -230,6 +230,33 @@ try {
   }
   step('removing it closed its terminal and deleted the worktree, keeping the branch')
 
+  // A pull request pane, opened through main the way a window of panels asks
+  // for one. The scratch HOME may have no gh login, so the pane shows the
+  // pull request or gh's error; either means it read gh's answer.
+  await page.evaluate(() =>
+    window.cockpit.prs.openPane({
+      pr: { repo: 'NJordan72/cockpit', number: 25 },
+      cwd: '~/dev/smoke',
+      where: 'tab'
+    })
+  )
+  await page.waitForFunction(
+    () => {
+      const pane = document.querySelector('.pr-pane')
+      if (!pane) return false
+      return pane.querySelector('.pr-head') !== null || !pane.textContent?.startsWith('Reading')
+    },
+    null,
+    { timeout: 30_000 }
+  )
+  const prShown = await page.evaluate(
+    () =>
+      document.querySelector('.pr-title-text')?.textContent ??
+      document.querySelector('.pr-pane .pr-empty')?.textContent ??
+      ''
+  )
+  step(`a pull request pane opened and showed: ${prShown.slice(0, 120)}`)
+
   // xterm's WebGL renderer sets canvas fonts with a leading space. If the
   // canvas ignores them, terminal text draws in 10px sans-serif.
   const font = await page.evaluate(() => {
