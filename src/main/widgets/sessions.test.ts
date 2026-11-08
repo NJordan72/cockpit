@@ -2,7 +2,7 @@ import { describe, expect, it } from 'bun:test'
 import type { Layout } from '@shared/config'
 import { DEFAULT_PRESETS } from '@shared/config'
 import type { PaneStatus } from '../agents/tracker'
-import { listSessions, widgetSession } from './sessions'
+import { listSessions, widgetSession, type PaneLookup } from './sessions'
 
 const layout: Layout = {
   tabs: [
@@ -34,9 +34,14 @@ const waiting: PaneStatus = {
   doneMessage: null
 }
 
+const lookup: PaneLookup = {
+  status: (id) => (id === 'pane-a' ? waiting : null),
+  branch: (id) => (id === 'pane-a' ? 'nick/sc-1234/fix-login' : null)
+}
+
 describe('listSessions', () => {
   it('fills in each pane from its status, and marks panes without a process exited', () => {
-    const list = listSessions(layout, DEFAULT_PRESETS, (id) => (id === 'pane-a' ? waiting : null))
+    const list = listSessions(layout, DEFAULT_PRESETS, lookup)
     expect(list).toEqual([
       {
         id: 'pane-a',
@@ -44,6 +49,7 @@ describe('listSessions', () => {
         presetId: 'claude',
         name: 'Claude Code',
         cwd: '~/dev/x',
+        branch: 'nick/sc-1234/fix-login',
         status: 'needs-input',
         since: 5,
         agent: 'claude',
@@ -58,6 +64,7 @@ describe('listSessions', () => {
         presetId: 'shell',
         name: 'Shell',
         cwd: '~',
+        branch: null,
         status: 'exited',
         since: 0,
         agent: null,
@@ -70,10 +77,11 @@ describe('listSessions', () => {
   })
 
   it('keeps what an agent is waiting for away from widgets', () => {
-    const [first] = listSessions(layout, DEFAULT_PRESETS, () => waiting)
+    const [first] = listSessions(layout, DEFAULT_PRESETS, lookup)
     if (!first) throw new Error('no session')
     const shared = widgetSession(first)
     expect('message' in shared).toBe(false)
     expect(shared.status).toBe('needs-input')
+    expect(shared.branch).toBe('nick/sc-1234/fix-login')
   })
 })

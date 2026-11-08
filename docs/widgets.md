@@ -271,7 +271,8 @@ await cockpit.sessions.startTask('/start-story sc-1234', 'nick/sc-1234/fix-the-l
   tabId: 'tab-609af0a0',
   presetId: 'claude',
   name: 'Claude Code',    // preset name
-  cwd: '~/dev/cockpit',
+  cwd: '~/dev/cockpit',   // where the pane started
+  branch: 'nick/sc-1234/fix-the-login', // checked out where the pane is now, or null
   status: 'needs-input',
   since: 1760703361000,   // when status last changed (ms since the epoch)
   agent: 'claude',        // 'claude', 'codex', or null for anything else
@@ -294,6 +295,13 @@ five statuses apply to them. Any other program only gets `idle`, `working`,
 and `exited`, from how recently it printed. What an agent is waiting for
 isn't shared with widgets, since it can quote the command it wants to run. See "Agent awareness" in the
 README for how each agent is followed.
+
+`branch` follows the pane: agents switch branches and directories, so Cockpit
+reads it again when a session's status changes and every few seconds while a
+window is on screen, and `subscribe` hears about the change. It's read from
+the repository's `HEAD` in the directory Claude Code last reported, or else
+the one the pane's process is in, or else where the pane started. During a
+rebase it's the branch being rebased.
 
 ### cockpit.theme
 

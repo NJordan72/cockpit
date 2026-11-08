@@ -62,6 +62,7 @@ import { resolveTheme, type ResolvedTheme } from '@shared/theme'
 import { canOpenExternally, isWebUrl, WEB_PARTITION } from '@shared/web'
 import { AgentMonitor } from './agents/monitor'
 import { serveAssets } from './assets'
+import { BranchTracker } from './branches'
 import { ConfigStore } from './config'
 import { listDirs, processCwd, processCwdSync, resolveCwd } from './dirs'
 import { arrange, findDisplay, fitInto, mostlyOn, type DisplayInfo, type Rect } from './displays'
@@ -104,6 +105,8 @@ let widgets: WidgetHost
 let agents: AgentMonitor
 let tasks: TaskStore
 let tasksTimer: NodeJS.Timeout | null = null
+const branches = new BranchTracker(paneCwd, () => sessionsChanged())
+let branchesTimer: NodeJS.Timeout | null = null
 let lastSessions = ''
 let warnedNotifications = false
 /**
@@ -216,7 +219,22 @@ function anyFocused(): boolean {
 const NO_LAYOUT: Layout = { tabs: [], activeTabId: null }
 
 function sessions(): PaneSession[] {
-  return listSessions(allTabs(), config.get().presets, (id) => agents.status(id), focusedPaneId())
+  return listSessions(
+    allTabs(),
+    config.get().presets,
+    { status: (id) => agents.status(id), branch: (id) => branches.get(id) },
+    focusedPaneId()
+  )
+}
+
+/** How often every pane's branch is read again while a window is on screen. */
+const BRANCHES_POLL_MS = 5000
+
+/** Agents switch branches and directories mid-session, so branches are read again often. */
+function refreshBranches(): void {
+  const ids = sessions().map((s) => s.id)
+  branches.retain(new Set(ids))
+  void branches.refresh(ids)
 }
 
 /** Push the session list to the chrome and to widgets that read it, if it changed. */
@@ -911,6 +929,7 @@ function registerIpc(): void {
     const display = abbreviateHome(cwd)
     if (display !== '~') config.addRecentDir(display, preset.id)
     sessionsChanged()
+    void branches.refresh([opts.id])
     return { pid, cwd: display }
   })
   // Kids mode covers the panes. If a key gets past it anyway, it stops here.
@@ -1332,10 +1351,16 @@ async function startup(): Promise<void> {
   tasksTimer = setInterval(() => {
     if (anyVisible()) void tasks.refresh()
   }, TASKS_POLL_MS)
+  branchesTimer = setInterval(() => {
+    if (anyVisible()) refreshBranches()
+  }, BRANCHES_POLL_MS)
 
   agents = new AgentMonitor({
     home: cockpitHome(),
-    onChange: sessionsChanged,
+    onChange: (paneId) => {
+      sessionsChanged()
+      void branches.refresh([paneId])
+    },
     onActivity: (update) => broadcast(IPC.activityUpdate, update),
     // No notifications over kids mode; the tab badges have them afterwards.
     windowFocused: () => kidsActive || anyFocused(),
@@ -1421,6 +1446,7 @@ app.on('before-quit', prepareToQuit)
 
 app.on('will-quit', () => {
   if (tasksTimer) clearInterval(tasksTimer)
+  if (branchesTimer) clearInterval(branchesTimer)
   // A startup that failed partway leaves some of these unset.
   const parts = [config, themes, images, system, widgets, agents, updates] as (
     { close: () => void } | undefined

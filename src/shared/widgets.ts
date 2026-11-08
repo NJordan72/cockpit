@@ -102,6 +102,11 @@ export interface SessionInfo {
   name: string
   /** Working directory with ~ for home. */
   cwd: string
+  /**
+   * The branch checked out where the pane's process is now, or null outside
+   * a repository or on a detached HEAD.
+   */
+  branch: string | null
   status: SessionStatus
   /** When status last changed (ms since the epoch). */
   since: number
