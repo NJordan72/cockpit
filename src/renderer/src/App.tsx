@@ -152,6 +152,10 @@ export function App(): React.JSX.Element {
     () => new Map<string, SessionStatus>(sessions.map((s) => [s.id, s.status])),
     [sessions]
   )
+  const labels = useMemo(
+    () => new Map(sessions.filter((s) => s.labels.length > 0).map((s) => [s.id, s.labels])),
+    [sessions]
+  )
 
   const appearance = config?.appearance ?? null
   // A widget runs in one window only; main says which ones are this window's.
@@ -1218,6 +1222,7 @@ export function App(): React.JSX.Element {
                       presets={config.presets}
                       settings={config.terminal}
                       theme={terminalTheme}
+                      labels={labels}
                       dispatch={dispatch}
                     />
                   </PrPaneContext.Provider>

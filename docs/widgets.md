@@ -95,10 +95,11 @@ separate values.
 **`storage`**: `true` to use `cockpit.storage`.
 
 **`sessions`**: `"read"` to use `cockpit.sessions.list` and `subscribe`.
-`"prompt"` allows those too, plus `cockpit.sessions.start` and `send`, which
-type into Claude Code or Codex, and `startTask`, which fills in the New task
-dialog. An agent can run commands, so give `"prompt"`
-only to widgets you trust as much as the terminal.
+`"label"` allows those too, plus `cockpit.sessions.label`, which shows a line
+of text at the top of a pane. `"prompt"` allows all of that, plus
+`cockpit.sessions.start` and `send`, which type into Claude Code or Codex, and
+`startTask`, which fills in the New task dialog. An agent can run commands,
+so give `"prompt"` only to widgets you trust as much as the terminal.
 
 ## What the sandbox allows
 
@@ -165,7 +166,7 @@ try {
 | `network_error`     | The HTTP request failed (DNS, refused connection, too many redirects). |
 | `too_large`         | A response over 10 MB, or storage over 5 MB.                           |
 | `unavailable`       | Secret storage can't reach the Keychain.                               |
-| `not_found`         | The widget is no longer loaded.                                        |
+| `not_found`         | The widget is no longer loaded, or the session is gone.                |
 | `internal`          | Anything else.                                                         |
 
 ### cockpit.ready and cockpit.widget
@@ -245,6 +246,37 @@ Opens the URL in the default browser if it matches a pattern in
 `list()` resolves with one entry per terminal pane, in tab order;
 `subscribe(cb)` calls `cb` with the full list whenever it changes.
 
+With `"sessions": "label"` (or `"prompt"`):
+
+- `label(id, label)` shows `label` in a strip at the top of the pane `id`,
+  replacing the one this widget put there before, and `label(id, null)`
+  removes it. Each widget has its own line in the strip. Cockpit draws
+  everything as plain text, and the terminal gives up a row or so to make
+  room.
+
+  ```js
+  await cockpit.sessions.label(session.id, {
+    key: 'SC-1234', // at most 24 characters
+    title: 'Fix the login redirect', // at most 200
+    facts: ['3 pts', 'In Development', 'Nick Jordan'], // at most 6, of 40 characters each
+    detail: 'Bug\nEpic: Login\nIteration: Sprint 42', // the tooltip, at most 1,000
+    url: 'https://app.shortcut.com/acme/story/1234' // opened on click
+  })
+  ```
+
+  `key` and `title` are required; `key` can't be empty. Text longer than its
+  limit is cut short with an ellipsis, and line breaks in the one-line parts
+  become spaces. More than six facts, a `url` over 2,000 characters, or a part
+  of the wrong type rejects with `invalid_argument`, and a session that
+  doesn't exist with `not_found`.
+  `url` must match `permissions.openExternal`, or the call rejects with
+  `permission_denied`; Cockpit checks it again when the strip is clicked.
+
+  Labels live in memory. A widget's labels go when its page loads again
+  (a reload, a change to its files, or a move to another window) or it's
+  removed, and a pane's labels go when it closes. A widget that's collapsed or
+  hidden keeps running, and its labels stay up.
+
 With `"sessions": "prompt"`:
 
 - `start(prompt)` opens a new agent tab in the focused pane's directory that
@@ -271,7 +303,8 @@ await cockpit.sessions.startTask('/start-story sc-1234', 'nick/sc-1234/fix-the-l
   tabId: 'tab-609af0a0',
   presetId: 'claude',
   name: 'Claude Code',    // preset name
-  cwd: '~/dev/cockpit',
+  cwd: '~/dev/cockpit',   // where the pane started
+  branch: 'nick/sc-1234/fix-the-login', // checked out where the pane is now, or null
   status: 'needs-input',
   since: 1760703361000,   // when status last changed (ms since the epoch)
   agent: 'claude',        // 'claude', 'codex', or null for anything else
@@ -294,6 +327,13 @@ five statuses apply to them. Any other program only gets `idle`, `working`,
 and `exited`, from how recently it printed. What an agent is waiting for
 isn't shared with widgets, since it can quote the command it wants to run. See "Agent awareness" in the
 README for how each agent is followed.
+
+`branch` follows the pane: agents switch branches and directories, so Cockpit
+reads it again when a session's status changes and every few seconds while a
+window is on screen, and `subscribe` hears about the change. It's read from
+the repository's `HEAD` in the directory Claude Code last reported, or else
+the one the pane's process is in, or else where the pane started. During a
+rebase it's the branch being rebased.
 
 ### cockpit.theme
 
@@ -326,7 +366,8 @@ See [themes.md](themes.md).
 `cockpit.visibility.visible` is `false` while the widget is collapsed, in a
 background tab, or hidden with the other panels (Cmd+B), and while the
 window is minimized. `subscribe(cb)` calls `cb({ visible })` when it changes.
-Use it to stop polling while nobody can see the widget.
+Use it to stop polling while nobody can see the widget. A hidden widget
+isn't unloaded: it keeps running and still gets events.
 
 ## A minimal widget
 

@@ -301,6 +301,7 @@
           sync = result
           failures = 0
           retryAfterMs = 0
+          labelSessions(true)
           // A saved feed tab only exists once its feed has loaded.
           if (
             view !== SEARCH_VIEW &&
@@ -575,13 +576,16 @@
 
   // ---- right-click: start a story in an agent session ----
 
-  // Panes running Claude Code or Codex, from cockpit.sessions.
+  // Every pane, and the ones running Claude Code or Codex, from cockpit.sessions.
+  var allSessions = []
   var agentSessions = []
 
   function setSessions(list) {
-    agentSessions = (list || []).filter(function (x) {
+    allSessions = list || []
+    agentSessions = allSessions.filter(function (x) {
       return x.agent && x.status !== 'exited'
     })
+    labelSessions(false)
   }
 
   var menuEl = null
@@ -708,6 +712,191 @@
     closeWheel()
   })
   window.addEventListener('blur', closeMenu)
+
+  // ---- labels: the story a pane's branch names, in a strip above the pane ----
+
+  var storyId = window.shortcutStoryId
+  // False on a Cockpit without labels, or once it refuses them.
+  var canLabel = typeof cockpit.sessions.label === 'function'
+  // Story id -> { label } once read; label is null for a story that isn't there.
+  var labelStories = {}
+  // Story id -> the read under way.
+  var labelReads = {}
+  // Session id -> the label last sent for it, as JSON.
+  var sentLabels = {}
+  // Member id -> name. Read once; a failed read is tried again next time.
+  var members = null
+  var membersRead = null
+  // Epic and iteration names by id, each read once.
+  var names = { epics: {}, iterations: {} }
+
+  function noop() {}
+
+  function loadMembers(t) {
+    if (members) return Promise.resolve(members)
+    if (!membersRead) {
+      membersRead = api(t, '/api/v3/members').then(
+        function (list) {
+          members = {}
+          list.forEach(function (m) {
+            var p = m.profile || {}
+            members[m.id] = p.name || p.mention_name || ''
+          })
+          return members
+        },
+        function () {
+          membersRead = null
+          return {}
+        }
+      )
+    }
+    return membersRead
+  }
+
+  // Epics and iterations get renamed now and then, so a name is read again after a while.
+  var NAME_TTL_MS = 30 * 60 * 1000
+
+  function nameOf(t, kind, id) {
+    if (id == null) return Promise.resolve(null)
+    var cache = names[kind]
+    var hit = cache[id]
+    if (!hit || Date.now() - hit.at > NAME_TTL_MS) {
+      var entry = { at: Date.now(), name: null }
+      entry.name = api(t, '/api/v3/' + kind + '/' + id).then(
+        function (x) {
+          return x.name || null
+        },
+        function () {
+          if (cache[id] === entry) delete cache[id]
+          return null
+        }
+      )
+      cache[id] = entry
+    }
+    return cache[id].name
+  }
+
+  function capitalize(s) {
+    return s ? s.charAt(0).toUpperCase() + s.slice(1) : ''
+  }
+
+  function storyLabel(story, states, people, epic, iteration) {
+    var state = states && states[story.workflow_state_id]
+    var owners = (story.owner_ids || [])
+      .map(function (id) {
+        return people[id]
+      })
+      .filter(Boolean)
+    var facts = []
+    if (story.estimate != null) facts.push(story.estimate + (story.estimate === 1 ? ' pt' : ' pts'))
+    if (state) facts.push(state.name)
+    if (owners.length) {
+      facts.push(owners.length > 2 ? owners[0] + ' +' + (owners.length - 1) : owners.join(', '))
+    }
+    var tags = (story.labels || [])
+      .map(function (l) {
+        return l && l.name
+      })
+      .filter(Boolean)
+    var detail = [capitalize(story.story_type)]
+    if (epic) detail.push('Epic: ' + epic)
+    if (iteration) detail.push('Iteration: ' + iteration)
+    if (tags.length) detail.push('Labels: ' + tags.join(', '))
+    if (story.deadline) detail.push('Due ' + new Date(story.deadline).toLocaleDateString())
+    if (story.blocked) detail.push('Blocked')
+    if (story.blocker) detail.push('Blocking another story')
+    return {
+      key: 'SC-' + story.id,
+      title: story.name || 'untitled',
+      facts: facts,
+      detail: detail.filter(Boolean).join('\n'),
+      url: story.app_url || null
+    }
+  }
+
+  function readLabel(t, id) {
+    if (labelReads[id]) return labelReads[id]
+    var read = api(t, '/api/v3/stories/' + id)
+      .then(
+        function (story) {
+          return Promise.all([
+            loadStates(t).catch(function () {
+              return null
+            }),
+            loadMembers(t),
+            nameOf(t, 'epics', story.epic_id),
+            nameOf(t, 'iterations', story.iteration_id)
+          ]).then(function (r) {
+            labelStories[id] = { label: storyLabel(story, r[0], r[1], r[2], r[3]) }
+          })
+        },
+        function (err) {
+          // A story that's gone loses its label; after any other failure the last one stays.
+          if (err.status === 404 || !labelStories[id]) labelStories[id] = { label: null }
+        }
+      )
+      // Cleared whether or not the read worked, so a story that failed is read again next time.
+      .then(
+        function () {
+          delete labelReads[id]
+        },
+        function () {
+          delete labelReads[id]
+        }
+      )
+    labelReads[id] = read
+    return read
+  }
+
+  // Sends each session the label its branch calls for, when that's changed.
+  function sendLabels() {
+    if (!canLabel) return
+    var present = {}
+    allSessions.forEach(function (s) {
+      present[s.id] = true
+      var id = storyId(s.branch)
+      var entry = id ? labelStories[id] : null
+      var label = (entry && entry.label) || null
+      var json = JSON.stringify(label)
+      if ((sentLabels[s.id] || 'null') === json) return
+      sentLabels[s.id] = json
+      cockpit.sessions.label(s.id, label).catch(function (err) {
+        if (err.code === 'permission_denied') canLabel = false
+        // The pane closed meanwhile.
+        if (err.code !== 'not_found') console.warn('[shortcut-stories] label failed', err)
+      })
+    })
+    // A pane that comes back (its window reloaded) is labeled again.
+    Object.keys(sentLabels).forEach(function (id) {
+      if (!present[id]) delete sentLabels[id]
+    })
+  }
+
+  // Labels the sessions, reading the stories their branches name that haven't
+  // been read yet, or all of them with `refresh`.
+  function labelSessions(refresh) {
+    if (!canLabel) return
+    var ids = {}
+    allSessions.forEach(function (s) {
+      var id = storyId(s.branch)
+      if (id) ids[id] = true
+    })
+    sendLabels()
+    var todo = Object.keys(ids).filter(function (id) {
+      return refresh || !labelStories[id]
+    })
+    if (!todo.length || needToken || authFailed) return
+    getToken(false)
+      .then(function (t) {
+        if (!t) return
+        return Promise.all(
+          todo.map(function (id) {
+            return readLabel(t, id)
+          })
+        ).then(sendLabels)
+      })
+      .catch(noop)
+  }
 
   // ---- the wheel: spin for a random story and start it ----
 

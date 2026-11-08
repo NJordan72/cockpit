@@ -35,6 +35,7 @@ const session = (id: string, cwd: string, extra: Partial<PaneSession> = {}): Pan
   presetId: 'claude',
   name: 'Claude Code',
   cwd,
+  branch: null,
   status: 'idle',
   since: 0,
   agent: 'claude',
@@ -42,6 +43,7 @@ const session = (id: string, cwd: string, extra: Partial<PaneSession> = {}): Pan
   tokens: null,
   focused: false,
   message: null,
+  labels: [],
   ...extra
 })
 

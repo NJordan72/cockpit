@@ -1,7 +1,8 @@
 // Launches the built app, opens a shell from the start screen, and checks that
 // a command's output reaches the terminal. Then makes a task in a scratch git
-// repository, checks its worktree and setup, and removes it. Exits non-zero
-// on a timeout or on any renderer error. Run `bun run build` first.
+// repository, checks its worktree, its setup, and the label a widget puts on
+// its pane, and removes it. Exits non-zero on a timeout or on any renderer
+// error. Run `bun run build` first.
 //
 //   node scripts/smoke.mjs                              # out/, through electron
 //   node scripts/smoke.mjs dist/mac-arm64/Cockpit.app   # a packaged app
@@ -55,6 +56,37 @@ fs.writeFileSync(
   })
 )
 const TASK_BRANCH = 'smoke/task'
+
+// A widget that labels every pane on a branch with the branch's name.
+const labeler = path.join(home, '.cockpit', 'widgets', 'smoke-labels')
+fs.mkdirSync(labeler, { recursive: true })
+fs.writeFileSync(
+  path.join(labeler, 'widget.json'),
+  JSON.stringify({
+    id: 'smoke-labels',
+    name: 'Smoke labels',
+    permissions: { sessions: 'label', openExternal: ['https://example.com/*'] }
+  })
+)
+fs.writeFileSync(
+  path.join(labeler, 'index.html'),
+  `<!doctype html>
+<script>
+  const label = (list) => {
+    for (const s of list) {
+      if (!s.branch) continue
+      const l = { key: 'SMOKE', title: s.branch, facts: ['42'], url: 'https://example.com/' }
+      cockpit.sessions.label(s.id, l).catch((err) => {
+        // A pane that closed meanwhile.
+        if (err.code !== 'not_found') console.error('label failed: ' + err.message)
+      })
+    }
+  }
+  cockpit.sessions.subscribe(label)
+  cockpit.sessions.list().then(label)
+</script>
+`
+)
 const worktree = path.join(home, '.cockpit', 'worktrees', 'smoke', 'smoke-task')
 
 // The shell computes this, so it only appears once the command has run: the
@@ -211,6 +243,41 @@ try {
     { timeout: 10_000 }
   )
   step('its shell is in the worktree, with .env copied, and Sessions names the branch')
+
+  // Main reads the branch from the worktree's HEAD, and the widget's label
+  // shows in a strip above the pane, with the terminal refit under it.
+  await page.waitForFunction(
+    (b) => window.__cockpitSessions?.().some((s) => s.branch === b) ?? false,
+    TASK_BRANCH,
+    { timeout: 15_000 }
+  )
+  try {
+    await page.waitForFunction(
+      (b) =>
+        [...document.querySelectorAll('.label-strip')].some((strip) => {
+          const text = strip.textContent ?? ''
+          const host = strip.parentElement?.querySelector('.terminal-host')
+          const screen = host?.querySelector('.xterm-screen')
+          return (
+            text.includes('SMOKE') &&
+            text.includes(b) &&
+            !!screen &&
+            screen.getBoundingClientRect().bottom <= host.getBoundingClientRect().bottom + 1
+          )
+        }),
+      TASK_BRANCH,
+      { timeout: 15_000 }
+    )
+  } catch (err) {
+    const strips = await page.evaluate(() =>
+      [...document.querySelectorAll('.label-strip')].map((el) => el.textContent)
+    )
+    console.error(
+      `smoke: no label strip for ${TASK_BRANCH} that fits. Strips: ${JSON.stringify(strips)}`
+    )
+    throw err
+  }
+  step('main read the task branch, and a widget labeled its pane above the terminal')
 
   // Removing it asks first (the branch is kept, a terminal closes); say yes.
   await app.evaluate(({ dialog }) => {

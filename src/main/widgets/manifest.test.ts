@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { parseManifest } from './manifest'
+import { parseManifest, sessionsAllow } from './manifest'
 
 const base = {
   id: 'shortcut-stories',
@@ -40,6 +40,28 @@ describe('parseManifest', () => {
     })
   })
 
+  it('reads each sessions level, and false as none', () => {
+    const level = (sessions: unknown): unknown =>
+      parseManifest({ id: 'x', name: 'X', permissions: { sessions } }, 'x').manifest.permissions
+        .sessions
+    expect([level('read'), level('label'), level('prompt'), level(false)]).toEqual([
+      'read',
+      'label',
+      'prompt',
+      null
+    ])
+  })
+
+  it('lets each sessions level do what the ones below it do', () => {
+    expect(sessionsAllow('read', 'read')).toBe(true)
+    expect(sessionsAllow('read', 'label')).toBe(false)
+    expect(sessionsAllow('label', 'read')).toBe(true)
+    expect(sessionsAllow('label', 'label')).toBe(true)
+    expect(sessionsAllow('label', 'prompt')).toBe(false)
+    expect(sessionsAllow('prompt', 'label')).toBe(true)
+    expect(sessionsAllow(null, 'read')).toBe(false)
+  })
+
   it('requires the id to match the folder', () => {
     expect(() => parseManifest(base, 'other')).toThrow('folder is named "other"')
   })
@@ -61,7 +83,8 @@ describe('parseManifest', () => {
     [{ permissions: { openExternal: ['https://example.com'] } }, 'permissions.openExternal[0]'],
     [{ permissions: { secrets: ['../x'] } }, 'permissions.secrets[0]'],
     [{ permissions: { storage: 'yes' } }, 'permissions.storage'],
-    [{ permissions: { sessions: 'write' } }, 'permissions.sessions']
+    [{ permissions: { sessions: 'write' } }, 'permissions.sessions'],
+    [{ permissions: { sessions: true } }, 'permissions.sessions']
   ])('rejects %j', (patch, message) => {
     expect(() =>
       parseManifest({ ...base, ...patch }, (patch as { id?: string }).id ?? base.id)

@@ -72,6 +72,7 @@ import { resolveTheme, type ResolvedTheme } from '@shared/theme'
 import { canOpenExternally, isWebUrl, WEB_PARTITION } from '@shared/web'
 import { AgentMonitor } from './agents/monitor'
 import { serveAssets } from './assets'
+import { BranchTracker } from './branches'
 import { ConfigStore } from './config'
 import { listDirs, processCwd, processCwdSync, resolveCwd } from './dirs'
 import { arrange, findDisplay, fitInto, mostlyOn, type DisplayInfo, type Rect } from './displays'
@@ -114,6 +115,8 @@ let widgets: WidgetHost
 let agents: AgentMonitor
 let tasks: TaskStore
 let tasksTimer: NodeJS.Timeout | null = null
+const branches = new BranchTracker(branchDir, () => sessionsChanged())
+let branchesTimer: NodeJS.Timeout | null = null
 let lastSessions = ''
 let warnedNotifications = false
 /**
@@ -226,7 +229,30 @@ function anyFocused(): boolean {
 const NO_LAYOUT: Layout = { tabs: [], activeTabId: null }
 
 function sessions(): PaneSession[] {
-  return listSessions(allTabs(), config.get().presets, (id) => agents.status(id), focusedPaneId())
+  return listSessions(
+    allTabs(),
+    config.get().presets,
+    {
+      status: (id) => agents.status(id),
+      branch: (id) => branches.get(id),
+      labels: (id) => widgets.labels.of(id)
+    },
+    focusedPaneId()
+  )
+}
+
+/** How often every pane's branch is read again while a window is on screen. */
+const BRANCHES_POLL_MS = 5000
+
+/**
+ * Agents switch branches mid-turn, so HEAD is read again often. A pane's
+ * directory is found again only when its status changes or its process
+ * starts, since a shell that runs `cd` changes status too.
+ */
+function refreshBranches(): void {
+  const ids = sessions().map((s) => s.id)
+  branches.retain(new Set(ids))
+  void branches.refresh(ids, true)
 }
 
 /** Push the session list to the chrome and to widgets that read it, if it changed. */
@@ -293,6 +319,20 @@ async function paneCwd(paneId: string): Promise<string | null> {
     cwd = pid === null ? null : await processCwd(pid)
   }
   return cwd ?? expandHome(pane.cwd)
+}
+
+/**
+ * Where to read a pane's branch: like paneCwd, but undefined when lsof
+ * couldn't say, so a slow lsof doesn't swap in the pane's start directory.
+ */
+async function branchDir(paneId: string): Promise<string | null | undefined> {
+  const pane = findPaneNode(paneId)
+  if (!pane) return null
+  const hooked = agents.activity.cwd(pane.id)
+  if (hooked) return hooked
+  const pid = ptys.pid(pane.id)
+  if (pid === null) return expandHome(pane.cwd)
+  return (await processCwd(pid)) ?? undefined
 }
 
 /** How long after a display change window moves are macOS's, not the user's. */
@@ -946,6 +986,7 @@ function registerIpc(): void {
     const display = abbreviateHome(cwd)
     if (display !== '~') config.addRecentDir(display, preset.id)
     sessionsChanged()
+    void branches.refresh([opts.id])
     return { pid, cwd: display }
   })
   // Kids mode covers the panes. If a key gets past it anyway, it stops here.
@@ -1394,6 +1435,7 @@ async function startup(): Promise<void> {
     startSession: openSession,
     startTask: (draft) => openTaskDraft(draft),
     sendPrompt,
+    labelsChanged: sessionsChanged,
     changed: windowsChanged
   })
   widgets.start()
@@ -1407,10 +1449,16 @@ async function startup(): Promise<void> {
   tasksTimer = setInterval(() => {
     if (anyVisible()) void tasks.refresh()
   }, TASKS_POLL_MS)
+  branchesTimer = setInterval(() => {
+    if (anyVisible()) refreshBranches()
+  }, BRANCHES_POLL_MS)
 
   agents = new AgentMonitor({
     home: cockpitHome(),
-    onChange: sessionsChanged,
+    onChange: (paneId) => {
+      sessionsChanged()
+      void branches.refresh([paneId])
+    },
     onActivity: (update) => broadcast(IPC.activityUpdate, update),
     // No notifications over kids mode; the tab badges have them afterwards.
     windowFocused: () => kidsActive || anyFocused(),
@@ -1496,6 +1544,7 @@ app.on('before-quit', prepareToQuit)
 
 app.on('will-quit', () => {
   if (tasksTimer) clearInterval(tasksTimer)
+  if (branchesTimer) clearInterval(branchesTimer)
   // A startup that failed partway leaves some of these unset.
   const parts = [config, themes, images, system, widgets, agents, updates] as (
     { close: () => void } | undefined

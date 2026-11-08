@@ -67,6 +67,21 @@ Paste it once; Cockpit keeps it encrypted and the widget reads it from then on.
 - If Shortcut rejects the token, the widget stops polling and offers a button
   to enter a new one.
 
+## The story above each pane
+
+When a pane's git branch names a story, as `nick/sc-1234/fix-login` does, a
+line at the top of the pane shows the story: its number, title, points,
+workflow state, and owners. Hover it for the story's type, epic, iteration,
+labels, deadline, and whether it's blocked; click it to open the story in
+Shortcut. No letter or digit may touch `sc-<number>` in the branch, so
+`disc-12` and `sc-12b` don't count.
+
+The widget reads each such story when a pane first shows its branch, and
+again on every sync. An agent that switches to another story's branch gets
+the new story within a few seconds, whether the widget is on screen or not.
+The line stays while the widget is collapsed or hidden, and goes away when
+the branch stops naming a story or the story is deleted.
+
 At most 50 stories are fetched for your query and 250 for each tab of your own.
 The header count is Shortcut's total for the selected tab's query.
 
@@ -76,7 +91,9 @@ The widget syncs every 60 seconds while it's visible. While it's collapsed, in
 a background sidebar tab, hidden with the sidebar, or the window is minimized,
 it syncs every 15 minutes instead, and showing it again syncs at once if the
 last sync is more than a minute old. After a failure it waits twice as long
-each time, up to 15 minutes, and honors Shortcut's `Retry-After`.
+each time, up to 15 minutes, and honors Shortcut's `Retry-After`. Each sync
+also reads the stories above your panes again, so while the widget is hidden
+those can be up to 15 minutes old.
 
 The last result, the tab you were on, and your settings are kept in `cockpit.storage`
 (`~/.cockpit/data/shortcut-stories.json`), so a relaunch shows the last stories

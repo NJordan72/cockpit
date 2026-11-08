@@ -2,9 +2,10 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'bun:test'
-import type { WidgetCallResult } from '@shared/widgets'
-import { WidgetBroker, type BrokerDeps } from './broker'
-import { parseManifest } from './manifest'
+import type { PaneLabel, SessionInfo, WidgetCallResult } from '@shared/widgets'
+import { openableUrl, WidgetBroker, type BrokerDeps } from './broker'
+import { WidgetCallError } from './errors'
+import { parseManifest, type ParsedManifest } from './manifest'
 import type { LoadedWidget } from './registry'
 import type { SecretStore } from './secrets'
 import { WidgetStorage } from './storage'
@@ -48,11 +49,14 @@ const widgets = {
     sessions: 'read'
   }),
   bare: widget('bare', {}),
-  prompter: widget('prompter', { sessions: 'prompt' })
+  prompter: widget('prompter', { sessions: 'prompt' }),
+  labeler: widget('labeler', { sessions: 'label', openExternal: ['https://app.example.com/*'] })
 }
 let started: string[]
 let drafts: { branch: string; prompt: string }[]
 let sent: [string, string][]
+let sessions: SessionInfo[]
+let labels: [string, string, PaneLabel | null][]
 
 beforeEach(() => {
   dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cockpit-broker-'))
@@ -62,15 +66,18 @@ beforeEach(() => {
   started = []
   drafts = []
   sent = []
+  sessions = []
+  labels = []
   broker = new WidgetBroker({
     widget: (id) => widgets[id as keyof typeof widgets],
     storage: new WidgetStorage(dir, () => undefined),
     secrets: secrets as unknown as SecretStore,
     promptSecret: (w, name) => prompt(w, name),
-    sessions: () => [],
+    sessions: () => sessions,
     startSession: (p) => (started.push(p), true),
     startTask: (d) => (drafts.push(d), true),
     sendPrompt: (id, p) => (sent.push([id, p]), id === 'agent'),
+    setLabel: (widgetId, paneId, label) => labels.push([widgetId, paneId, label]),
     openExternal: (url) => {
       opened.push(url)
       return Promise.resolve()
@@ -104,7 +111,8 @@ describe('WidgetBroker', () => {
       ['sessions.list', {}],
       ['sessions.start', { prompt: 'hi' }],
       ['sessions.startTask', { branch: 'b', prompt: 'hi' }],
-      ['sessions.send', { id: 'agent', prompt: 'hi' }]
+      ['sessions.send', { id: 'agent', prompt: 'hi' }],
+      ['sessions.label', { id: 'agent', label: null }]
     ]
     for (const [method, params] of calls) {
       expect(errorCode(await broker.call('bare', method, params)), method).toBe('permission_denied')
@@ -153,6 +161,64 @@ describe('WidgetBroker', () => {
       )
     ).toBe('invalid_argument')
     expect(drafts).toEqual([{ branch: 'nick/sc-1/x', prompt: 'go' }])
+  })
+
+  it('labels sessions with "label" or "prompt", but not "read"', async () => {
+    sessions = [{ id: 'agent' } as SessionInfo]
+    const label = { key: 'SC-1', title: 'Fix it' }
+    expect(errorCode(await broker.call('full', 'sessions.label', { id: 'agent', label }))).toBe(
+      'permission_denied'
+    )
+    expect(await broker.call('labeler', 'sessions.label', { id: 'agent', label })).toEqual({
+      ok: true,
+      value: null
+    })
+    expect((await broker.call('prompter', 'sessions.label', { id: 'agent', label })).ok).toBe(true)
+    expect(await broker.call('labeler', 'sessions.label', { id: 'agent', label: null })).toEqual({
+      ok: true,
+      value: null
+    })
+    const plain = { key: 'SC-1', title: 'Fix it', facts: [], detail: null, url: null }
+    expect(labels).toEqual([
+      ['labeler', 'agent', { widgetId: 'labeler', widgetName: 'labeler', ...plain }],
+      ['prompter', 'agent', { widgetId: 'prompter', widgetName: 'prompter', ...plain }],
+      ['labeler', 'agent', null]
+    ])
+  })
+
+  it('only links a label to URLs the widget may open, and only labels sessions that exist', async () => {
+    sessions = [{ id: 'agent' } as SessionInfo]
+    const call = (id: string, label: unknown, widgetId = 'labeler'): Promise<WidgetCallResult> =>
+      broker.call(widgetId, 'sessions.label', { id, label })
+    const linked = (url: string): unknown => ({ key: 'SC-1', title: 'x', url })
+    expect(errorCode(await call('agent', linked('https://evil.example.net/s/1')))).toBe(
+      'permission_denied'
+    )
+    expect(errorCode(await call('agent', linked('https://app.example.com/s/1'), 'prompter'))).toBe(
+      'permission_denied'
+    )
+    expect(errorCode(await call('agent', linked('javascript:alert(1)')))).toBe('permission_denied')
+    expect(errorCode(await call('agent', linked('/story/1')))).toBe('invalid_argument')
+    expect(errorCode(await call('gone', { key: 'SC-1', title: 'x' }))).toBe('not_found')
+    expect(errorCode(await call('agent', 'SC-1'))).toBe('invalid_argument')
+    expect(errorCode(await call('agent', undefined))).toBe('invalid_argument')
+    // A session that just closed can still have its label removed.
+    expect((await call('gone', null)).ok).toBe(true)
+    expect((await call('agent', linked('https://APP.example.com/s/1#top'))).ok).toBe(true)
+    expect(labels.map(([, , l]) => l?.url ?? null)).toEqual([
+      null,
+      'https://app.example.com/s/1#top'
+    ])
+  })
+
+  it('checks a URL against the manifest the widget has now', () => {
+    const manifest = (w: LoadedWidget): ParsedManifest => {
+      if (!w.parsed) throw new Error('not loaded')
+      return w.parsed
+    }
+    const url = 'https://app.example.com/s/1'
+    expect(openableUrl(url, manifest(widgets.labeler))).toBe(url)
+    expect(() => openableUrl(url, manifest(widgets.prompter))).toThrow(WidgetCallError)
   })
 
   it('keeps storage separate per widget', async () => {

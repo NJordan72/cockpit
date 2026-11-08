@@ -7,8 +7,10 @@ import { SearchAddon } from '@xterm/addon-search'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import { terminalFontStack, type PaneNode, type TerminalSettings } from '@shared/config'
 import type { PtyExitInfo } from '@shared/ipc'
+import type { PaneLabel } from '@shared/widgets'
 import { OutputAcks } from './acks'
 import { classifyKey } from './keys'
+import { LabelStrip } from './LabelStrip'
 import { openHyperlink, pathLinkProvider } from './pathLinks'
 import { terminals } from './registry'
 import { runWhenReady, takeRun } from './run'
@@ -23,6 +25,8 @@ interface Props {
   theme: ITheme
   focused: boolean
   visible: boolean
+  /** What widgets say about the pane, in a strip above the terminal. */
+  labels?: readonly PaneLabel[]
   onFocus: () => void
   onStarted: (cwd: string) => void
 }
@@ -34,6 +38,7 @@ export function TerminalPane({
   theme,
   focused,
   visible,
+  labels,
   onFocus,
   onStarted
 }: Props): React.JSX.Element {
@@ -322,6 +327,8 @@ export function TerminalPane({
 
   return (
     <div className={`terminal-pane${focused ? ' focused' : ''}`}>
+      {/* The host shrinks to make room, and its resize observer fits the rows again. */}
+      {labels && labels.length > 0 && <LabelStrip paneId={id} labels={labels} />}
       <div className="terminal-host" ref={hostRef} />
       {exit && (
         <div className="exit-bar">

@@ -14,11 +14,15 @@ export interface WidgetPermissions {
   secrets: string[]
   storage: boolean
   /**
-   * "read": list sessions and follow their status. "prompt": that, and start
+   * "read": list sessions and follow their status. "label": that, and show a
+   * label in a strip above a session's pane. "prompt": all of that, and start
    * a new agent session with a prompt or type one into an existing agent pane.
    */
-  sessions: 'read' | 'prompt' | null
+  sessions: SessionsAccess | null
 }
+
+/** Each level allows everything the ones before it do. */
+export type SessionsAccess = 'read' | 'label' | 'prompt'
 
 export interface WidgetManifest {
   id: string
@@ -102,6 +106,11 @@ export interface SessionInfo {
   name: string
   /** Working directory with ~ for home. */
   cwd: string
+  /**
+   * The branch checked out where the pane's process is now, or null outside
+   * a repository or on a detached HEAD.
+   */
+  branch: string | null
   status: SessionStatus
   /** When status last changed (ms since the epoch). */
   since: number
@@ -113,6 +122,30 @@ export interface SessionInfo {
   tokens: number | null
   /** The focused pane of the active tab. */
   focused: boolean
+}
+
+/** What a widget shows about a session, in a strip above its pane. */
+export interface SessionLabel {
+  /** A short name for the item, such as "SC-1234". */
+  key: string
+  title: string
+  /** Up to six short facts, such as points, state, and owners. */
+  facts?: string[] | null
+  /** Shown when the strip is hovered. */
+  detail?: string | null
+  /** Opened when the strip is clicked. It must match permissions.openExternal. */
+  url?: string | null
+}
+
+/** A label as main keeps it and the chrome draws it: checked, and cut to length. */
+export interface PaneLabel {
+  widgetId: string
+  widgetName: string
+  key: string
+  title: string
+  facts: string[]
+  detail: string | null
+  url: string | null
 }
 
 /** Methods a widget can call, with their parameters. */
@@ -129,6 +162,7 @@ export interface WidgetMethods {
   'sessions.start': { prompt: string }
   'sessions.startTask': { branch: string; prompt: string }
   'sessions.send': { id: string; prompt: string }
+  'sessions.label': { id: string; label: SessionLabel | null }
 }
 
 export type WidgetMethod = keyof WidgetMethods
@@ -145,7 +179,8 @@ export const WIDGET_METHODS: readonly WidgetMethod[] = [
   'sessions.list',
   'sessions.start',
   'sessions.startTask',
-  'sessions.send'
+  'sessions.send',
+  'sessions.label'
 ]
 
 /** Events the host pushes into a widget. */

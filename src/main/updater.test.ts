@@ -153,6 +153,7 @@ function session(status: SessionStatus, agent: AgentKind | null = null): Session
     presetId: agent ?? 'shell',
     name: agent ?? 'Shell',
     cwd: '~',
+    branch: null,
     status,
     since: 0,
     agent,

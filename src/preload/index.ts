@@ -143,7 +143,9 @@ const api: CockpitApi = {
     onEvent: (cb) => onWidgetEvent(cb),
     onSecretPrompt: (cb) => onSecretPrompt(cb),
     answerSecret: (promptId, value) => ipcRenderer.send(IPC.secretAnswer, promptId, value),
-    onSecretDone
+    onSecretDone,
+    started: (widgetId) => ipcRenderer.send(IPC.widgetStarted, widgetId),
+    openLabel: (paneId, widgetId) => ipcRenderer.send(IPC.widgetLabelOpen, paneId, widgetId)
   },
   sessions: {
     list: () => ipcRenderer.invoke(IPC.sessionsList),

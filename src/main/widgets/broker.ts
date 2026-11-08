@@ -3,12 +3,15 @@
 // call is untrusted and checked here against that widget's manifest.
 import {
   WIDGET_METHODS,
+  type PaneLabel,
   type SessionInfo,
   type WidgetCallResult,
   type WidgetMethod
 } from '@shared/widgets'
 import { toWidgetError, WidgetCallError } from './errors'
 import { brokerFetch } from './fetch'
+import { parseLabel } from './labels'
+import { sessionsAllow, type ParsedManifest } from './manifest'
 import { urlAllowed } from './permissions'
 import type { LoadedWidget } from './registry'
 import { MAX_SECRET_LENGTH, type SecretStore } from './secrets'
@@ -31,6 +34,8 @@ export interface BrokerDeps {
   startTask: (draft: { branch: string; prompt: string }) => boolean
   /** Type a prompt into an agent pane. False if the pane runs no agent. */
   sendPrompt: (paneId: string, prompt: string) => boolean
+  /** Set a widget's label on a pane, or remove it with null. */
+  setLabel: (widgetId: string, paneId: string, label: PaneLabel | null) => void
   openExternal: (url: string) => Promise<void>
 }
 
@@ -45,6 +50,28 @@ function str(params: Obj, key: string): string {
   if (typeof v !== 'string')
     throw new WidgetCallError('invalid_argument', `"${key}" must be a string`)
   return v
+}
+
+/**
+ * The URL as the browser would get it, if the widget's openExternal patterns
+ * allow it. Throws otherwise.
+ */
+export function openableUrl(raw: string, parsed: ParsedManifest): string {
+  let url: URL
+  try {
+    url = new URL(raw)
+  } catch {
+    throw new WidgetCallError('invalid_argument', `not an absolute URL: ${raw}`)
+  }
+  if (!urlAllowed(url, parsed.openExternal)) {
+    const listed = parsed.manifest.permissions.openExternal
+    throw denied(
+      `opening ${url.origin}${url.pathname} is not allowed by permissions.openExternal (${
+        listed.length ? `it lists: ${listed.join(', ')}` : 'it lists none'
+      })`
+    )
+  }
+  return url.href
 }
 
 export class WidgetBroker {
@@ -134,32 +161,38 @@ export class WidgetBroker {
         await this.deps.secrets.delete(id, secretName())
         return null
 
-      case 'openExternal': {
-        const raw = str(params, 'url')
-        let url: URL
-        try {
-          url = new URL(raw)
-        } catch {
-          throw new WidgetCallError('invalid_argument', `not an absolute URL: ${raw}`)
-        }
-        if (!urlAllowed(url, parsed.openExternal)) {
-          const listed = permissions.openExternal.length
-            ? `it lists: ${permissions.openExternal.join(', ')}`
-            : 'it lists none'
-          throw denied(
-            `opening ${url.origin}${url.pathname} is not allowed by permissions.openExternal (${listed})`
-          )
-        }
+      case 'openExternal':
         // The parsed form, so the browser gets exactly the URL that was checked.
-        await this.deps.openExternal(url.href)
+        await this.deps.openExternal(openableUrl(str(params, 'url'), parsed))
         return null
-      }
 
       case 'sessions.list':
         if (!permissions.sessions) {
           throw denied('sessions are not allowed: set "permissions.sessions": "read"')
         }
         return this.deps.sessions()
+
+      case 'sessions.label': {
+        if (!sessionsAllow(permissions.sessions, 'label')) {
+          throw denied('labeling sessions is not allowed: set "permissions.sessions": "label"')
+        }
+        const paneId = str(params, 'id')
+        if (params.label === null) {
+          // A session that just closed has no label left to remove.
+          this.deps.setLabel(id, paneId, null)
+          return null
+        }
+        const content = parseLabel(params.label, (url) => openableUrl(url, parsed))
+        if (!this.deps.sessions().some((s) => s.id === paneId)) {
+          throw new WidgetCallError('not_found', `no session "${paneId}"`)
+        }
+        this.deps.setLabel(id, paneId, {
+          widgetId: id,
+          widgetName: parsed.manifest.name,
+          ...content
+        })
+        return null
+      }
 
       case 'sessions.startTask': {
         if (permissions.sessions !== 'prompt') {

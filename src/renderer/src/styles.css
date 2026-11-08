@@ -406,8 +406,70 @@ kbd {
 }
 
 /* Only distinguish the focused pane when there is more than one. */
-.pane-slot:not(:only-child) .terminal-pane:not(.focused) .terminal-host {
+.pane-slot:not(:only-child) .terminal-pane:not(.focused) .terminal-host,
+.pane-slot:not(:only-child) .terminal-pane:not(.focused) .label-strip {
   opacity: 0.72;
+}
+
+/* ---- labels widgets put on a pane ---- */
+
+.label-strip {
+  flex: none;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-raised);
+}
+
+.label-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  padding: 3px 10px;
+  border: none;
+  background: none;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 16px;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+button.label-row {
+  cursor: pointer;
+}
+
+button.label-row:hover {
+  background: var(--bg-hover);
+}
+
+button.label-row:hover .label-title {
+  text-decoration: underline;
+}
+
+.label-key {
+  flex: none;
+  color: var(--accent);
+  font-family: var(--font-mono);
+}
+
+/* The title gives up room before the facts do. */
+.label-title {
+  flex: 0 1 auto;
+  min-width: 4em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--fg);
+}
+
+.label-fact {
+  flex: none;
+}
+
+.label-fact + .label-fact::before {
+  content: '·';
+  margin-right: 8px;
 }
 
 .exit-bar {
