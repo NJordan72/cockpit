@@ -52,7 +52,7 @@ export async function readBranch(dir: string): Promise<string | null> {
 export class BranchTracker {
   private branches = new Map<string, string | null>()
   /** Where each pane's process was last found, for reads that don't ask again. */
-  private dirs = new Map<string, string | null>()
+  private dirs = new Map<string, string>()
   /** Bumped by each read of a pane, so an older read finishing late is dropped. */
   private reads = new Map<string, number>()
 
@@ -101,7 +101,12 @@ export class BranchTracker {
       // A lookup that failed reads where the pane was last found rather than guessing.
       const dir = found === undefined ? known : found
       if (dir === undefined) return false
-      if (this.reads.get(paneId) === n) this.dirs.set(paneId, dir)
+      // A pane can start before the layout that has it reaches main, so not
+      // finding it is never kept: the next read looks again.
+      if (this.reads.get(paneId) === n) {
+        if (dir === null) this.dirs.delete(paneId)
+        else this.dirs.set(paneId, dir)
+      }
       if (dir !== null) branch = await this.read(dir)
     } catch {
       branch = null

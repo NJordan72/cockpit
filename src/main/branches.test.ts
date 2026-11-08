@@ -152,6 +152,20 @@ describe('BranchTracker', () => {
     expect([asked, tracker.get('a')]).toEqual([2, 'dev'])
   })
 
+  it('looks a pane up again when it was not found, even when told the directories are the same', async () => {
+    let dir: string | null = null
+    const tracker = new BranchTracker(
+      () => Promise.resolve(dir),
+      () => undefined,
+      () => Promise.resolve('smoke/task')
+    )
+    await tracker.refresh(['a'])
+    expect(tracker.get('a')).toBeNull()
+    dir = '/worktree'
+    await tracker.refresh(['a'], true)
+    expect(tracker.get('a')).toBe('smoke/task')
+  })
+
   it('keeps reading where a pane was last found when the lookup fails', async () => {
     let dir: string | undefined = '/two'
     const heads: Record<string, string> = { '/two': 'dev' }
