@@ -4,7 +4,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { DEFAULT_PRESETS } from '@shared/config'
 import { claudeProjectDir } from './agents/history'
-import { listDirs } from './dirs'
+import { foldTaskDirs, listDirs } from './dirs'
 
 const T = Date.UTC(2026, 9, 17)
 
@@ -86,5 +86,29 @@ describe('listDirs', () => {
     )
     expect(dir?.usedMs).toBeGreaterThan(0)
     expect(dir?.usedPresetId).toBeNull()
+  })
+})
+
+describe('foldTaskDirs', () => {
+  it("counts a task's use for its repository and leaves worktrees off the list", () => {
+    const tasks = {
+      repoOf: (d: string) => (d.startsWith('~/.cockpit/worktrees/app/') ? '~/dev/app' : null),
+      holds: (d: string) => d.startsWith('~/.cockpit/worktrees/')
+    }
+    expect(
+      foldTaskDirs(
+        [
+          { path: '~/.cockpit/worktrees/app/feat-x', presetId: 'codex', at: 30 },
+          { path: '~/dev/app', presetId: 'claude', at: 10 },
+          { path: '~/.cockpit/worktrees/app/feat-y', presetId: 'claude', at: 20 },
+          { path: '~/.cockpit/worktrees/gone/old', presetId: 'claude', at: 40 },
+          { path: '~/dev/other', at: 5 }
+        ],
+        tasks
+      )
+    ).toEqual([
+      { path: '~/dev/app', presetId: 'codex', at: 30 },
+      { path: '~/dev/other', at: 5 }
+    ])
   })
 })

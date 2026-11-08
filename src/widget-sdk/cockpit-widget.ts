@@ -270,6 +270,14 @@ import type {
       async start(prompt: string): Promise<void> {
         await call('sessions.start', { prompt }, 10_000)
       },
+      /**
+       * Shows Cockpit's New task dialog with `prompt` and `branch` filled in.
+       * The task's worktree is made, and the agent started, once the user
+       * confirms it there.
+       */
+      async startTask(prompt: string, branch: string): Promise<void> {
+        await call('sessions.startTask', { prompt, branch }, 10_000)
+      },
       /** Types `prompt` into a session running Claude Code or Codex, and submits it. */
       async send(id: string, prompt: string): Promise<void> {
         await call('sessions.send', { id, prompt }, 10_000)

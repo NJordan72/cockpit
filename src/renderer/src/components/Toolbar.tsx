@@ -48,6 +48,12 @@ function windowsTitle(count: number, open: number, displays: number): string {
 const BUTTONS: { action: Action; label: string; title: string; needsPane: boolean }[] = [
   { action: 'newTab', label: '+ Tab', title: 'New tab', needsPane: false },
   { action: 'newShell', label: '>_ Shell', title: 'New shell (no agent)', needsPane: false },
+  {
+    action: 'newTask',
+    label: '⎇ Task',
+    title: 'New task: a branch in a worktree of its own',
+    needsPane: false
+  },
   { action: 'openUrl', label: '◍ Web', title: 'Open a web page', needsPane: false },
   { action: 'splitRight', label: '◫ Right', title: 'Split right', needsPane: true },
   { action: 'splitDown', label: '⊟ Down', title: 'Split down', needsPane: true },

@@ -1,6 +1,7 @@
 // Launches the built app, opens a shell from the start screen, and checks that
-// a command's output reaches the terminal. Exits non-zero on a timeout or on
-// any renderer error. Run `bun run build` first.
+// a command's output reaches the terminal. Then makes a task in a scratch git
+// repository, checks its worktree and setup, and removes it. Exits non-zero
+// on a timeout or on any renderer error. Run `bun run build` first.
 //
 //   node scripts/smoke.mjs                              # out/, through electron
 //   node scripts/smoke.mjs dist/mac-arm64/Cockpit.app   # a packaged app
@@ -8,6 +9,7 @@
 // The app runs with a scratch HOME, COCKPIT_HOME, and Chromium profile, so it
 // never reads or writes your real config.
 import { _electron as electron } from 'playwright-core'
+import { execFileSync } from 'node:child_process'
 import * as fs from 'node:fs'
 import * as os from 'node:os'
 import * as path from 'node:path'
@@ -20,6 +22,40 @@ const userData = path.join(scratch, 'user-data')
 // zsh doesn't open its first-run setup wizard.
 fs.mkdirSync(path.join(home, 'dev', 'smoke'), { recursive: true })
 for (const f of ['.zshenv', '.zprofile', '.zshrc']) fs.writeFileSync(path.join(home, f), '')
+
+// The project is a git repository for the task check, with a file git
+// ignores that config.json says to copy into each task, and a setup command.
+const repo = path.join(home, 'dev', 'smoke')
+const git = (...args) =>
+  execFileSync(
+    'git',
+    [
+      '-c',
+      'user.email=smoke@cockpit',
+      '-c',
+      'user.name=smoke',
+      '-c',
+      'commit.gpgsign=false',
+      '-C',
+      repo,
+      ...args
+    ],
+    { encoding: 'utf8', env: { ...process.env, HOME: home, GIT_CONFIG_NOSYSTEM: '1' } }
+  )
+git('init', '-q', '-b', 'main')
+fs.writeFileSync(path.join(repo, '.gitignore'), '.env\n')
+git('add', '.')
+git('commit', '-qm', 'first')
+fs.writeFileSync(path.join(repo, '.env'), 'SMOKE=1\n')
+fs.mkdirSync(path.join(home, '.cockpit'))
+fs.writeFileSync(
+  path.join(home, '.cockpit', 'config.json'),
+  JSON.stringify({
+    tasks: { '~/dev/smoke': { setup: 'echo cockpit-setup-$((6 * 7))', copy: ['.env'] } }
+  })
+)
+const TASK_BRANCH = 'smoke/task'
+const worktree = path.join(home, '.cockpit', 'worktrees', 'smoke', 'smoke-task')
 
 // The shell computes this, so it only appears once the command has run: the
 // typed command line shows `$((6 * 7))`, not 42.
@@ -81,6 +117,32 @@ try {
   })
   page.on('pageerror', (err) => errors.push(`page: ${err.message}`))
 
+  /** Waits for a pane to show `expected`, and prints every pane's screen if none does. */
+  const waitForScreen = async (expected, what) => {
+    try {
+      await page.waitForFunction(
+        (text) => {
+          const d = window.__cockpitDebug
+          return d?.ids().some((id) => (d.screen(id) ?? '').includes(text)) ?? false
+        },
+        expected,
+        { timeout: 15_000 }
+      )
+    } catch (err) {
+      const screen = await page.evaluate(() => {
+        const d = window.__cockpitDebug
+        return (
+          d
+            ?.ids()
+            .map((id) => d.screen(id))
+            .join('\n----\n') ?? '(no panes)'
+        )
+      })
+      console.error(`smoke: ${what} never showed ${expected}. It shows:\n${screen}`)
+      throw err
+    }
+  }
+
   // The start screen focuses its filter box once it has mounted, so wait for
   // that before pressing any key.
   await page.waitForFunction(
@@ -102,29 +164,56 @@ try {
   await page.waitForTimeout(1500)
   await page.keyboard.type(COMMAND, { delay: 10 })
   await page.keyboard.press('Enter')
-  try {
-    await page.waitForFunction(
-      (expected) => {
-        const d = window.__cockpitDebug
-        return d?.ids().some((id) => (d.screen(id) ?? '').includes(expected)) ?? false
-      },
-      EXPECTED,
-      { timeout: 15_000 }
-    )
-  } catch (err) {
-    const screen = await page.evaluate(() => {
-      const d = window.__cockpitDebug
-      return (
-        d
-          ?.ids()
-          .map((id) => d.screen(id))
-          .join('\n----\n') ?? '(no panes)'
-      )
-    })
-    console.error(`smoke: the terminal never showed ${EXPECTED}. It shows:\n${screen}`)
-    throw err
-  }
+  await waitForScreen(EXPECTED, 'the terminal')
   step('the shell ran a command and the terminal showed its output')
+
+  // A task, through the New task dialog, running a Shell so no agent needs to
+  // be installed. Its first terminal runs the repository's setup.
+  await page.keyboard.press('Meta+Shift+N')
+  await page.waitForSelector('#task-branch', { timeout: 10_000 })
+  await page.fill('#task-branch', TASK_BRANCH)
+  await page.fill('#task-repo', '~/dev/smoke')
+  await page.click('.task-dialog [role="radio"]:text-is("Shell")')
+  await page.press('#task-branch', 'Enter')
+  await page.waitForFunction(() => (window.__cockpitDebug?.ids().length ?? 0) > 1, null, {
+    timeout: 30_000
+  })
+  await waitForScreen('cockpit-setup-42', 'the task')
+  step('a task opened and ran its setup')
+  if (git('-C', worktree, 'branch', '--show-current').trim() !== TASK_BRANCH) {
+    throw new Error(`${worktree} is not on ${TASK_BRANCH}`)
+  }
+  if (!fs.existsSync(path.join(worktree, '.env'))) throw new Error('.env was not copied')
+  await page.waitForTimeout(1000)
+  // The path is too long to fit on one line of the screen, so the shell
+  // prints a marker when it's there instead.
+  await page.keyboard.type(`[ "$PWD" = '${worktree}' ] && echo task-cwd-$((6 * 7))`, { delay: 5 })
+  await page.keyboard.press('Enter')
+  await waitForScreen('task-cwd-42', 'the task')
+  await page.waitForFunction(
+    (b) => document.querySelector('.session-list')?.textContent?.includes(`⎇ ${b}`) ?? false,
+    TASK_BRANCH,
+    { timeout: 10_000 }
+  )
+  step('its shell is in the worktree, with .env copied, and Sessions names the branch')
+
+  // Removing it asks first (the branch is kept, a terminal closes); say yes.
+  await app.evaluate(({ dialog }) => {
+    dialog.showMessageBox = () => Promise.resolve({ response: 0, checkboxChecked: false })
+  })
+  const removed = await page.evaluate(
+    (p) => window.cockpit.tasks.remove(p),
+    '~/.cockpit/worktrees/smoke/smoke-task'
+  )
+  if (removed !== true) throw new Error('removing the task did not say it was removed')
+  if (fs.existsSync(worktree)) throw new Error(`${worktree} is still there`)
+  await page.waitForFunction(() => (window.__cockpitDebug?.ids().length ?? 0) === 1, null, {
+    timeout: 10_000
+  })
+  if (!git('branch', '--list', TASK_BRANCH).includes(TASK_BRANCH)) {
+    throw new Error('removing the task deleted its unmerged branch')
+  }
+  step('removing it closed its terminal and deleted the worktree, keeping the branch')
 
   // xterm's WebGL renderer sets canvas fonts with a leading space. If the
   // canvas ignores them, terminal text draws in 10px sans-serif.

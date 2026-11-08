@@ -1,7 +1,7 @@
 import { execFile, execFileSync } from 'node:child_process'
 import fs from 'node:fs/promises'
 import path from 'node:path'
-import type { CockpitConfig } from '@shared/config'
+import type { CockpitConfig, RecentDir } from '@shared/config'
 import type { DirEntry } from '@shared/ipc'
 import type { AgentKind } from '@shared/widgets'
 import { claudeLastUsed, codexLastUsed } from './agents/history'
@@ -39,6 +39,33 @@ export async function listProjects(projectsDir: string, limit = 200): Promise<Di
     .slice(0, limit)
 }
 
+/** Task worktrees, which the start screen lists as their repository. */
+export interface TaskDirs {
+  /** The repository of the task a directory is in, or null. */
+  repoOf(dir: string): string | null
+  /** Whether a directory is in the worktrees folder at all. */
+  holds(dir: string): boolean
+}
+
+const NO_TASKS: TaskDirs = { repoOf: () => null, holds: () => false }
+
+/**
+ * Recent dirs with each task's worktree counted as its repository, so a
+ * repository is as recent as its newest task, and the worktrees themselves
+ * stay off the list (the Tasks panel has them).
+ */
+export function foldTaskDirs(dirs: readonly RecentDir[], tasks: TaskDirs): RecentDir[] {
+  const out = new Map<string, RecentDir>()
+  for (const d of dirs) {
+    const repo = tasks.repoOf(d.path)
+    if (!repo && tasks.holds(d.path)) continue
+    const path = repo ?? d.path
+    const prev = out.get(path)
+    if (!prev || d.at > prev.at) out.set(path, { ...d, path })
+  }
+  return [...out.values()]
+}
+
 /**
  * The projects dir's subdirectories plus recent dirs elsewhere, most recently
  * used first: by a Cockpit pane, or by Claude Code or Codex run anywhere.
@@ -47,12 +74,14 @@ export async function listProjects(projectsDir: string, limit = 200): Promise<Di
  */
 export async function listDirs(
   config: Pick<CockpitConfig, 'projectsDir' | 'recentDirs' | 'presets'>,
-  homes: { claude: string; codex: string }
+  homes: { claude: string; codex: string },
+  tasks: TaskDirs = NO_TASKS
 ): Promise<DirEntry[]> {
   const projects = await listProjects(config.projectsDir)
   const listed = new Set(projects.map((p) => p.path))
+  const recentDirs = foldTaskDirs(config.recentDirs, tasks)
   const others = await Promise.all(
-    config.recentDirs
+    recentDirs
       .filter((d) => !listed.has(d.path))
       .map(async (d): Promise<Dir | null> => {
         try {
@@ -72,7 +101,7 @@ export async function listDirs(
     codexLastUsed(homes.codex)
   ])
 
-  const recent = new Map(config.recentDirs.map((d) => [d.path, d]))
+  const recent = new Map(recentDirs.map((d) => [d.path, d]))
   const presetFor = (agent: AgentKind): string | null =>
     config.presets.find((p) => detectAgent(p.command)?.agent === agent)?.id ?? null
   const claudePreset = presetFor('claude')

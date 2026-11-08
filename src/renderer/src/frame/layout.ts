@@ -112,6 +112,8 @@ export function panelLabel(p: FramePanel, widgets: ReadonlyMap<string, WidgetInf
       return 'System'
     case 'prs':
       return 'Pull requests'
+    case 'tasks':
+      return 'Tasks'
     case 'commands':
       return 'Commands'
   }

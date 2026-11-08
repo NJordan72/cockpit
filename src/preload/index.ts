@@ -7,12 +7,14 @@ import {
   type AppKey,
   type OpenSessionRequest,
   type CockpitApi,
+  type TaskOpenRequest,
   type PaneSession,
   type PtyCreateOptions,
   type PtyExitInfo,
   type SystemSample,
   type WindowInfo
 } from '@shared/ipc'
+import type { TaskDraft, TaskInfo } from '@shared/tasks'
 import type { ThemeDefinition } from '@shared/theme'
 import type { SecretPrompt, WidgetEventTopic, WidgetInfo } from '@shared/widgets'
 
@@ -67,6 +69,10 @@ const onAppearanceChange: Subscribe<[AppearanceSettings]> = channel(IPC.appearan
 const onWindowChanged: Subscribe<[WindowInfo]> = channel(IPC.windowChanged)
 const onAppAction: Subscribe<[Action]> = channel(IPC.appAction)
 const onSecretDone: Subscribe<[string]> = channel(IPC.secretDone)
+const onPanesClose: Subscribe<[string[]]> = channel(IPC.panesClose)
+const onTasksChanged: Subscribe<[TaskInfo[]]> = channel(IPC.tasksChanged)
+const onTaskOpen: Subscribe<[TaskOpenRequest]> = channel(IPC.tasksOpen)
+const onTaskDraft: Subscribe<[TaskDraft]> = channel(IPC.tasksDraft)
 
 function subscribe<T>(map: Map<string, Set<T>>, id: string, cb: T): () => void {
   let set = map.get(id)
@@ -143,7 +149,19 @@ const api: CockpitApi = {
     onFocusRequest: (cb) => onPaneFocus(cb),
     reveal: (paneId) => ipcRenderer.send(IPC.sessionsReveal, paneId),
     send: (paneId, prompt) => ipcRenderer.invoke(IPC.sessionsSend, paneId, prompt),
-    onOpenRequest: (cb) => onOpenSession(cb)
+    onOpenRequest: (cb) => onOpenSession(cb),
+    onCloseRequest: onPanesClose
+  },
+  tasks: {
+    list: () => ipcRenderer.invoke(IPC.tasksList),
+    onChange: onTasksChanged,
+    refresh: (force) => ipcRenderer.send(IPC.tasksRefresh, force === true),
+    create: (req) => ipcRenderer.invoke(IPC.tasksCreate, req),
+    remove: (path) => ipcRenderer.invoke(IPC.tasksRemove, path),
+    cleanUp: () => ipcRenderer.invoke(IPC.tasksCleanUp),
+    open: (req) => ipcRenderer.send(IPC.tasksOpen, req),
+    onOpen: onTaskOpen,
+    onDraft: onTaskDraft
   },
   prs: {
     list: (paneId) => ipcRenderer.invoke(IPC.prsList, paneId),

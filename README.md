@@ -5,7 +5,8 @@
 A macOS app for running Claude Code and Codex side by side. Each agent runs in
 its own terminal with its usual interface, and Cockpit adds what goes around
 them: tabs, splits, and presets; a status for every pane (working, needs
-input, done) with notifications; an Activity panel that shows what each agent
+input, done) with notifications; tasks, which give each agent a branch and a
+git worktree of its own; an Activity panel that shows what each agent
 read, changed, and ran; and a sidebar of sandboxed widgets that can call out
 to services like Shortcut. Layouts arrange the window, and themes style it.
 
@@ -130,6 +131,7 @@ address.
 | ------------------- | ------------------------------------------ |
 | Cmd+T               | New tab (picker)                           |
 | Cmd+Shift+T         | New shell tab, no agent, in the same dir   |
+| Cmd+Shift+N         | New task (see [Tasks](#tasks))             |
 | Cmd+L               | Open a web page (new tab, or ⇧⏎ to split)  |
 | Cmd+R               | Reload the focused web page                |
 | Cmd+D / Cmd+Shift+D | Split right / down (picker)                |
@@ -147,7 +149,7 @@ The toolbar along the bottom of the window shows the focused pane: its status,
 preset (or Claude Code's name for the conversation), directory, and git branch
 with commits ahead and behind and the number of changed files, and a Plan
 button once its agent has proposed a plan (see [Plans](#plans)). Its buttons open
-a new tab, a plain shell tab (no agent) in the focused pane's directory, split right or down, clear the pane, and hide or show the panels, and its menu
+a new tab, a plain shell tab (no agent) in the focused pane's directory, a new [task](#tasks), split right or down, clear the pane, and hide or show the panels, and its menu
 switches layouts. Clear ends the pane's process and starts its preset again in
 the same directory, with a new terminal and an empty status, activity log, and
 file list; the old conversation stays in Claude Code's or Codex's own history.
@@ -315,6 +317,79 @@ These panels came after the built-in layouts were saved, so a layout you've
 changed doesn't have them until View > Reset Layout (or until you add them by
 hand; see [docs/layouts.md](docs/layouts.md)).
 
+## Tasks
+
+Two agents in the same checkout edit the same files and step on each other's
+diffs. A task gives an agent a branch of its own in its own git worktree, so
+several agents can work in one repository at once.
+
+**New task** asks for a branch, a repository, an agent, and an optional first
+prompt. The repository starts as the focused pane's. To open the dialog, press
+Cmd+Shift+N, click the toolbar's **⎇ Task** or **+ New task** in the Tasks
+panel, or press Cmd+Enter on a folder in the Cmd+T picker. Cockpit fetches
+from the repository's remote, then makes the worktree in
+`~/.cockpit/worktrees/<repository>/<branch>`:
+
+- A new branch starts at the remote's default branch (`origin/main`, say),
+  with no upstream, so the first `git push -u` sets one.
+- A branch that exists locally is checked out as it is. A branch that's only
+  on the remote is checked out tracking it.
+- A branch that has a task already opens that task's worktree. A branch
+  that's checked out anywhere else is refused.
+
+The tab opens in the worktree with the agent and the prompt. In the Shortcut
+widget, right-click a story and choose **Start story in a new task**. The
+dialog opens with the widget's start prompt and the story's branch filled in.
+The branch is the name Shortcut suggests for the story, which is also the name
+`/start-story` uses.
+
+A new worktree has only the files git tracks. `tasks` in `config.json` sets up
+the rest for each repository, keyed by its main checkout:
+
+```jsonc
+"tasks": {
+  "~/dev/cockpit": { "setup": "bun install", "copy": [".env", "apps/web/.env.local"] }
+}
+```
+
+`copy` lists files and folders, relative to the repository, that are copied
+from the main checkout into each new worktree. `setup` runs in the task's
+first terminal before the agent starts, so you see its output. If it fails,
+Cockpit says so and starts the agent anyway. mise trusts a worktree of a
+checkout it trusts, so tools pinned in `mise.toml` work there without another
+`mise trust`. Claude Code and Codex may ask whether to trust the new folder
+the first time an agent starts in it.
+
+The **Tasks** panel, in the tab group with Pull requests, lists every task,
+newest first. Each row shows the branch, the repository, how many terminals
+are open in the worktree, how many files have uncommitted changes, how many
+commits are on no remote, and the pull request. Cockpit reads pull requests
+with `gh pr list --head <branch>` about once a minute while a window is on
+screen, and stops asking about a pull request once it has merged. Click a task to show
+its pane, or to open its agent when no pane is open there. Right-click a task
+to open another preset in it, open its pull request, open its folder in your
+editor, copy its path or branch, or remove it.
+
+Outside the panel, a session in a task shows its branch and pull request in
+the Sessions list. A task's tabs belong to their repository's folder in the
+tab bar's folder filter, and the start screen lists the repository instead of
+each worktree.
+
+**Remove…** deletes the worktree and closes its terminals. Cockpit asks first
+when any of these is true:
+
+- Files have uncommitted changes. Removing the task discards them.
+- The branch has work GitHub hasn't merged. The branch is kept.
+- Terminals are open in the worktree.
+
+The local branch is deleted only when its pull request merged with nothing
+newer on the branch. Squash merges count, because Cockpit compares the branch
+with the pull request's head commit rather than with `main`. **Clean up
+merged** removes every such task after one question.
+
+A layout you changed before Tasks existed gets the panel once, next to Pull
+requests, when Cockpit first reads it.
+
 ## Widgets
 
 Widgets are small HTML pages, each in its own sandboxed iframe, that reach the network, secrets, and storage only through an
@@ -331,7 +406,8 @@ examples/widgets/install.sh shortcut-stories   # just one
 `shortcut-stories` lists your Shortcut stories. The first time it runs,
 Cockpit asks for a Shortcut API token and keeps it encrypted; see
 [its README](examples/widgets/shortcut-stories/README.md). Right-click a story
-to start an agent on it, in a new tab or in any open agent pane. The widget's
+to start an agent on it, in a new tab, in any open agent pane, or in a new
+[task](#tasks). The widget's
 gear sets the prompt that sends and adds tabs of your own Shortcut searches.
 
 New widgets go into the layout's Widgets group, stacked by default. Each one
@@ -503,7 +579,8 @@ to `config.json.broken-<time>` before being replaced.
   "launcher": { "presetId": "claude" },
   "kids": { "name": "", "exitWord": "grownup", "volume": 0.6, "sound": "songs", "speak": true },
   "editor": "zed",
-  "prActions": [{ "label": "Review", "command": "/code-review" }]
+  "prActions": [{ "label": "Review", "command": "/code-review" }],
+  "tasks": { "~/dev/cockpit": { "setup": "bun install", "copy": [".env"] } }
 }
 ```
 
@@ -532,6 +609,7 @@ a pull request: a `label` for the menu and a `command`, which gets the PR's
 URL added at the end. Point them at your own skills or slash commands, such as
 `{ "label": "Ship", "command": "/ship-pr" }`. An empty list leaves only Open
 on GitHub and Copy URL.
+`tasks` sets up each repository's new task worktrees; see [Tasks](#tasks).
 Set `COCKPIT_HOME` to use a different directory than `~/.cockpit`.
 
 ## Terminal keys

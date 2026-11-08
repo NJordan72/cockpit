@@ -1,15 +1,16 @@
 // The shape of ~/.cockpit/config.json, its defaults, and migration from older
 // or hand-edited files. Pure so it can be unit tested.
 import { ACTIVITY_TABS, type ActivityTab } from './activity'
-import { readFrame, type FrameNode } from './frame'
+import { readFrame, withTasksPanel, type FrameNode } from './frame'
 import { builtInLayout, classicFromSidebar, DEFAULT_LAYOUT_ID } from './layouts'
 import { DEFAULT_PR_ACTIONS, MAX_PR_ACTIONS, type PrAction } from './prs'
+import { readTaskSettings, type TaskSettings } from './tasks'
 import { DEFAULT_THEME_ID, readTokens, type ThemeOverrides } from './theme'
 import { isWebUrl } from './web'
 
 export { ACTIVITY_TABS, type ActivityTab }
 
-export const CONFIG_VERSION = 4
+export const CONFIG_VERSION = 5
 
 export interface Preset {
   id: string
@@ -23,6 +24,7 @@ export interface Preset {
 export type Action =
   | 'newTab'
   | 'newShell'
+  | 'newTask'
   | 'openUrl'
   | 'reloadPage'
   | 'splitRight'
@@ -254,6 +256,8 @@ export interface CockpitConfig {
   editor: string | null
   /** What the PRs panel's right-click menu can send to an agent about a pull request. */
   prActions: PrAction[]
+  /** Setup for each repository's new task worktrees, by its main checkout ("~/dev/cockpit"). */
+  tasks: TaskSettings
   /** The first one is the main window: it reopens when the Dock icon is clicked. */
   windows: WindowState[]
 }
@@ -267,6 +271,7 @@ export const DEFAULT_PRESETS: Preset[] = [
 export const DEFAULT_KEYBINDINGS: Keybindings = {
   newTab: 'Cmd+T',
   newShell: 'Cmd+Shift+T',
+  newTask: 'Cmd+Shift+N',
   openUrl: 'Cmd+L',
   reloadPage: 'Cmd+R',
   splitRight: 'Cmd+D',
@@ -365,6 +370,7 @@ export function defaultConfig(): CockpitConfig {
     kids: { ...DEFAULT_KIDS },
     editor: null,
     prActions: DEFAULT_PR_ACTIONS.map((a) => ({ ...a })),
+    tasks: {},
     windows: [defaultWindow()]
   }
 }
@@ -707,6 +713,7 @@ export function migrateConfig(raw: unknown): CockpitConfig {
   // read. Version 2 added times and presets to recentDirs (readRecentDir).
   // Version 3 moved theme and sidebar into appearance (readAppearance).
   // Version 4 moved the tabs and the layout in use into windows (readWindows).
+  // Version 5 added the Tasks panel to saved layouts (withTasksPanel).
   const rawPresets: unknown = raw.presets
 
   let presets = def.presets
@@ -760,7 +767,16 @@ export function migrateConfig(raw: unknown): CockpitConfig {
     }
   }
 
-  const appearance = readAppearance(raw)
+  const read = readAppearance(raw)
+  const appearance =
+    typeof raw.version === 'number' && raw.version < 5
+      ? {
+          ...read,
+          layouts: Object.fromEntries(
+            Object.entries(read.layouts).map(([name, tree]) => [name, withTasksPanel(tree)])
+          )
+        }
+      : read
   return {
     version: CONFIG_VERSION,
     presets,
@@ -779,6 +795,7 @@ export function migrateConfig(raw: unknown): CockpitConfig {
     kids: readKids(raw.kids),
     editor: isStr(raw.editor) && raw.editor.trim() ? raw.editor.trim() : null,
     prActions: readPrActions(raw.prActions),
+    tasks: readTaskSettings(raw.tasks),
     windows: readWindows(raw, appearance, new Set(presets.map((p) => p.id)))
   }
 }

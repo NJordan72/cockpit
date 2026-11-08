@@ -127,6 +127,7 @@ export interface WidgetMethods {
   openExternal: { url: string }
   'sessions.list': Record<string, never>
   'sessions.start': { prompt: string }
+  'sessions.startTask': { branch: string; prompt: string }
   'sessions.send': { id: string; prompt: string }
 }
 
@@ -143,6 +144,7 @@ export const WIDGET_METHODS: readonly WidgetMethod[] = [
   'openExternal',
   'sessions.list',
   'sessions.start',
+  'sessions.startTask',
   'sessions.send'
 ]
 

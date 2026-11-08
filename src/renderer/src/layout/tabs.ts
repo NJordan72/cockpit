@@ -5,13 +5,19 @@ import { allPanes } from './model'
 
 const trimSlash = (p: string): string => (p.length > 1 ? p.replace(/\/+$/, '') : p)
 
+/** The repository of the task a directory is in, or null outside one. */
+export type RepoOf = (cwd: string) => string | null
+
+const noTasks: RepoOf = () => null
+
 /**
  * The project folder a directory is in: the folder right under the projects
  * directory that holds it (`~/dev/cockpit` for `~/dev/cockpit/src`), or the
- * directory itself when it's outside the projects directory.
+ * directory itself when it's outside the projects directory. A task's
+ * worktree is in its repository's folder.
  */
-export function projectDir(cwd: string, projectsDir: string): string {
-  const dir = trimSlash(cwd)
+export function projectDir(cwd: string, projectsDir: string, repoOf: RepoOf = noTasks): string {
+  const dir = trimSlash(repoOf(cwd) ?? cwd)
   const root = trimSlash(projectsDir)
   if (!dir.startsWith(`${root}/`)) return dir
   const first = dir.slice(root.length + 1).split('/')[0]
@@ -19,29 +25,31 @@ export function projectDir(cwd: string, projectsDir: string): string {
 }
 
 /** The project folders a tab's panes started in, once each. */
-export function tabDirs(tab: Tab, projectsDir: string): string[] {
-  return [...new Set(allPanes(tab.root).map((p) => projectDir(p.cwd, projectsDir)))]
+export function tabDirs(tab: Tab, projectsDir: string, repoOf: RepoOf = noTasks): string[] {
+  return [...new Set(allPanes(tab.root).map((p) => projectDir(p.cwd, projectsDir, repoOf)))]
 }
 
 /** True when the tab isn't pinned and every pane in it is in a hidden folder. */
 export function folderHidden(
   tab: Tab,
   hiddenDirs: readonly string[],
-  projectsDir: string
+  projectsDir: string,
+  repoOf: RepoOf = noTasks
 ): boolean {
   if (tab.pinned || hiddenDirs.length === 0) return false
-  return tabDirs(tab, projectsDir).every((d) => hiddenDirs.includes(d))
+  return tabDirs(tab, projectsDir, repoOf).every((d) => hiddenDirs.includes(d))
 }
 
 /** The tabs the bar shows: the ones the filter doesn't hide, and the active one. */
 export function shownTabs(
   layout: Layout,
   hiddenDirs: readonly string[],
-  projectsDir: string
+  projectsDir: string,
+  repoOf: RepoOf = noTasks
 ): Tab[] {
   if (hiddenDirs.length === 0) return layout.tabs
   return layout.tabs.filter(
-    (t) => t.id === layout.activeTabId || !folderHidden(t, hiddenDirs, projectsDir)
+    (t) => t.id === layout.activeTabId || !folderHidden(t, hiddenDirs, projectsDir, repoOf)
   )
 }
 
@@ -52,11 +60,15 @@ export interface TabFolder {
 }
 
 /** The folders the filter can hide, sorted by path. */
-export function tabFolders(layout: Layout, projectsDir: string): TabFolder[] {
+export function tabFolders(
+  layout: Layout,
+  projectsDir: string,
+  repoOf: RepoOf = noTasks
+): TabFolder[] {
   const counts = new Map<string, number>()
   for (const t of layout.tabs) {
     if (t.pinned) continue
-    for (const d of tabDirs(t, projectsDir)) counts.set(d, (counts.get(d) ?? 0) + 1)
+    for (const d of tabDirs(t, projectsDir, repoOf)) counts.set(d, (counts.get(d) ?? 0) + 1)
   }
   return [...counts]
     .map(([dir, tabs]) => ({ dir, tabs }))

@@ -51,6 +51,7 @@ const widgets = {
   prompter: widget('prompter', { sessions: 'prompt' })
 }
 let started: string[]
+let drafts: { branch: string; prompt: string }[]
 let sent: [string, string][]
 
 beforeEach(() => {
@@ -59,6 +60,7 @@ beforeEach(() => {
   prompt = vi.fn(() => Promise.resolve<string | null>('typed-in'))
   opened = []
   started = []
+  drafts = []
   sent = []
   broker = new WidgetBroker({
     widget: (id) => widgets[id as keyof typeof widgets],
@@ -67,6 +69,7 @@ beforeEach(() => {
     promptSecret: (w, name) => prompt(w, name),
     sessions: () => [],
     startSession: (p) => (started.push(p), true),
+    startTask: (d) => (drafts.push(d), true),
     sendPrompt: (id, p) => (sent.push([id, p]), id === 'agent'),
     openExternal: (url) => {
       opened.push(url)
@@ -100,6 +103,7 @@ describe('WidgetBroker', () => {
       ['openExternal', { url: 'https://app.example.com/' }],
       ['sessions.list', {}],
       ['sessions.start', { prompt: 'hi' }],
+      ['sessions.startTask', { branch: 'b', prompt: 'hi' }],
       ['sessions.send', { id: 'agent', prompt: 'hi' }]
     ]
     for (const [method, params] of calls) {
@@ -131,6 +135,24 @@ describe('WidgetBroker', () => {
       ['agent', 'go'],
       ['shell', 'go']
     ])
+  })
+
+  it('fills in the New task dialog only with "prompt"', async () => {
+    expect(
+      errorCode(await broker.call('full', 'sessions.startTask', { branch: 'b', prompt: 'p' }))
+    ).toBe('permission_denied')
+    expect(
+      await broker.call('prompter', 'sessions.startTask', { branch: ' nick/sc-1/x ', prompt: 'go' })
+    ).toEqual({ ok: true, value: null })
+    expect(errorCode(await broker.call('prompter', 'sessions.startTask', { branch: 'b' }))).toBe(
+      'invalid_argument'
+    )
+    expect(
+      errorCode(
+        await broker.call('prompter', 'sessions.startTask', { branch: 'x'.repeat(201), prompt: '' })
+      )
+    ).toBe('invalid_argument')
+    expect(drafts).toEqual([{ branch: 'nick/sc-1/x', prompt: 'go' }])
   })
 
   it('keeps storage separate per widget', async () => {

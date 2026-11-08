@@ -24,6 +24,7 @@ import { builtInLayout, layoutChoices } from '@shared/layouts'
 import { resolveTheme, themeVars, type ResolvedTheme, type ThemeDefinition } from '@shared/theme'
 import type { BashCommand } from '@shared/activity'
 import type { AppearanceCommand, PaneSession, WindowInfo } from '@shared/ipc'
+import { taskAt, type TaskDraft } from '@shared/tasks'
 import type { SecretPrompt, SessionStatus, WidgetInfo } from '@shared/widgets'
 import { ActivityPanel } from './activity/ActivityPanel'
 import { PlanDialog } from './activity/PlanDialog'
@@ -53,6 +54,10 @@ import { queueRun } from './terminal/run'
 import { applyTheme } from './theme'
 import { OpenUrlDialog, type OpenWhere } from './web/OpenUrlDialog'
 import { webPanes } from './web/registry'
+import { sessionToShow } from './tasks/model'
+import { TaskDialog, type CreatedTask } from './tasks/TaskDialog'
+import { TasksPanel } from './tasks/TasksPanel'
+import { useTasks } from './tasks/useTasks'
 import { setWidgetTheme, startWidgetHost } from './widgets/host'
 import { WidgetFrame } from './widgets/WidgetFrame'
 
@@ -126,6 +131,14 @@ export function App(): React.JSX.Element {
   const [commandsRevision, setCommandsRevision] = useState(0)
   /** The Open web page dialog is up. */
   const [openingUrl, setOpeningUrl] = useState(false)
+  /** The New task dialog: what it starts with, and the repository it suggests. */
+  const [taskDialog, setTaskDialog] = useState<{
+    key: number
+    draft: TaskDraft
+    repo: string
+  } | null>(null)
+  const taskDialogs = useRef(0)
+  const tasks = useTasks()
   const loaded = useRef(false)
   /** The appearance main has on disk, as JSON, so it isn't saved back to it. */
   const savedAppearance = useRef<string | null>(null)
@@ -198,12 +211,17 @@ export function App(): React.JSX.Element {
 
   const projectsDir = config?.projectsDir ?? '~/dev'
   const hiddenDirs = view?.hiddenDirs
+  // A task's tabs are in its repository's folder.
+  const repoOf = useCallback((cwd: string) => taskAt(tasks, cwd)?.repo ?? null, [tasks])
   // The tabs the tab bar shows; the tab shortcuts go through these only.
   const shown = useMemo(
-    () => shownTabs(layout, hiddenDirs ?? [], projectsDir),
-    [layout, hiddenDirs, projectsDir]
+    () => shownTabs(layout, hiddenDirs ?? [], projectsDir, repoOf),
+    [layout, hiddenDirs, projectsDir, repoOf]
   )
-  const folders = useMemo(() => tabFolders(layout, projectsDir), [layout, projectsDir])
+  const folders = useMemo(
+    () => tabFolders(layout, projectsDir, repoOf),
+    [layout, projectsDir, repoOf]
+  )
 
   const configRef = useRef(config)
   const layoutRef = useRef(layout)
@@ -215,6 +233,8 @@ export function App(): React.JSX.Element {
   const kidsRef = useRef(kids)
   const openingUrlRef = useRef(openingUrl)
   const planShownRef = useRef(planShown)
+  const taskDialogRef = useRef(taskDialog)
+  const tasksRef = useRef(tasks)
   useEffect(() => {
     configRef.current = config
     layoutRef.current = layout
@@ -226,6 +246,8 @@ export function App(): React.JSX.Element {
     kidsRef.current = kids
     openingUrlRef.current = openingUrl
     planShownRef.current = planShown
+    taskDialogRef.current = taskDialog
+    tasksRef.current = tasks
   })
 
   // Pane statuses from the main process, for the tab badges and the session list.
@@ -333,12 +355,12 @@ export function App(): React.JSX.Element {
     const added = layout.tabs.filter((t) => !tabsBefore.current.has(t.id))
     tabsBefore.current = new Set(tabIds(layout.tabs))
     if (!hiddenDirs?.length || layout.tabs.length === 0) return
-    const live = new Set(tabFolders(layout, projectsDir).map((f) => f.dir))
+    const live = new Set(tabFolders(layout, projectsDir, repoOf).map((f) => f.dir))
     // A restore adds every tab at once; a new tab comes alone.
-    const opened = added.length === 1 && added[0] ? tabDirs(added[0], projectsDir) : []
+    const opened = added.length === 1 && added[0] ? tabDirs(added[0], projectsDir, repoOf) : []
     const next = hiddenDirs.filter((d) => live.has(d) && !opened.includes(d))
     if (next.length !== hiddenDirs.length) updateView((v) => ({ ...v, hiddenDirs: next }))
-  }, [layout, hiddenDirs, projectsDir, updateView])
+  }, [layout, hiddenDirs, projectsDir, repoOf, updateView])
 
   // This window's view, saved the same way.
   useEffect(() => {
@@ -471,13 +493,13 @@ export function App(): React.JSX.Element {
     (dirs: string[]) => {
       updateView((v) => ({ ...v, hiddenDirs: dirs }))
       const l = layoutRef.current
-      const left = shownTabs({ ...l, activeTabId: null }, dirs, projectsDir)
+      const left = shownTabs({ ...l, activeTabId: null }, dirs, projectsDir, repoOf)
       const first = left[0]
       if (first && !left.some((t) => t.id === l.activeTabId)) {
         dispatch({ type: 'selectTab', tabId: first.id })
       } else requestAnimationFrame(focusWorkspace)
     },
-    [updateView, projectsDir, focusWorkspace]
+    [updateView, projectsDir, repoOf, focusWorkspace]
   )
 
   const runAppearance = useCallback(
@@ -564,6 +586,26 @@ export function App(): React.JSX.Element {
     setPlanShown({ paneId: pane.id, key, label: `${pane.title ?? pane.name} · ${pane.cwd}` })
   }, [])
 
+  /**
+   * The New task dialog, suggesting the focused pane's repository: its task's
+   * repository when it's in one, else the top of its git checkout.
+   */
+  const openTaskDialog = useCallback(
+    async (draft: TaskDraft) => {
+      if (kidsRef.current) return
+      const focusedNow = sessionsRef.current.find((s) => s.focused) ?? null
+      const inTask = focusedNow ? taskAt(tasksRef.current, focusedNow.cwd) : null
+      const repo =
+        draft.repo ??
+        inTask?.repo ??
+        (focusedNow ? ((await api.activity.git(focusedNow.id))?.root ?? '') : '')
+      setPicker(null)
+      setOpeningUrl(false)
+      setTaskDialog({ key: ++taskDialogs.current, draft, repo })
+    },
+    [api]
+  )
+
   const runAction = useCallback(
     (action: Action) => {
       if (!terminals && !OWN_ACTIONS.includes(action)) {
@@ -577,6 +619,9 @@ export function App(): React.JSX.Element {
           return
         case 'newShell':
           void openShell()
+          return
+        case 'newTask':
+          void openTaskDialog({})
           return
         case 'openUrl':
           setPicker(null)
@@ -651,7 +696,7 @@ export function App(): React.JSX.Element {
         }
       }
     },
-    [api, terminals, openPicker, openShell, runAppearance, showPlan]
+    [api, terminals, openPicker, openShell, openTaskDialog, runAppearance, showPlan]
   )
 
   // A window without terminals passed this one an action.
@@ -667,7 +712,8 @@ export function App(): React.JSX.Element {
         promptRef.current ||
         savingRef.current ||
         openingUrlRef.current ||
-        planShownRef.current
+        planShownRef.current ||
+        taskDialogRef.current
       )
         return
       const action = actionFor(keymap, e)
@@ -686,7 +732,8 @@ export function App(): React.JSX.Element {
         promptRef.current ||
         savingRef.current ||
         openingUrlRef.current ||
-        planShownRef.current
+        planShownRef.current ||
+        taskDialogRef.current
       )
         return
       const action = actionFor(keymap, key)
@@ -730,7 +777,8 @@ export function App(): React.JSX.Element {
           promptRef.current ||
           savingRef.current ||
           openingUrlRef.current ||
-          planShownRef.current
+          planShownRef.current ||
+          taskDialogRef.current
         )
           return
         const el = document.activeElement
@@ -757,6 +805,7 @@ export function App(): React.JSX.Element {
         setOpeningUrl(false)
         setSaving(null)
         setPlanShown(null)
+        setTaskDialog(null)
       } else requestAnimationFrame(focusWorkspace)
     })
     void api.kids.active().then((active) => {
@@ -843,6 +892,61 @@ export function App(): React.JSX.Element {
     [focused]
   )
 
+  /**
+   * A new tab in a task's worktree, running the preset (the start screen's
+   * agent if none). A window of panels has the terminal window open it.
+   */
+  const openInTask = useCallback(
+    (path: string, presetId?: string, prompt?: string) => {
+      const c = configRef.current
+      if (!c) return
+      const preset =
+        c.presets.find((p) => p.id === presetId) ??
+        c.presets.find((p) => p.id === c.launcher.presetId) ??
+        c.presets[0]
+      if (!preset) return
+      if (!terminals) {
+        api.tasks.open({ path, presetId: preset.id })
+        return
+      }
+      setPicker(null)
+      setRestorable(null)
+      const pane = makePane(preset.id, path)
+      dispatch({ type: 'newTab', pane: prompt ? { ...pane, prompt } : pane })
+    },
+    [api, terminals]
+  )
+
+  /** The dialog made the worktree, or found the branch's: show its pane or open one. */
+  const taskCreated = useCallback(
+    (created: CreatedTask) => {
+      setTaskDialog(null)
+      const here = created.existing
+        ? sessionsRef.current.filter(
+            (s) => s.cwd === created.path || s.cwd.startsWith(`${created.path}/`)
+          )
+        : []
+      const open = sessionToShow(here)
+      if (open?.agent && created.prompt) sendPrompt(open.id, created.prompt)
+      else if (open) revealPane(open.id)
+      else openInTask(created.path, created.presetId, created.prompt || undefined)
+    },
+    [sendPrompt, revealPane, openInTask]
+  )
+
+  useEffect(() => api.tasks.onDraft((d) => void openTaskDialog(d)), [api, openTaskDialog])
+  useEffect(() => api.tasks.onOpen((req) => openInTask(req.path, req.presetId)), [api, openInTask])
+  // Main is removing the task these panes are in.
+  useEffect(
+    () =>
+      api.sessions.onCloseRequest((ids) => {
+        for (const paneId of ids) {
+          dispatch({ type: 'closePane', paneId, shown: tabIds(shownRef.current) })
+        }
+      }),
+    [api]
+  )
+
   /** Where the picker was asked to put a new pane: a new tab, or split beside a pane. */
   const placePicked = useCallback((picked: PickerState, pane: PaneNode) => {
     setRestorable(null)
@@ -897,6 +1001,7 @@ export function App(): React.JSX.Element {
             folders={folders}
             hiddenDirs={view.hiddenDirs}
             projectsDir={projectsDir}
+            repoOf={repoOf}
             presets={config.presets}
             statuses={statuses}
             kids={
@@ -919,6 +1024,7 @@ export function App(): React.JSX.Element {
         return (
           <SessionList
             sessions={sessions}
+            tasks={tasks}
             collapsed={place.collapsed}
             onToggle={place.canCollapse ? place.toggleCollapsed : undefined}
             onSelect={revealPane}
@@ -957,6 +1063,18 @@ export function App(): React.JSX.Element {
             visible={windowVisible && place.visible}
             actions={config.prActions}
             onRun={runPrompt}
+          />
+        )
+      case 'tasks':
+        return (
+          <TasksPanel
+            tasks={tasks}
+            sessions={sessions}
+            presets={config.presets}
+            visible={windowVisible && place.visible}
+            onNew={() => runAction('newTask')}
+            onOpen={(task, presetId) => openInTask(task.path, presetId)}
+            onReveal={revealPane}
           />
         )
       case 'commands':
@@ -1096,6 +1214,11 @@ export function App(): React.JSX.Element {
             onCancel={closePicker}
             onSubmit={(presetId, cwd) => placePicked(picker, makePane(presetId, cwd))}
             onOpenPage={(url) => placePicked(picker, makeWebPane(url, picker.currentDir ?? '~'))}
+            onTask={
+              picker.mode === 'tab'
+                ? (presetId, dir) => void openTaskDialog({ repo: dir, presetId })
+                : undefined
+            }
           />
         )}
         {openingUrl && (
@@ -1124,6 +1247,20 @@ export function App(): React.JSX.Element {
               setPlanShown({ ...planShown, key })
             }}
             onClose={closePlan}
+          />
+        )}
+        {taskDialog && (
+          <TaskDialog
+            key={taskDialog.key}
+            presets={config.presets}
+            initialPresetId={config.launcher.presetId}
+            draft={taskDialog.draft}
+            repo={taskDialog.repo}
+            onCreated={taskCreated}
+            onCancel={() => {
+              setTaskDialog(null)
+              requestAnimationFrame(focusWorkspace)
+            }}
           />
         )}
         {saving && (

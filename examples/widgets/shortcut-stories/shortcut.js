@@ -621,6 +621,33 @@
       .join(s.url || '')
   }
 
+  // The branch Shortcut gives a story, got the way its own tools (and so
+  // /start-story) get it: the full story's formatted_vcs_branch_name, or else
+  // mention-name/sc-id/slug cut to 50 characters.
+  function builtBranch(s) {
+    var slug = (s.name || '')
+      .toLowerCase()
+      .replace(/\s+/g, '-')
+      .replace(/[^\w-]/g, '')
+    var owner = sync && sync.me ? sync.me + '/' : ''
+    return (owner + 'sc-' + s.id + '/' + slug).substring(0, 50)
+  }
+
+  function storyBranch(s) {
+    return getToken(false)
+      .then(function (t) {
+        return t ? api(t, '/api/v3/stories/' + s.id) : null
+      })
+      .then(
+        function (full) {
+          return (full && full.formatted_vcs_branch_name) || builtBranch(s)
+        },
+        function () {
+          return builtBranch(s)
+        }
+      )
+  }
+
   function showStoryMenu(s, x, y) {
     closeMenu()
     var prompt = startPrompt(s)
@@ -629,6 +656,22 @@
         cockpit.sessions.start(prompt).catch(failed)
       })
     ]
+    // A branch in a worktree of its own; Cockpit asks before making it.
+    if (cockpit.sessions.startTask) {
+      items.push(
+        menuItem(
+          'Start story in a new task',
+          function () {
+            storyBranch(s)
+              .then(function (branch) {
+                return cockpit.sessions.startTask(prompt, branch)
+              })
+              .catch(failed)
+          },
+          'own worktree'
+        )
+      )
+    }
     if (agentSessions.length) {
       items.push(h('div', 'sc-menu-label', 'Start story in'))
       agentSessions.forEach(function (x) {

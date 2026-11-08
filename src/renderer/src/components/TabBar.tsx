@@ -15,7 +15,7 @@ import { dragPointer } from '../drag'
 import type { KidsStatus } from '../kids/KidsMode'
 import { findPane } from '../layout/model'
 import type { LayoutAction } from '../layout/reducer'
-import { dropIndex, folderHidden, type TabFolder } from '../layout/tabs'
+import { dropIndex, folderHidden, type RepoOf, type TabFolder } from '../layout/tabs'
 import { mostUrgent, STATUS_LABEL } from '../sessions'
 
 /** Kids mode's pretend terminal, shown as the active tab while kids mode is on. */
@@ -33,6 +33,8 @@ interface Props {
   folders: readonly TabFolder[]
   hiddenDirs: readonly string[]
   projectsDir: string
+  /** A task's worktree is in its repository's folder. */
+  repoOf: RepoOf
   presets: Preset[]
   statuses: ReadonlyMap<string, SessionStatus>
   kids: KidsTab | null
@@ -117,6 +119,7 @@ export function TabBar({
   folders,
   hiddenDirs,
   projectsDir,
+  repoOf,
   presets,
   statuses,
   kids,
@@ -279,7 +282,7 @@ export function TabBar({
       })
     )
     // The active tab shows even when the filter hides its folder.
-    const filtered = folderHidden(tab, hiddenDirs, projectsDir)
+    const filtered = folderHidden(tab, hiddenDirs, projectsDir, repoOf)
     const title = [
       tab.name ? auto : null,
       status ? (pane?.cwd ?? '') : (pane?.url ?? pane?.cwd ?? ''),

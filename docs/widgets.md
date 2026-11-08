@@ -96,7 +96,8 @@ separate values.
 
 **`sessions`**: `"read"` to use `cockpit.sessions.list` and `subscribe`.
 `"prompt"` allows those too, plus `cockpit.sessions.start` and `send`, which
-type into Claude Code or Codex. An agent can run commands, so give `"prompt"`
+type into Claude Code or Codex, and `startTask`, which fills in the New task
+dialog. An agent can run commands, so give `"prompt"`
 only to widgets you trust as much as the terminal.
 
 ## What the sandbox allows
@@ -252,9 +253,16 @@ With `"sessions": "prompt"`:
 - `send(id, prompt)` pastes `prompt` into the pane `id` and presses Enter. It
   rejects with `invalid_argument` if that pane isn't running Claude Code or
   Codex.
+- `startTask(prompt, branch)` opens Cockpit's New task dialog with the branch
+  and the first prompt filled in, suggesting the focused pane's repository
+  (see "Tasks" in the README). It resolves once the dialog is up. The
+  worktree is made, and the agent started, only when the user confirms there,
+  and they can change any of it first. A branch over 200 characters or a
+  prompt over 20,000 rejects with `invalid_argument`.
 
 ```js
 await cockpit.sessions.start('Work on Shortcut story sc-1234')
+await cockpit.sessions.startTask('/start-story sc-1234', 'nick/sc-1234/fix-the-login')
 ```
 
 ```js
