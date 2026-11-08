@@ -381,6 +381,58 @@ describe('migrateConfig: appearance', () => {
   })
 })
 
+describe('migrateConfig: tasks (version 5)', () => {
+  const saved = {
+    type: 'split',
+    id: 'root',
+    direction: 'row',
+    children: [
+      { type: 'panel', id: 'workspace', panel: 'workspace' },
+      {
+        type: 'tabs',
+        id: 'repo',
+        active: 'commands',
+        children: [
+          { type: 'panel', id: 'prs', panel: 'prs' },
+          { type: 'panel', id: 'commands', panel: 'commands' }
+        ]
+      }
+    ]
+  }
+  const repoTabs = (c: CockpitConfig, name: string): string[] => {
+    const repo = findNode(activeLayout(c.appearance, name), 'repo')
+    return repo && repo.type !== 'panel' ? repo.children.map((n) => n.id) : []
+  }
+
+  it('puts the Tasks panel after the pull requests in a layout saved before it, once', () => {
+    const c = migrateConfig({ version: 4, appearance: { layouts: { classic: saved } } })
+    expect(repoTabs(c, 'classic')).toEqual(['prs', 'tasks', 'commands'])
+    // The group still shows the tab it showed.
+    expect(findNode(activeLayout(c.appearance, 'classic'), 'repo')).toMatchObject({
+      active: 'commands'
+    })
+    // A layout the user took it out of afterwards stays without it.
+    const later = migrateConfig({ version: 5, appearance: { layouts: { classic: saved } } })
+    expect(repoTabs(later, 'classic')).toEqual(['prs', 'commands'])
+    expect(c.version).toBe(5)
+  })
+
+  it('has it in the built-in layouts', () => {
+    const c = defaultConfig()
+    expect(repoTabs(c, 'classic')).toEqual(['prs', 'tasks', 'commands'])
+    expect(repoTabs(c, 'cockpit')).toContain('tasks')
+    expect(c.keybindings.newTask).toBe(DEFAULT_KEYBINDINGS.newTask)
+  })
+
+  it("keeps each repository's setup", () => {
+    const c = migrateConfig({
+      tasks: { '~/dev/app': { setup: 'bun install', copy: ['.env'] }, bad: 'x' }
+    })
+    expect(c.tasks).toEqual({ '~/dev/app': { setup: 'bun install', copy: ['.env'] } })
+    expect(migrateConfig({}).tasks).toEqual({})
+  })
+})
+
 describe('readSidebar (version 2)', () => {
   it('keeps valid placement and repairs the rest', () => {
     const sb = readSidebar({

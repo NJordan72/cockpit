@@ -19,13 +19,13 @@ const widgetsGroup = (): FrameSplit => ({
   children: []
 })
 
-/** Pull requests and saved commands, one at a time. */
+/** Pull requests, tasks, and saved commands, one at a time. */
 const reposGroup = (size?: number): FrameTabs => ({
   type: 'tabs',
   id: 'repo',
   ...(size === undefined ? {} : { size }),
   active: 'prs',
-  children: [panel('prs'), panel('commands')]
+  children: [panel('prs'), panel('tasks'), panel('commands')]
 })
 
 /** Tab bar across the top, terminals, and a sidebar on the right. */

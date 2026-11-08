@@ -57,6 +57,7 @@ stacked (`"direction": "column"`).
 | `image`     | An image or animated GIF, or the built-in head-up display.                                | `src`, `fit` (`cover` or `contain`), `position`, `pixelated`      |
 | `monitor`   | CPU, memory, load averages, and uptime, read every 2 seconds while it's on screen.        | –                                                                 |
 | `prs`       | Open pull requests of the focused pane's repository, through `gh`.                        | –                                                                 |
+| `tasks`     | Tasks: branches in worktrees of their own, with their pull requests.                      | –                                                                 |
 | `commands`  | Claude Code slash commands for the focused pane's repository and everywhere.              | –                                                                 |
 
 An image's `src` is a file in `~/.cockpit/images/`, or `theme:<file>` for one

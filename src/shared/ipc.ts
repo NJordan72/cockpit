@@ -11,6 +11,7 @@ import type {
   WindowView
 } from './config'
 import type { PrList } from './prs'
+import type { NewTask, NewTaskResult, TaskDraft, TaskInfo } from './tasks'
 import type { ThemeDefinition } from './theme'
 import type {
   SecretPrompt,
@@ -68,6 +69,15 @@ export const IPC = {
   sessionsSend: 'sessions:send',
   sessionsOpen: 'sessions:open',
   prsList: 'prs:list',
+  tasksList: 'tasks:list',
+  tasksChanged: 'tasks:changed',
+  tasksRefresh: 'tasks:refresh',
+  tasksCreate: 'tasks:create',
+  tasksRemove: 'tasks:remove',
+  tasksCleanUp: 'tasks:cleanup',
+  tasksOpen: 'tasks:open',
+  tasksDraft: 'tasks:draft',
+  panesClose: 'panes:close',
   commandsList: 'commands:list',
   commandsSave: 'commands:save',
   commandsDelete: 'commands:delete',
@@ -114,6 +124,14 @@ export interface PtyCreateOptions {
 /** A widget asks for a new agent session that starts with a prompt. */
 export interface OpenSessionRequest {
   prompt: string
+}
+
+/** A tab to open in a task's worktree, asked for by a window of panels. */
+export interface TaskOpenRequest {
+  /** The worktree, with ~ for home. */
+  path: string
+  /** The preset to run; the start screen's agent when missing. */
+  presetId?: string
 }
 
 /** A native context menu. The chosen item's id comes back, or null. */
@@ -291,6 +309,30 @@ export interface CockpitApi {
     send(paneId: string, prompt: string): Promise<boolean>
     /** A widget asked for a new session. */
     onOpenRequest(cb: (req: OpenSessionRequest) => void): () => void
+    /** Main closes these panes, in whichever window they're in: their task is being removed. */
+    onCloseRequest(cb: (paneIds: string[]) => void): () => void
+  }
+  tasks: {
+    /** The worktrees Cockpit made, newest first, as last read. */
+    list(): Promise<TaskInfo[]>
+    onChange(cb: (tasks: TaskInfo[]) => void): () => void
+    /** Read the worktrees again, and the pull requests not read lately, or all of them with `force`. */
+    refresh(force?: boolean): void
+    /** Makes the worktree, or finds the one the branch has. */
+    create(req: NewTask): Promise<NewTaskResult>
+    /**
+     * Removes a task's worktree, asking first when that would lose work or
+     * close terminals. True once it's gone.
+     */
+    remove(path: string): Promise<boolean>
+    /** Removes every task whose pull request merged with nothing newer, after asking. How many went. */
+    cleanUp(): Promise<number>
+    /** Opens a tab in a task in the window with terminals the user last worked in. */
+    open(req: TaskOpenRequest): void
+    /** Another window asked this one to open a tab in a task. */
+    onOpen(cb: (req: TaskOpenRequest) => void): () => void
+    /** A widget asked for the New task dialog, filled in. */
+    onDraft(cb: (draft: TaskDraft) => void): () => void
   }
   prs: {
     /** Open pull requests for the pane's repository, through gh. */

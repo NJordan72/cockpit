@@ -38,6 +38,7 @@ export interface WidgetHostOptions {
   theme: () => Theme
   sessions: () => SessionInfo[]
   startSession: (prompt: string) => boolean
+  startTask: (draft: { branch: string; prompt: string }) => boolean
   sendPrompt: (paneId: string, prompt: string) => boolean
   /** Only accept IPC from the chrome's own top-level frame. */
   trusted: (e: IpcMainEvent | IpcMainInvokeEvent) => boolean
@@ -80,6 +81,7 @@ export class WidgetHost {
       promptSecret: (w, name) => this.promptSecret(w, name),
       sessions: opts.sessions,
       startSession: opts.startSession,
+      startTask: opts.startTask,
       sendPrompt: opts.sendPrompt,
       openExternal: (url) => shell.openExternal(url)
     })

@@ -10,21 +10,49 @@ import { abbreviateHome } from './paths'
 const TIMEOUT_MS = 3000
 const COMMITS = 5
 
-function git(cwd: string, args: string[]): Promise<string | null> {
+export interface GitRun {
+  /** The exit code; -1 when git couldn't run or timed out. */
+  code: number
+  stdout: string
+  stderr: string
+}
+
+export interface GitOptions {
+  timeoutMs?: number
+  env?: Record<string, string>
+}
+
+/**
+ * Runs git in `cwd` without optional locks and with core.fsmonitor off. Never
+ * rejects. Git can't ask for a password here: there's no terminal to ask in.
+ */
+export function runGit(cwd: string, args: string[], opts: GitOptions = {}): Promise<GitRun> {
   return new Promise((resolve) => {
     execFile(
       'git',
       ['--no-optional-locks', '-c', 'core.fsmonitor=false', '-C', cwd, ...args],
       {
-        timeout: TIMEOUT_MS,
+        timeout: opts.timeoutMs ?? TIMEOUT_MS,
         maxBuffer: 8 * 1024 * 1024,
-        env: { ...process.env, GIT_OPTIONAL_LOCKS: '0', LC_ALL: 'C' }
+        env: {
+          ...process.env,
+          GIT_OPTIONAL_LOCKS: '0',
+          GIT_TERMINAL_PROMPT: '0',
+          LC_ALL: 'C',
+          ...opts.env
+        }
       },
-      (err, stdout) => {
-        resolve(err ? null : stdout)
+      (err, stdout, stderr) => {
+        const code = err ? (typeof err.code === 'number' ? err.code : -1) : 0
+        resolve({ code, stdout, stderr })
       }
     )
   })
+}
+
+async function git(cwd: string, args: string[]): Promise<string | null> {
+  const r = await runGit(cwd, args)
+  return r.code === 0 ? r.stdout : null
 }
 
 export interface ParsedStatus {

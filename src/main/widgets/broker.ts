@@ -13,6 +13,10 @@ import { urlAllowed } from './permissions'
 import type { LoadedWidget } from './registry'
 import { MAX_SECRET_LENGTH, type SecretStore } from './secrets'
 import type { WidgetStorage } from './storage'
+import { MAX_BRANCH } from '@shared/tasks'
+
+/** Longest prompt a widget may fill the New task dialog with, as for sessions.send. */
+const MAX_PROMPT = 20_000
 
 export interface BrokerDeps {
   widget: (id: string) => LoadedWidget | undefined
@@ -23,6 +27,8 @@ export interface BrokerDeps {
   sessions: () => SessionInfo[]
   /** Open a new agent session that starts with the prompt. False if it couldn't. */
   startSession: (prompt: string) => boolean
+  /** Show the New task dialog with the branch and prompt filled in. False if it couldn't. */
+  startTask: (draft: { branch: string; prompt: string }) => boolean
   /** Type a prompt into an agent pane. False if the pane runs no agent. */
   sendPrompt: (paneId: string, prompt: string) => boolean
   openExternal: (url: string) => Promise<void>
@@ -154,6 +160,21 @@ export class WidgetBroker {
           throw denied('sessions are not allowed: set "permissions.sessions": "read"')
         }
         return this.deps.sessions()
+
+      case 'sessions.startTask': {
+        if (permissions.sessions !== 'prompt') {
+          throw denied('starting tasks is not allowed: set "permissions.sessions": "prompt"')
+        }
+        const branch = str(params, 'branch').trim()
+        const prompt = str(params, 'prompt').trim()
+        if (branch.length > MAX_BRANCH || prompt.length > MAX_PROMPT) {
+          throw new WidgetCallError('invalid_argument', 'the branch or the prompt is too long')
+        }
+        if (!this.deps.startTask({ branch, prompt })) {
+          throw new WidgetCallError('unavailable', 'no window can show the New task dialog')
+        }
+        return null
+      }
 
       case 'sessions.start':
       case 'sessions.send': {

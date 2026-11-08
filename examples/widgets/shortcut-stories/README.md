@@ -43,6 +43,12 @@ Paste it once; Cockpit keeps it encrypted and the widget reads it from then on.
   quietly as it turns, and with Reduce motion on in macOS it lands at once.
 - Click a story to open it in your browser. The ▸ on the right of a row shows
   its full title, type, and when it was last updated, without opening it.
+- Right-click a story to start it: in a new agent session, in any agent pane
+  that's open, or **in a new task**, a branch in a git worktree of its own.
+  That opens Cockpit's New task dialog with the start prompt and the story's
+  branch filled in: the branch name Shortcut gives the story, or else
+  `<your mention name>/sc-<id>/<title>` cut to 50 characters, the way
+  Shortcut's own tools make one. Nothing is made until you confirm it there.
 - The gear opens the settings, and Enter (or save) applies them right away
   (Cmd+Enter in the tabs box):
   - **Your stories**: the search behind Doing, Next, and All. `{me}` expands
@@ -50,7 +56,7 @@ Paste it once; Cockpit keeps it encrypted and the widget reads it from then on.
     The default is `owner:{me} !is:done !is:archived !is:backlog`.
   - **More tabs**: see above.
   - **Start story sends**: the prompt that right-click > Start story and the
-    wheel send to the agent. `{id}`, `{name}`, and `{url}` are the story's
+    wheel send to the agent, and that **Start story in a new task** fills in. `{id}`, `{name}`, and `{url}` are the story's
     number, title, and link. The default is
     `Work on Shortcut story sc-{id}: {name} ({url})`. If you have a skill or
     slash command for picking up a story, put it here, such as

@@ -12,6 +12,8 @@ interface Props {
   currentDir: string | null
   onSubmit: (presetId: string, cwd: string) => void
   onOpenPage: (url: string) => void
+  /** Cmd+Enter: a new task in the chosen directory's repository instead. */
+  onTask?: (presetId: string, dir: string) => void
   onCancel: () => void
 }
 
@@ -22,6 +24,7 @@ export function Picker({
   currentDir,
   onSubmit,
   onOpenPage,
+  onTask,
   onCancel
 }: Props): React.JSX.Element {
   const [dirs, setDirs] = useState<DirEntry[]>([])
@@ -86,10 +89,13 @@ export function Picker({
         e.preventDefault()
         onCancel()
         break
-      case 'Enter':
+      case 'Enter': {
         e.preventDefault()
-        submit(selected)
+        const item = items[selected]
+        if (e.metaKey && onTask && !web && preset && item) onTask(preset.id, item.key)
+        else submit(selected)
         break
+      }
       case 'ArrowDown':
         e.preventDefault()
         setSelected((s) => Math.min(s + 1, items.length - 1))
@@ -144,6 +150,12 @@ export function Picker({
           </div>
           <span className="picker-hint">
             <kbd>⇥</kbd> preset
+            {onTask && !web && (
+              <>
+                {' · '}
+                <kbd>⌘⏎</kbd> task
+              </>
+            )}
           </span>
         </div>
         <input

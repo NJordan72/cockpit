@@ -32,6 +32,27 @@ describe('projectDir', () => {
   })
 })
 
+describe('task worktrees', () => {
+  it("are in their repository's folder", () => {
+    const repoOf = (cwd: string): string | null =>
+      cwd.startsWith('~/.cockpit/worktrees/app/') ? '~/dev/app' : null
+    expect(projectDir('~/.cockpit/worktrees/app/feat-x/src', '~/dev', repoOf)).toBe('~/dev/app')
+    const layout: Layout = {
+      tabs: [
+        tab('main', pane('m', '~/dev/app')),
+        tab('task', pane('t', '~/.cockpit/worktrees/app/feat-x')),
+        tab('other', pane('o', '~/dev/other'))
+      ],
+      activeTabId: 'other'
+    }
+    expect(tabFolders(layout, '~/dev', repoOf)).toEqual([
+      { dir: '~/dev/app', tabs: 2 },
+      { dir: '~/dev/other', tabs: 1 }
+    ])
+    expect(shownTabs(layout, ['~/dev/app'], '~/dev', repoOf).map((t) => t.id)).toEqual(['other'])
+  })
+})
+
 describe('tabDirs', () => {
   it('lists each pane folder once', () => {
     const t = tab('t', split(pane('a', '~/dev/a'), pane('b', '~/dev/a/src'), pane('c', '~')))

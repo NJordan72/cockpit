@@ -48,6 +48,15 @@ import {
 } from '@shared/ipc'
 import type { SaveResult } from '@shared/commands'
 import type { PrList } from '@shared/prs'
+import {
+  deletesBranch,
+  MAX_BRANCH,
+  mergedAndClean,
+  removalWarnings,
+  type NewTaskResult,
+  type TaskDraft,
+  type TaskInfo
+} from '@shared/tasks'
 import { BUILT_IN_LAYOUTS, DEFAULT_LAYOUT_ID, layoutChoices } from '@shared/layouts'
 import { resolveTheme, type ResolvedTheme } from '@shared/theme'
 import { canOpenExternally, isWebUrl, WEB_PARTITION } from '@shared/web'
@@ -67,6 +76,7 @@ import { listPrs } from './prs'
 import { PtyManager } from './pty'
 import { registerSchemes } from './schemes'
 import { SystemMonitor } from './system'
+import { TaskStore, withSetup } from './tasks'
 import { ThemeStore } from './themes'
 import { restartPrompt, signedWithDeveloperId, Updates } from './updater'
 import { TreeWatcher } from './watch'
@@ -92,6 +102,8 @@ const system = new SystemMonitor((sample) => {
 })
 let widgets: WidgetHost
 let agents: AgentMonitor
+let tasks: TaskStore
+let tasksTimer: NodeJS.Timeout | null = null
 let lastSessions = ''
 let warnedNotifications = false
 /**
@@ -303,6 +315,143 @@ function openSession(prompt: string): boolean {
   if (!w || !text || text.length > MAX_PROMPT) return false
   send(w, IPC.sessionsOpen, { prompt: text })
   return true
+}
+
+/** Asks the chrome of the terminal window to show the New task dialog, filled in. */
+function openTaskDraft(draft: TaskDraft): boolean {
+  const w = terminalWindow()
+  if (!w) return false
+  raise(w)
+  send(w, IPC.tasksDraft, draft)
+  return true
+}
+
+/** How often the tasks are read again while a window is on screen. */
+const TASKS_POLL_MS = 60_000
+/** A window that gains focus reads them again if it's been this long. */
+const TASKS_FOCUS_MS = 15_000
+
+function anyVisible(): boolean {
+  return windows.some((w) => !w.win.isDestroyed() && w.win.isVisible() && !w.win.isMinimized())
+}
+
+/** Terminal panes, in any window, that started in a directory inside `dir`. */
+function panesIn(dir: string): string[] {
+  const all = (n: LayoutNode): PaneNode[] => (n.type === 'pane' ? [n] : n.children.flatMap(all))
+  return allTabs()
+    .tabs.flatMap((t) => all(t.root))
+    .filter((p) => !p.url && (p.cwd === dir || p.cwd.startsWith(`${dir}/`)))
+    .map((p) => p.id)
+}
+
+/** Each window closes its own of these panes, and their processes end now. */
+function closePanes(ids: string[]): void {
+  if (ids.length === 0) return
+  for (const w of windows) {
+    const mine = new Set(liveLayout(w).tabs.flatMap((t) => paneIds(t.root)))
+    const here = ids.filter((id) => mine.has(id))
+    if (here.length > 0) send(w, IPC.panesClose, here)
+  }
+  for (const id of ids) ptys.kill(id)
+}
+
+const taskName = (t: TaskInfo): string => t.branch ?? basename(t.path)
+
+/**
+ * Removes a task after asking, unless nothing would be lost: its pull
+ * request merged, nothing newer is in it, and no terminal is open there.
+ */
+async function removeTask(taskPath: string): Promise<boolean> {
+  await tasks.refresh(true, taskPath)
+  const task = tasks.list().find((t) => t.path === taskPath)
+  if (!task) return false
+  const panes = panesIn(task.path)
+  const live = panes.filter((id) => ptys.pid(id) !== null).length
+  const warnings = removalWarnings(task, live)
+  if (warnings.length > 0) {
+    const discard = task.changed > 0
+    const { response } = await showDialog({
+      type: discard ? 'warning' : 'question',
+      message: `Remove the task ${taskName(task)}?`,
+      detail: [
+        `Its worktree, ${task.path}, is deleted.`,
+        ...(deletesBranch(task)
+          ? [`So is its local branch ${task.branch ?? ''}: its pull request merged.`]
+          : []),
+        ...warnings
+      ].join('\n'),
+      buttons: [discard ? 'Discard Changes and Remove' : 'Remove', 'Cancel'],
+      defaultId: discard ? 1 : 0,
+      cancelId: 1
+    })
+    if (response !== 0) return false
+  }
+  closePanes(panes)
+  const r = await tasks.remove(task.path, {
+    force: task.changed > 0,
+    deleteBranch: deletesBranch(task)
+  })
+  if (!r.ok) {
+    void showDialog({
+      type: 'warning',
+      message: `Could not remove ${taskName(task)}`,
+      detail: r.error,
+      buttons: ['OK']
+    })
+  }
+  return r.ok
+}
+
+/** Removes, after one question, every task whose pull request merged with nothing newer in it. */
+async function cleanUpTasks(): Promise<number> {
+  await tasks.refresh(true)
+  const done = tasks.list().filter(mergedAndClean)
+  if (done.length === 0) {
+    void showDialog({
+      message: 'No merged tasks to clean up',
+      detail:
+        "A task is cleaned up once GitHub has merged its pull request and it has nothing that isn't in it.",
+      buttons: ['OK']
+    })
+    return 0
+  }
+  const panes = done.flatMap((t) => panesIn(t.path))
+  const live = panes.filter((id) => ptys.pid(id) !== null).length
+  const { response } = await showDialog({
+    type: 'question',
+    message:
+      done.length === 1 ? 'Remove 1 merged task?' : `Remove ${String(done.length)} merged tasks?`,
+    detail: [
+      ...done.map((t) => `${basename(t.repo)}: ${taskName(t)} (#${String(t.pr?.number ?? '')})`),
+      '',
+      'Their worktrees and local branches are deleted.',
+      ...(live > 0
+        ? [`${String(live)} ${live === 1 ? 'terminal' : 'terminals'} in them will close.`]
+        : [])
+    ].join('\n'),
+    buttons: ['Remove', 'Cancel'],
+    defaultId: 0,
+    cancelId: 1
+  })
+  if (response !== 0) return 0
+  closePanes(panes)
+  const failed: string[] = []
+  let removed = 0
+  for (const t of done) {
+    const r = await tasks.remove(t.path, { force: false, deleteBranch: true })
+    if (r.ok) removed++
+    else failed.push(`${taskName(t)}: ${r.error}`)
+  }
+  if (failed.length > 0) {
+    void showDialog({
+      type: 'warning',
+      message:
+        failed.length === 1 ? 'A task could not be removed' : 'Some tasks could not be removed',
+      detail: failed.join('\n'),
+      buttons: ['OK']
+    })
+  }
+  return removed
 }
 
 /** Tell the monitor which pane the user is looking at, so a finished turn counts as seen. */
@@ -653,6 +802,8 @@ function createWindow(state: WindowState): void {
     applyMenu()
     // The pane the user works in may now be in this window.
     sessionsChanged()
+    // An agent may have pushed or opened a pull request meanwhile.
+    if (Date.now() - tasks.lastScan > TASKS_FOCUS_MS) void tasks.refresh()
   })
   win.on('blur', updateFocus)
   win.on('moved', () => savePlacement(w))
@@ -741,13 +892,15 @@ function registerIpc(): void {
       prompt: opts.prompt
     })
     const env = agents.spawn(opts.id, launch.agent)
+    // A new task's worktree runs its repository's setup first, once.
+    const setup = tasks.takeSetup(cwd)
     let pid: number
     try {
       ;({ pid } = ptys.create(e.sender, {
         id: opts.id,
         cols: opts.cols,
         rows: opts.rows,
-        command: launch.command,
+        command: setup ? withSetup(setup, launch.command) : launch.command,
         cwd,
         env
       }))
@@ -878,6 +1031,50 @@ function registerIpc(): void {
     const cwd = await paneCwd(paneId)
     return cwd ? listPrs(cwd) : { ok: false, error: 'No pane' }
   })
+  ipcMain.handle(IPC.tasksList, (e): TaskInfo[] => {
+    if (!trusted(e)) throw new Error('untrusted sender')
+    if (Date.now() - tasks.lastScan > TASKS_FOCUS_MS) void tasks.refresh()
+    return tasks.list()
+  })
+  ipcMain.on(IPC.tasksRefresh, (e, force: unknown) => {
+    if (trusted(e)) void tasks.refresh(force === true)
+  })
+  ipcMain.handle(IPC.tasksCreate, async (e, req: unknown): Promise<NewTaskResult> => {
+    if (!trusted(e) || typeof req !== 'object' || req === null) {
+      return { ok: false, error: 'untrusted sender' }
+    }
+    const { repo, branch } = req as Record<string, unknown>
+    if (typeof repo !== 'string' || typeof branch !== 'string' || !repo.trim()) {
+      return { ok: false, error: 'A task needs a repository and a branch' }
+    }
+    if (repo.length > 1024 || branch.length > MAX_BRANCH) {
+      return { ok: false, error: 'That name is too long' }
+    }
+    const made = await tasks.create({ repo, branch })
+    // Its pull request, if the branch has one already.
+    if (made.ok) void tasks.refresh()
+    return made
+  })
+  ipcMain.handle(IPC.tasksRemove, (e, path: unknown) => {
+    if (!trusted(e) || typeof path !== 'string' || kidsActive) return false
+    return removeTask(path)
+  })
+  ipcMain.handle(IPC.tasksCleanUp, (e) => {
+    if (!trusted(e) || kidsActive) return 0
+    return cleanUpTasks()
+  })
+  // A window of panels opens task tabs in the window with terminals.
+  ipcMain.on(IPC.tasksOpen, (e, req: unknown) => {
+    const target = terminalWindow()
+    if (!trusted(e) || !target || typeof req !== 'object' || req === null) return
+    const { path, presetId } = req as Record<string, unknown>
+    if (typeof path !== 'string' || !tasks.list().some((t) => t.path === path)) return
+    raise(target)
+    send(target, IPC.tasksOpen, {
+      path,
+      ...(typeof presetId === 'string' ? { presetId } : {})
+    })
+  })
   ipcMain.on(IPC.openGitHub, (e, url: unknown) => {
     if (trusted(e) && typeof url === 'string' && url.startsWith('https://github.com/')) {
       void shell.openExternal(url)
@@ -909,7 +1106,9 @@ function registerIpc(): void {
     })()
   })
   ipcMain.on(IPC.editorFile, (e, p: unknown) => {
-    if (trusted(e) && typeof p === 'string' && isAbsolute(p)) void openEditor(p)
+    if (trusted(e) && typeof p === 'string' && isAbsolute(expandHome(p))) {
+      void openEditor(expandHome(p))
+    }
   })
   // The repository the pane is in, or its directory when it isn't in one.
   ipcMain.on(IPC.editorProject, (e, paneId: unknown) => {
@@ -980,7 +1179,9 @@ function registerIpc(): void {
   })
   ipcMain.handle(IPC.dirsList, async (e): Promise<DirListing> => {
     if (!trusted(e)) throw new Error('untrusted sender')
-    return { dirs: await listDirs(config.get(), { claude: claudeHome(), codex: codexHome() }) }
+    return {
+      dirs: await listDirs(config.get(), { claude: claudeHome(), codex: codexHome() }, tasks)
+    }
   })
   ipcMain.handle(IPC.webRecent, (e): RecentPage[] => {
     if (!trusted(e)) throw new Error('untrusted sender')
@@ -1116,10 +1317,21 @@ async function startup(): Promise<void> {
     theme: () => currentTheme().tokens,
     sessions: () => sessions().map(widgetSession),
     startSession: openSession,
+    startTask: (draft) => openTaskDraft(draft),
     sendPrompt,
     changed: windowsChanged
   })
   widgets.start()
+
+  tasks = new TaskStore({
+    dir: join(cockpitHome(), 'worktrees'),
+    settings: (repo) => config.get().tasks[repo],
+    onChange: (list) => broadcast(IPC.tasksChanged, list)
+  })
+  void tasks.refresh()
+  tasksTimer = setInterval(() => {
+    if (anyVisible()) void tasks.refresh()
+  }, TASKS_POLL_MS)
 
   agents = new AgentMonitor({
     home: cockpitHome(),
@@ -1208,6 +1420,7 @@ function prepareToQuit(): void {
 app.on('before-quit', prepareToQuit)
 
 app.on('will-quit', () => {
+  if (tasksTimer) clearInterval(tasksTimer)
   // A startup that failed partway leaves some of these unset.
   const parts = [config, themes, images, system, widgets, agents, updates] as (
     { close: () => void } | undefined

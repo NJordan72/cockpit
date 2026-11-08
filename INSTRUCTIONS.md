@@ -1274,3 +1274,111 @@ rather than an Activity tab.
   they changed, subagents and empty calls, plans without a file, the cap, the
   renderer's merge, choosing and describing a plan, and Markdown rendering,
   including raw HTML and `javascript:` links (476 total).
+
+### M5: done (2026-11-08)
+
+- A task is a branch in a git worktree that Cockpit makes, with a tab running
+  an agent in it. The worktree goes in `~/.cockpit/worktrees/<repo>/<name>`,
+  where the name is the branch with each `/` turned into `-`, plus `-2` or
+  `-3` when that folder exists. `TaskStore` in `src/main/tasks.ts` makes,
+  lists, and removes tasks. Nothing about a task is stored. Each refresh reads
+  the worktrees folder, git, and gh again. The only thing kept, in memory, is
+  a new worktree's setup command until its first terminal starts.
+- `TaskStore.create` runs `git worktree list` in the folder it's given, so any
+  folder in the repository works, including a task's own worktree. It refuses
+  a bare repository, checks the name with `check-ref-format --branch`, and
+  fetches the remote (`origin`, or else the first one). The fetch gives up
+  after 30 s, its failures are ignored, and git can't prompt for a password.
+  Then it picks one of four cases:
+  - The branch has a task already. It returns that task's worktree, marked
+    `existing`. A branch checked out anywhere else, the main checkout
+    included, is refused.
+  - The branch exists locally. It's checked out as it is.
+  - The branch is only on the remote. It's checked out tracking the remote
+    branch, since `/start-story` may name a branch someone else pushed.
+  - Otherwise the new branch starts at the remote's default branch, found from
+    `<remote>/HEAD`, then `main`, then `master`, then the main checkout's HEAD.
+    It's made with `--no-track`. Branching from `origin/main` would otherwise
+    make `origin/main` the upstream, and the first push would go there.
+- `tasks` in `config.json` is keyed by the main checkout's path, and each
+  entry has `copy` and `setup`. `copy` lists paths inside the repository
+  (absolute paths and `..` are dropped), which are copied from the main
+  checkout when the worktree lacks them. `setup` runs in the task's first
+  terminal. Main wraps that pane's command in `/bin/sh -c`, so the script reads
+  the same in any login shell. The script prints the setup command, runs it,
+  says so if it fails, and then runs the agent or `exec "$SHELL" -l`. The
+  renderer never sends the command. Main looks it up when a PTY starts in the
+  new worktree.
+- Two CLI checks shaped this. mise 2026.10.17's `mise trust --help` says that
+  trusting a main checkout also trusts its worktrees, so a task needs no
+  `mise trust`. Claude Code 2.1.319 has a `--worktree` flag, but Claude Code
+  picks that worktree's path itself and Codex has nothing like it, so Cockpit
+  makes the worktrees.
+- Pull requests come from `gh pr list --head <branch> --state all --limit 1`.
+  `gh pr view <branch>` reads a branch named `1234` as PR #1234. Main reads
+  the tasks every 60 s while a window is on screen, when a window gains focus
+  and the last read is over 15 s old, and when the Tasks panel comes into
+  view. A pull request is asked about again after 60 s, unless it has merged.
+  The ⟳ button and a removal ask about every one. When gh fails, the last
+  answer stays and the panel shows gh's error once.
+- `inPr` is true when HEAD is the pull request's head commit or an ancestor of
+  it (`merge-base --is-ancestor`). A squash-merged branch therefore counts as
+  merged, though its commits are on no remote. `mergedAndClean` needs a merged
+  pull request, no uncommitted files, and `inPr`. Only then is the local branch
+  deleted, and only then does removal skip the question. `unpushed` counts
+  commits that are on no remote and not in the main checkout's HEAD.
+- Main asks before removing, for `tasks:remove` and for Clean up merged
+  (`tasks:cleanup`), the way it asks before closing windows. The dialog says
+  which uncommitted files are discarded (removal then uses `--force`), that
+  the branch is kept along with its unpushed commits, and how many terminals
+  will close. Main then sends each window `panes:close` for its panes, kills
+  their PTYs, and runs `git worktree remove`, `branch -D` when merged, and
+  `worktree prune`. It deletes the repository's folder under `worktrees/` once
+  the folder is empty.
+- The New task dialog (`tasks/TaskDialog.tsx`) asks for the branch, the
+  repository, the preset, and a first prompt. The repository starts as the
+  focused pane's task repository or git root, with suggestions from the start
+  screen's list. The dialog opens from the `newTask` action (Cmd+Shift+N), the
+  toolbar's ⎇ Task, the Tasks panel, Cmd+Enter in the Cmd+T picker, and
+  `cockpit.sessions.startTask`. A window of panels forwards the action, and
+  asks the terminal window to open task tabs through `tasks:open`.
+- The Tasks panel is a new `tasks` panel kind (`tasks/TasksPanel.tsx`), in the
+  built-in layouts' repository tab group. Config version 5 adds it after `prs`
+  in layouts saved before version 5. It does that once, so a user who removes
+  the panel later doesn't get it back.
+- A Sessions row in a task shows `⎇ branch` and a pull request chip. The tab
+  bar's folder filter counts a task's tabs in its repository's folder
+  (`repoOf` in `layout/tabs.ts`). The start screen and the picker leave
+  worktrees out of their lists and count a task's last use as its
+  repository's (`foldTaskDirs`).
+- `cockpit.sessions.startTask(prompt, branch)` needs `"sessions": "prompt"`.
+  It only opens the dialog in the terminal window, filled in. Nothing is made
+  until the user confirms, so a widget can't make worktrees by itself. The
+  Shortcut widget's right-click menu has **Start story in a new task**. Its
+  branch is the full story's `formatted_vcs_branch_name`, or else
+  `<mention name>/sc-<id>/<slug>` cut to 50 characters. That's what
+  `getStoryBranchName` in `@shortcut/mcp` returns (read in its published
+  source), and `/start-story` takes branch names from that tool, so it finds
+  the branch already checked out.
+- The smoke test checks a task in the built app. It makes a scratch
+  repository with an ignored `.env` and a `tasks` entry, presses Cmd+Shift+N,
+  and fills in the dialog with the Shell preset. Then it checks the setup's
+  output, the branch, the copied `.env`, the shell's `$PWD`, and
+  `⎇ smoke/task` in Sessions. Last, it removes the task with main's dialog
+  stubbed, and checks that the pane closed, the worktree is gone, and the
+  unmerged branch is kept. It ran twice locally. The first run's `$PWD` check
+  failed because the path wrapped on the screen, so the check now prints a
+  short marker instead.
+- Not verified: pull request states from a real GitHub repository (the tests
+  use a fake gh, and the smoke test's gh has no login), Clean up merged with a
+  real merged pull request, Claude Code or Codex in a task (each asks to trust
+  a new folder and would save the answer to the user's config), the Shortcut
+  menu item against the real API, and how the dialog and the panel look.
+- Tests cover worktree parsing, gh output, the setup script run through sh,
+  and task creation against real repositories. The creation tests cover
+  fetching the remote's default branch, no upstream, local and remote-only
+  branches, an existing task, refusals, folder name collisions, copying, and
+  setup. Other tests cover the counts and removal, pull request state with a
+  fake gh, branch names, settings, removal warnings, the panel's model,
+  folding task folders, the tab folder filter, the broker's `startTask`, and
+  the version 5 layout migration (501 total).

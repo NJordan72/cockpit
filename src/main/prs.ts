@@ -11,7 +11,7 @@ const FIELDS =
 /** An app opened from the Dock doesn't get the login shell's PATH. */
 const EXTRA_PATH = ['/opt/homebrew/bin', '/usr/local/bin']
 
-function gh(cwd: string, args: string[]): Promise<{ out: string } | { error: string }> {
+export function gh(cwd: string, args: string[]): Promise<{ out: string } | { error: string }> {
   const PATH = [process.env.PATH ?? '', ...EXTRA_PATH].filter(Boolean).join(':')
   return new Promise((resolve) => {
     execFile(
@@ -35,7 +35,7 @@ type Obj = Record<string, unknown>
 const isObj = (v: unknown): v is Obj => typeof v === 'object' && v !== null && !Array.isArray(v)
 const str = (v: unknown): string => (typeof v === 'string' ? v : '')
 
-function review(decision: string): PrReview {
+export function review(decision: string): PrReview {
   if (decision === 'APPROVED') return 'approved'
   if (decision === 'CHANGES_REQUESTED') return 'changes'
   if (decision === 'REVIEW_REQUIRED') return 'required'

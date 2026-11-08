@@ -15,6 +15,7 @@ export const PANEL_KINDS = [
   'image',
   'monitor',
   'prs',
+  'tasks',
   'commands'
 ] as const
 
@@ -396,6 +397,26 @@ export function panels(root: FrameNode): FramePanel[] {
     if (n.type === 'panel') out.push(n)
   })
   return out
+}
+
+/**
+ * Config version 5 added the Tasks panel. A layout saved before then gets one
+ * right after its pull requests panel, in the same group, unless it has one.
+ */
+export function withTasksPanel(root: FrameNode): FrameNode {
+  const all = panels(root)
+  const prs = all.find((p) => p.panel === 'prs')
+  if (!prs || all.some((p) => p.panel === 'tasks')) return root
+  let id = 'tasks'
+  for (let n = 2; findNode(root, id); n++) id = `tasks-${String(n)}`
+  const tasks = panel('tasks')
+  tasks.id = id
+  return mapNode(root, (n) => {
+    if (n.type === 'panel') return n
+    const i = n.children.findIndex((c) => c.id === prs.id)
+    if (i < 0) return n
+    return { ...n, children: [...n.children.slice(0, i + 1), tasks, ...n.children.slice(i + 1)] }
+  })
 }
 
 /** Replace the node `id` with `fn` of it. */
