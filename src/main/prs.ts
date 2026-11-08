@@ -45,9 +45,17 @@ export function gh(
         if (!err) resolve({ out: stdout })
         else if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
           resolve({ error: 'gh is not installed' })
+        } else if (err.killed) {
+          resolve({ error: `gh didn't answer within ${String(Math.round(timeout / 1000))} s` })
         } else {
+          // err.message repeats the command line, which can hold a whole comment.
           const first = stderr.trim().split('\n')[0]
-          resolve({ error: first && first.length > 0 ? first : err.message })
+          resolve({
+            error:
+              first && first.length > 0
+                ? first
+                : `gh failed (exit code ${String(err.code ?? 'unknown')})`
+          })
         }
       }
     )
@@ -147,13 +155,23 @@ const DETAIL_QUERY = `query($owner: String!, $name: String!, $number: Int!) {
       number title url state isDraft body updatedAt
       headRefName baseRefName isCrossRepository reviewDecision mergeable viewerCanUpdate
       author { __typename login }
-      comments(last: 100) { nodes { id author { __typename login } body createdAt url } }
-      reviews(last: 100) { nodes { id author { __typename login } state body submittedAt url } }
+      comments(last: 100) {
+        pageInfo { hasPreviousPage }
+        nodes { id author { __typename login } body createdAt url }
+      }
+      reviews(last: 100) {
+        pageInfo { hasPreviousPage }
+        nodes { id author { __typename login } state body submittedAt url }
+      }
       reviewThreads(first: 100) {
+        pageInfo { hasNextPage }
         nodes {
           id isResolved isOutdated path line startLine originalLine
           viewerCanReply viewerCanResolve viewerCanUnresolve
-          comments(first: 50) { nodes { id author { __typename login } body createdAt url diffHunk } }
+          comments(first: 50) {
+            pageInfo { hasNextPage }
+            nodes { id author { __typename login } body createdAt url diffHunk }
+          }
         }
       }
       commits(last: 1) {
@@ -180,6 +198,12 @@ const DETAIL_QUERY = `query($owner: String!, $name: String!, $number: Int!) {
 
 const nodes = (v: unknown): Obj[] =>
   isObj(v) && Array.isArray(v.nodes) ? v.nodes.filter(isObj) : []
+
+/** The connection has more than the query asked for. */
+const more = (v: unknown): boolean =>
+  isObj(v) &&
+  isObj(v.pageInfo) &&
+  (v.pageInfo.hasNextPage === true || v.pageInfo.hasPreviousPage === true)
 const num = (v: unknown): number | null => (typeof v === 'number' ? v : null)
 const time = (v: unknown): number => Date.parse(str(v)) || 0
 
@@ -308,6 +332,11 @@ export function parsePrDetail(json: unknown): PrDetailResult {
       comments: nodes(p.comments).map((c) => note(c, c.createdAt)),
       reviews,
       threads: nodes(p.reviewThreads).map(thread),
+      partial:
+        more(p.comments) ||
+        more(p.reviews) ||
+        more(p.reviewThreads) ||
+        nodes(p.reviewThreads).some((t) => more(t.comments)),
       updatedAt: time(p.updatedAt)
     }
   }

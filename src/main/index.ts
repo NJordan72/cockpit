@@ -368,10 +368,6 @@ function closePanes(ids: string[]): void {
 const taskName = (t: TaskInfo): string => t.branch ?? basename(t.path)
 
 /**
- * Removes a task after asking, unless nothing would be lost: its pull
- * request merged, nothing newer is in it, and no terminal is open there.
- */
-/**
  * Closing and merging can't be taken back from Cockpit, so main asks first,
  * naming the pull request as GitHub has it now. Everything else just runs.
  */
@@ -396,6 +392,10 @@ async function confirmPrAct(ref: PrRef, act: PrAct): Promise<boolean> {
   return response === 0
 }
 
+/**
+ * Removes a task after asking, unless nothing would be lost: its pull
+ * request merged, nothing newer is in it, and no terminal is open there.
+ */
 async function removeTask(taskPath: string): Promise<boolean> {
   await tasks.refresh(true, taskPath)
   const task = tasks.list().find((t) => t.path === taskPath)

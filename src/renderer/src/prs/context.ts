@@ -7,11 +7,12 @@ import type { HandOffTarget } from './model'
 export interface PrPaneEnv {
   sessions: readonly PaneSession[]
   tasks: readonly TaskInfo[]
-  handOff: (prompt: string, target: HandOffTarget) => void
+  /** False when nothing was sent: the chosen agent pane isn't running an agent. */
+  handOff: (prompt: string, target: HandOffTarget) => Promise<boolean>
 }
 
 export const PrPaneContext = createContext<PrPaneEnv>({
   sessions: [],
   tasks: [],
-  handOff: () => undefined
+  handOff: () => Promise.resolve(false)
 })

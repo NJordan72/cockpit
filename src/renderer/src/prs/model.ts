@@ -41,14 +41,6 @@ export function feedbackKey(item: Feedback): string {
   return item.kind === 'thread' ? `thread:${item.thread.id}` : `${item.kind}:${item.note.id}`
 }
 
-/** Every piece of feedback in the pull request, in the pane's order. */
-export function allFeedback(pr: PrDetail): Feedback[] {
-  return [
-    ...sortThreads(pr.threads).map((thread): Feedback => ({ kind: 'thread', thread })),
-    ...timeline(pr).map((item): Feedback => item)
-  ]
-}
-
 /** The last lines of a diff hunk, which end at the commented line. */
 export function hunkTail(hunk: string, lines = 6): string[] {
   return hunk

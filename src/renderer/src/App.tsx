@@ -970,27 +970,30 @@ export function App(): React.JSX.Element {
 
   /** Feedback from a pull request pane goes to an agent pane, a task, a new task, or a new agent tab. */
   const handOff = useCallback(
-    (prompt: string, target: HandOffTarget) => {
+    async (prompt: string, target: HandOffTarget): Promise<boolean> => {
       switch (target.kind) {
-        case 'pane':
-          sendPrompt(target.paneId, prompt)
-          return
+        case 'pane': {
+          const ok = await api.sessions.send(target.paneId, prompt)
+          if (ok) revealPane(target.paneId)
+          return ok
+        }
         case 'task':
           openInTask(target.path, undefined, prompt)
-          return
+          return true
         case 'newTask':
-          void openTaskDialog({ branch: target.branch, prompt, repo: target.repo })
-          return
+          await openTaskDialog({ branch: target.branch, prompt, repo: target.repo })
+          return true
         case 'newSession': {
           const c = configRef.current
           const agent = c && newSessionTarget(c.presets, null)
-          if (!agent) return
+          if (!agent) return false
           setRestorable(null)
           dispatch({ type: 'newTab', pane: { ...makePane(agent.presetId, target.cwd), prompt } })
+          return true
         }
       }
     },
-    [sendPrompt, openInTask, openTaskDialog]
+    [api, revealPane, openInTask, openTaskDialog]
   )
 
   const prEnv = useMemo<PrPaneEnv>(() => ({ sessions, tasks, handOff }), [sessions, tasks, handOff])

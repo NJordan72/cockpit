@@ -251,6 +251,17 @@ describe('parsePrDetail', () => {
     ])
   })
 
+  it('says when GitHub has more than the query read', () => {
+    const full = parsePrDetail(
+      detail({ comments: { pageInfo: { hasPreviousPage: false }, nodes: [] } })
+    )
+    const more = parsePrDetail(
+      detail({ reviewThreads: { pageInfo: { hasNextPage: true }, nodes: [] } })
+    )
+    expect(full.ok && full.pr.partial).toBe(false)
+    expect(more.ok && more.pr.partial).toBe(true)
+  })
+
   it('reports GraphQL errors and missing pull requests', () => {
     expect(parsePrDetail({ errors: [{ message: 'Could not resolve' }] })).toEqual({
       ok: false,

@@ -175,6 +175,8 @@ export interface PrDetail {
   comments: PrNote[]
   reviews: PrReviewNote[]
   threads: PrThread[]
+  /** GitHub has more comments, reviews, or threads than Cockpit read. */
+  partial: boolean
   /** ms since the epoch. */
   updatedAt: number
 }
@@ -267,7 +269,8 @@ const prLine = (pr: Pick<PrDetail, 'number' | 'title' | 'url' | 'branch'>): stri
 
 /**
  * The prompt that asks an agent to act on review feedback. Items that would
- * push it past what main accepts are named by link only.
+ * push it past what main accepts are named by link only, and once even the
+ * links don't fit, the rest are counted.
  */
 export function feedbackPrompt(
   pr: Pick<PrDetail, 'number' | 'title' | 'url' | 'branch'>,
@@ -276,18 +279,22 @@ export function feedbackPrompt(
   const one = items.length === 1
   const head = `Address ${one ? 'this piece' : 'these pieces'} of review feedback on ${prLine(pr)}.`
   const tail = `Fix what ${one ? 'it asks' : 'each one asks'} for, or say why not. When you're done, say what you changed for ${one ? 'it' : 'each one'}.`
-  let used = head.length + tail.length
-  const parts = items.map((item, i) => {
+  const SEP = 2
+  let used = head.length + tail.length + SEP
+  const parts: string[] = []
+  for (const [i, item] of items.entries()) {
     const full = describe(item, i + 1)
-    if (used + full.length <= PROMPT_BUDGET) {
-      used += full.length
-      return full
-    }
     const url = item.kind === 'thread' ? (item.thread.comments[0]?.url ?? '') : item.note.url
     const short = `${String(i + 1)}. Too long to include here; read it at ${url}`
-    used += short.length
-    return short
-  })
+    const part = used + full.length + SEP <= PROMPT_BUDGET ? full : short
+    if (used + part.length + SEP > PROMPT_BUDGET) {
+      const left = items.length - i
+      parts.push(`${String(left)} more didn't fit here. Read them on the pull request: ${pr.url}`)
+      break
+    }
+    used += part.length + SEP
+    parts.push(part)
+  }
   return [head, ...parts, tail].join('\n\n')
 }
 

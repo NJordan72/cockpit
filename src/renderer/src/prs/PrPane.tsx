@@ -12,7 +12,6 @@ import {
   type PrAct,
   type PrCheck,
   type PrDetail,
-  type PrDetailResult,
   type PrNote,
   type PrRef,
   type PrThread
@@ -22,7 +21,6 @@ import { webPanes } from '../web/registry'
 import { PrPaneContext } from './context'
 import {
   ago,
-  allFeedback,
   feedbackKey,
   handOffChoices,
   hunkTail,
@@ -60,6 +58,8 @@ const VERDICT_LABEL = {
 
 const STATE_LABEL = { open: 'Open', closed: 'Closed', merged: 'Merged' }
 
+const NOT_SENT = "That pane isn't running Claude Code or Codex any more, so nothing was sent"
+
 const openLink = (href: string): void => window.cockpit.web.openExternal(href)
 
 function Note({ note, label }: { note: PrNote; label?: string }): React.JSX.Element {
@@ -85,7 +85,11 @@ export function PrPane({ pane, focused, visible, onFocus, onTitle }: Props): Rea
   const { repo, number } = pane.pr
   const ref = useMemo(() => ({ repo, number }), [repo, number])
   const rootRef = useRef<HTMLDivElement>(null)
-  const [read, setRead] = useState<PrDetailResult | null>(null)
+  /** The last good read, kept when a later one fails. */
+  const [pr, setPr] = useState<PrDetail | null>(null)
+  const [readError, setReadError] = useState<string | null>(null)
+  /** Only the newest read applies, so a slow poll can't undo what an action just showed. */
+  const reads = useRef(0)
   const [loading, setLoading] = useState(false)
   /** What's running, shown in place of the error line. */
   const [busy, setBusy] = useState<string | null>(null)
@@ -103,14 +107,17 @@ export function PrPane({ pane, focused, visible, onFocus, onTitle }: Props): Rea
     titleRef.current = onTitle
   })
 
-  const load = useCallback(
-    () =>
-      api.prs.view(ref).then((r) => {
-        setRead(r)
-        if (r.ok) titleRef.current(r.pr.title)
-      }),
-    [api, ref]
-  )
+  const load = useCallback(() => {
+    const n = ++reads.current
+    return api.prs.view(ref).then((r) => {
+      if (n !== reads.current) return
+      if (r.ok) {
+        setPr(r.pr)
+        setReadError(null)
+        titleRef.current(r.pr.title)
+      } else setReadError(r.error)
+    })
+  }, [api, ref])
 
   const refresh = (): void => {
     setLoading(true)
@@ -177,7 +184,10 @@ export function PrPane({ pane, focused, visible, onFocus, onTitle }: Props): Rea
     if (items.length === 0) return
     const target = await chooseTarget(pr)
     if (!target) return
-    env.handOff(feedbackPrompt(pr, items), target)
+    if (!(await env.handOff(feedbackPrompt(pr, items), target))) {
+      setError(NOT_SENT)
+      return
+    }
     if (clear) setSelected(new Set())
   }
 
@@ -191,7 +201,23 @@ export function PrPane({ pane, focused, visible, onFocus, onTitle }: Props): Rea
       setBusy(null)
       if (r.ok) log = r.log
     }
-    env.handOff(checkPrompt(pr, check, log), target)
+    if (!(await env.handOff(checkPrompt(pr, check, log), target))) setError(NOT_SENT)
+  }
+
+  /** A resolved thread leaves the list, so it leaves the selection too. */
+  const resolve = async (thread: PrThread, resolved: boolean): Promise<void> => {
+    const ok = await act(resolved ? 'Resolving…' : 'Unresolving…', {
+      type: 'resolve',
+      threadId: thread.id,
+      resolved
+    })
+    if (ok && resolved) {
+      setSelected((s) => {
+        const next = new Set(s)
+        next.delete(feedbackKey({ kind: 'thread', thread }))
+        return next
+      })
+    }
   }
 
   const merge = async (pr: PrDetail): Promise<void> => {
@@ -208,20 +234,19 @@ export function PrPane({ pane, focused, visible, onFocus, onTitle }: Props): Rea
     })
   }
 
-  const sendReply = async (thread: PrThread, resolve: boolean): Promise<void> => {
+  const sendReply = async (thread: PrThread, andResolve: boolean): Promise<void> => {
     const text = reply
-    if (!text.trim()) return
+    if (!text.trim() || busy !== null) return
     if (!(await act('Replying…', { type: 'reply', threadId: thread.id, body: text }))) return
     setReply('')
     setReplyTo(null)
-    if (resolve) await act('Resolving…', { type: 'resolve', threadId: thread.id, resolved: true })
+    if (andResolve) await resolve(thread, true)
   }
 
   const submit = async (a: PrAct, label: string): Promise<void> => {
+    if (busy !== null) return
     if (await act(label, a)) setDraft('')
   }
-
-  const pr = read?.ok ? read.pr : null
   const keep = (e: React.MouseEvent): void => {
     // Buttons leave the keyboard where it was.
     e.preventDefault()
@@ -230,10 +255,8 @@ export function PrPane({ pane, focused, visible, onFocus, onTitle }: Props): Rea
   if (!pr) {
     return (
       <div className="pr-pane" ref={rootRef} tabIndex={-1} onMouseDown={onFocus}>
-        <p className="pr-empty">
-          {read && !read.ok ? read.error : `Reading ${repo}#${String(number)}…`}
-        </p>
-        {read && !read.ok && (
+        <p className="pr-empty">{readError ?? `Reading ${repo}#${String(number)}…`}</p>
+        {readError && (
           <p className="pr-empty">
             <button type="button" tabIndex={-1} onClick={refresh}>
               Try again
@@ -252,7 +275,12 @@ export function PrPane({ pane, focused, visible, onFocus, onTitle }: Props): Rea
   const failing = pr.checks.filter((c) => c.state === 'failing').length
   const pending = pr.checks.filter((c) => c.state === 'pending').length
   const shown: Tab = tab ?? (unresolved.length > 0 ? 'threads' : 'conversation')
-  const chosen = allFeedback(pr).filter((f) => selected.has(feedbackKey(f)))
+  // Only what's on screen counts, so a ticked thread that got resolved isn't sent.
+  const onScreen: Feedback[] = [
+    ...shownThreads.map((thread): Feedback => ({ kind: 'thread', thread })),
+    ...items
+  ]
+  const chosen = onScreen.filter((f) => selected.has(feedbackKey(f)))
   const isOpen = pr.state === 'open'
   const canReview = isOpen && !pr.mine
 
@@ -314,13 +342,7 @@ export function PrPane({ pane, focused, visible, onFocus, onTitle }: Props): Rea
                 tabIndex={-1}
                 className="pr-small"
                 onMouseDown={keep}
-                onClick={() =>
-                  void act(t.resolved ? 'Unresolving…' : 'Resolving…', {
-                    type: 'resolve',
-                    threadId: t.id,
-                    resolved: !t.resolved
-                  })
-                }
+                onClick={() => void resolve(t, !t.resolved)}
               >
                 {t.resolved ? 'Unresolve' : 'Resolve'}
               </button>
@@ -333,7 +355,8 @@ export function PrPane({ pane, focused, visible, onFocus, onTitle }: Props): Rea
                 title="Open on GitHub"
                 onMouseDown={keep}
                 onClick={() => {
-                  api.prs.open(t.comments[0]?.url ?? pr.url)
+                  const url = t.comments[0]?.url
+                  api.prs.open(url && url.length > 0 ? url : pr.url)
                 }}
               >
                 ↗
@@ -563,8 +586,16 @@ export function PrPane({ pane, focused, visible, onFocus, onTitle }: Props): Rea
           </button>
         )}
       </nav>
-      {(busy ?? error) && (
-        <div className={`pr-status${error && !busy ? ' error' : ''}`}>{busy ?? error}</div>
+      {(busy ?? error ?? readError) && (
+        <div className={`pr-status${!busy ? ' error' : ''}`}>
+          {busy ?? error ?? `Couldn't read it again: ${readError ?? ''}`}
+        </div>
+      )}
+      {pr.partial && (
+        <div className="pr-status">
+          GitHub has more comments, reviews, or threads than Cockpit reads. Open it on GitHub to see
+          them all.
+        </div>
       )}
       <div className="pr-body">
         {shown === 'threads' &&

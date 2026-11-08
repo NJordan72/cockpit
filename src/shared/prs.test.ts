@@ -113,6 +113,18 @@ describe('feedbackPrompt', () => {
     )
   })
 
+  it('counts what is left once even the links run out', () => {
+    const items = Array.from({ length: 300 }, (_, i) => ({
+      kind: 'comment' as const,
+      note: note(`user${String(i)}`, 'z'.repeat(2_000))
+    }))
+    const text = feedbackPrompt(pr, items)
+    expect(text.length).toBeLessThan(20_000)
+    expect(text).toMatch(
+      /\n\n\d+ more didn't fit here\. Read them on the pull request: https:\/\/github\.com\/o\/r\/pull\/7\n\n/
+    )
+  })
+
   it('cuts a very long comment and says where the rest is', () => {
     const text = feedbackPrompt(pr, [{ kind: 'comment', note: note('e', 'y'.repeat(5_000)) }])
     expect(text).toContain('… (cut short; the rest is at https://github.com/o/r/pull/7#e)')
