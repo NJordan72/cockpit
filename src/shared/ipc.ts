@@ -10,7 +10,7 @@ import type {
   RecentPage,
   WindowView
 } from './config'
-import type { PrList } from './prs'
+import type { PrAct, PrActResult, PrDetailResult, PrList, PrLogResult, PrRef } from './prs'
 import type { NewTask, NewTaskResult, TaskDraft, TaskInfo } from './tasks'
 import type { ThemeDefinition } from './theme'
 import type {
@@ -69,6 +69,10 @@ export const IPC = {
   sessionsSend: 'sessions:send',
   sessionsOpen: 'sessions:open',
   prsList: 'prs:list',
+  prsView: 'prs:view',
+  prsAct: 'prs:act',
+  prsLog: 'prs:log',
+  prsPane: 'prs:pane',
   tasksList: 'tasks:list',
   tasksChanged: 'tasks:changed',
   tasksRefresh: 'tasks:refresh',
@@ -132,6 +136,16 @@ export interface TaskOpenRequest {
   path: string
   /** The preset to run; the start screen's agent when missing. */
   presetId?: string
+}
+
+/** A pull request pane to open, asked for by a window of panels. */
+export interface PrPaneRequest {
+  pr: PrRef
+  /** The checkout it was opened from, with ~ for home. */
+  cwd: string
+  title?: string
+  /** A new tab, or split beside the focused pane. */
+  where: 'tab' | 'row'
 }
 
 /** A native context menu. The chosen item's id comes back, or null. */
@@ -339,6 +353,16 @@ export interface CockpitApi {
     list(paneId: string): Promise<PrList>
     /** Opens a https://github.com/ URL in the browser. */
     open(url: string): void
+    /** A pull request with its comments, reviews, threads, and checks. */
+    view(pr: PrRef): Promise<PrDetailResult>
+    /** Comments, replies, resolves, reviews, closes, or merges. Main asks first before closing or merging. */
+    act(pr: PrRef, act: PrAct): Promise<PrActResult>
+    /** The end of a failed GitHub Actions job's log. */
+    log(pr: PrRef, jobId: number): Promise<PrLogResult>
+    /** Opens a pull request pane in the window with terminals the user last worked in. */
+    openPane(req: PrPaneRequest): void
+    /** Another window asked this one to open a pull request pane. */
+    onOpenPane(cb: (req: PrPaneRequest) => void): () => void
   }
   files: {
     /** Which of these paths exist, relative to the pane's directory. */

@@ -37,6 +37,7 @@ export type LayoutAction =
   | { type: 'resize'; splitId: string; sizes: number[] }
   | { type: 'setCwd'; paneId: string; cwd: string }
   | { type: 'setPage'; paneId: string; url: string; title?: string }
+  | { type: 'setPrTitle'; paneId: string; title: string }
 
 export function activeTab(layout: Layout): Tab | null {
   return layout.tabs.find((t) => t.id === layout.activeTabId) ?? null
@@ -243,6 +244,17 @@ export function layoutReducer(layout: Layout, action: LayoutAction): Layout {
       return mapTab(layout, tab.id, (t) => ({
         ...t,
         root: updatePane(t.root, action.paneId, { url: action.url, title: action.title })
+      }))
+    }
+
+    case 'setPrTitle': {
+      // Kept so the tab is named before the pull request is read again after a relaunch.
+      const tab = tabOfPane(layout, action.paneId)
+      const pane = tab && findPane(tab.root, action.paneId)
+      if (!tab || !pane?.pr || pane.title === action.title) return layout
+      return mapTab(layout, tab.id, (t) => ({
+        ...t,
+        root: updatePane(t.root, action.paneId, { title: action.title })
       }))
     }
   }

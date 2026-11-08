@@ -269,7 +269,9 @@ export function TabBar({
       ? 'Tab'
       : pane.url
         ? (pane.title ?? pageLabel(pane.url))
-        : `${preset?.name ?? pane.presetId} · ${basename(pane.cwd)}`
+        : pane.pr
+          ? `#${String(pane.pr.number)}${pane.title ? ` ${pane.title}` : ''}`
+          : `${preset?.name ?? pane.presetId} · ${basename(pane.cwd)}`
     const active = !kids && tab.id === layout.activeTabId
     const index = shown.indexOf(tab)
     const dx = offset(tab.pinned === true, i)
@@ -285,7 +287,7 @@ export function TabBar({
     const filtered = folderHidden(tab, hiddenDirs, projectsDir, repoOf)
     const title = [
       tab.name ? auto : null,
-      status ? (pane?.cwd ?? '') : (pane?.url ?? pane?.cwd ?? ''),
+      status ? (pane?.cwd ?? '') : (pane?.url ?? (pane?.pr ? pane.pr.repo : (pane?.cwd ?? ''))),
       status ? STATUS_LABEL[status] : null,
       filtered ? 'its folder is hidden' : null
     ]

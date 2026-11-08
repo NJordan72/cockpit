@@ -1,4 +1,10 @@
-import type { Layout, LayoutNode, PaneNode, Preset } from '@shared/config'
+import {
+  isTerminalPane,
+  type Layout,
+  type LayoutNode,
+  type PaneNode,
+  type Preset
+} from '@shared/config'
 import type { PaneSession } from '@shared/ipc'
 import type { SessionInfo } from '@shared/widgets'
 import type { PaneStatus } from '../agents/tracker'
@@ -19,7 +25,7 @@ function activePane(layout: Layout): string | null {
 
 /**
  * One session per terminal pane in the layout, in tab order. A pane with no
- * process is exited. Web panes run nothing, so they aren't sessions. With
+ * process is exited. Web and pull request panes run nothing, so they aren't sessions. With
  * several windows, `layout` holds all their tabs and `focused` names the pane
  * the user last worked in.
  */
@@ -31,7 +37,7 @@ export function listSessions(
 ): PaneSession[] {
   return layout.tabs.flatMap((tab) =>
     panes(tab.root)
-      .filter((p) => !p.url)
+      .filter(isTerminalPane)
       .map((p) => {
         const s = status(p.id)
         return {

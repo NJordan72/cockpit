@@ -199,6 +199,34 @@ describe('migrateConfig', () => {
       { type: 'pane', id: 'p-b', presetId: 'shell', cwd: '~' }
     ])
   })
+
+  it('keeps pull request panes with a valid repository and number', () => {
+    const tab = (id: string, pr: unknown): unknown => ({
+      id,
+      root: { type: 'pane', id: `p-${id}`, presetId: 'shell', cwd: '~/dev/r', pr, title: 'Fix' }
+    })
+    const c = migrateConfig({
+      layout: {
+        tabs: [
+          tab('a', { repo: 'o/r', number: 7, extra: true }),
+          tab('b', { repo: '--help', number: 7 }),
+          tab('c', { repo: 'o/r', number: -1 })
+        ]
+      }
+    })
+    expect(win(c).tabs.map((t) => t.root)).toEqual([
+      {
+        type: 'pane',
+        id: 'p-a',
+        presetId: 'shell',
+        cwd: '~/dev/r',
+        pr: { repo: 'o/r', number: 7 },
+        title: 'Fix'
+      },
+      { type: 'pane', id: 'p-b', presetId: 'shell', cwd: '~/dev/r' },
+      { type: 'pane', id: 'p-c', presetId: 'shell', cwd: '~/dev/r' }
+    ])
+  })
 })
 
 describe('normalizeSizes', () => {
