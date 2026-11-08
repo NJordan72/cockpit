@@ -254,7 +254,8 @@ Right-click a line in the Log for what you can do with it:
   there, as if you had pasted it at the prompt. If that directory is gone, the
   tab says so and runs nothing.
 - A Read, Edit, or Write call: **Open in editor** or **Copy path**. Files in the
-  Files tab have the same menu.
+  Files tab have the same menu, plus the prompts in `itemActions.file` (see
+  [Right-click prompts](#right-click-prompts)).
 - An ExitPlanMode call: **Show plan** opens that plan (see [Plans](#plans)),
   and **Open in editor** and **Copy path** act on the plan file.
 - One of your prompts: save it as a slash command (see below), or copy it.
@@ -293,10 +294,10 @@ failing), and the second line shows the author, draft, review state, and age.
 and **Bots** (authors gh marks as bots, or with `[bot]` or `app/` in the
 name) filter it. Click a pull request to open it in a pane of its own, or
 Shift-click to open it beside the focused pane. Right-click it to open it on
-GitHub or to send a prompt about it, in a new agent tab or in the focused
-pane. The prompts come from `prActions` in `config.json` (see
-[Config](#config)). Each is a command with the PR's URL added at the end, and
-the default is one, **Review**, which sends `/code-review <url>`.
+GitHub or to send a prompt about it to an agent. The prompts come from
+`itemActions.pr` in `config.json` (see [Right-click
+prompts](#right-click-prompts)), and the default is one, **Review**, which
+sends `/code-review <url>` in a new agent tab or in the focused pane.
 
 A **pull request pane** shows one pull request, read through `gh` when it
 opens, every minute while it's on screen, after anything you do in it, and
@@ -395,7 +396,9 @@ with `gh pr list --head <branch>` about once a minute while a window is on
 screen, and stops asking about a pull request once it has merged. Click a task to show
 its pane, or to open its agent when no pane is open there. Right-click a task
 to open another preset in it, open its pull request, open its folder in your
-editor, copy its path or branch, or remove it.
+editor, copy its path or branch, or remove it. The prompts in
+`itemActions.task` go in the same menu (see [Right-click
+prompts](#right-click-prompts)).
 
 Outside the panel, a session in a task shows its branch and pull request in
 the Sessions list. A task's tabs belong to their repository's folder in the
@@ -506,10 +509,11 @@ A finished turn doesn't make an item done, because agents also end turns to
 ask questions. An item stays done after **Clean up merged** removes its
 worktree. Click an item to show its pane or its pull request. Right-click it
 for **Start now**, which starts it even while it waits, **Mark done**,
-**Retry** for a stuck item, and **Open** for its link. The run's own menu has
-**Pause**, which stops new items from starting and leaves running agents
-alone, **Cancel**, which ends the run and leaves its tasks in place, and
-**Remove** once it's finished or cancelled.
+**Retry** for a stuck item, **Open** for its link, and the prompts in
+`itemActions.runItem` (see [Right-click prompts](#right-click-prompts)). The
+run's own menu has **Pause**, which stops new items from starting and leaves
+running agents alone, **Cancel**, which ends the run and leaves its tasks in
+place, and **Remove** once it's finished or cancelled.
 
 Cockpit saves each run to `~/.cockpit/runs/<id>.json`, so a run survives a
 restart. Agents don't, because each pane starts a new process when Cockpit
@@ -722,7 +726,7 @@ to `config.json.broken-<time>` before being replaced.
   "launcher": { "presetId": "claude" },
   "kids": { "name": "", "exitWord": "grownup", "volume": 0.6, "sound": "songs", "speak": true },
   "editor": "zed",
-  "prActions": [{ "label": "Review", "command": "/code-review" }],
+  "itemActions": { "pr": [{ "label": "Review", "command": "/code-review" }], "task": [] },
   "tasks": { "~/dev/cockpit": { "setup": "bun install", "copy": [".env"] } }
 }
 ```
@@ -747,13 +751,74 @@ your copy of the Classic layout.
 and the toolbar (`zed`, `code -g`, `cursor`). It runs through the login shell
 like a preset command, with the path added at the end. Leave it `null` (the
 default) to open files in their default app and projects in Finder.
-`prActions` is what the Pull requests panel's right-click menu can send about
-a pull request: a `label` for the menu and a `command`, which gets the PR's
-URL added at the end. Point them at your own skills or slash commands, such as
-`{ "label": "Ship", "command": "/ship-pr" }`. An empty list leaves only Open
-on GitHub and Copy URL.
+`itemActions` holds the prompts the panels' right-click menus can send to an
+agent; see [Right-click prompts](#right-click-prompts).
 `tasks` sets up each repository's new task worktrees; see [Tasks](#tasks).
 Set `COCKPIT_HOME` to use a different directory than `~/.cockpit`.
+
+### Right-click prompts
+
+`itemActions` adds entries to the right-click menus of the items in four
+panels, and each entry types a prompt about its item into an agent. With the
+config below, **Propose ship** on pull request #123 types `/propose-ship 123`
+into the focused pane's agent:
+
+```json
+"itemActions": {
+  "pr": [
+    { "label": "Propose ship", "command": "/propose-ship {number}", "target": "here" },
+    { "label": "Review", "command": "/code-review" }
+  ],
+  "task": [{ "label": "Ship", "command": "/ship-pr {pr.number}", "target": "worktree" }],
+  "runItem": [],
+  "file": [{ "label": "Explain", "command": "Explain what {path} does." }]
+}
+```
+
+Each kind of item has a list of entries. An entry has a `label` for the menu
+and a `command`. The command names the item's fields in braces, and Cockpit
+fills them in from the item. The fields each kind has are:
+
+| Kind      | Menu                                    | Fields                                                |
+| --------- | --------------------------------------- | ----------------------------------------------------- |
+| `pr`      | A row of the Pull requests panel        | `number`, `url`, `title`, `branch`, `author`, `repo`  |
+| `task`    | A row of the Tasks panel                | `path`, `repo`, `branch`, `pr.number`, `pr.url`       |
+| `runItem` | An item in the Runs panel               | `id`, `title`, `branch`, `url`, `pr.number`, `pr.url` |
+| `file`    | A row of the Activity panel's Files tab | `path`                                                |
+
+A pull request's `repo` is `owner/name`, and a task's is the path of the
+repository's main checkout. A run item's `url` is the link it was submitted
+with, such as its story, and `pr.url` is its pull request's.
+
+A command that uses none of its kind's fields gets the item's URL (`pr`,
+`runItem`) or path (`task`, `file`) added at the end, so `/code-review` sends
+`/code-review https://github.com/owner/name/pull/123`. Braces around any
+other word are left as typed. When an item lacks a field the command uses,
+such as `{pr.number}` on a task with no pull request, its menu leaves the
+entry out.
+
+`target` says where the prompt goes:
+
+- `here`: the focused pane's agent. In the Pull requests panel, it's the
+  agent of the pane whose pull requests the panel lists. The entry is disabled
+  while that pane runs no agent.
+- `new`: a new agent tab, in the focused pane's folder.
+- `worktree`, for tasks and run items: the agent running in the item's
+  worktree. When none is running, Cockpit opens an agent there with the
+  prompt. A run item gets its own agent, or its run's when it names none. A
+  task gets the focused pane's agent, or Claude Code when the focused pane
+  isn't an agent. The entry is disabled while a run item has no worktree.
+
+An entry without a `target` opens a submenu of the places it can go: **In its
+worktree** (tasks and run items), **In a new session**, and **In this
+session**.
+
+A kind's list replaces its default, so `"pr": []` takes **Review** away. A
+kind left out keeps its default, which is **Review** for pull requests and
+nothing for the rest. Labels are cut to 40 characters, and each kind keeps
+its first 20 entries. Before version 7, the pull request entries were a
+top-level `prActions` list. Cockpit moves that list to `itemActions.pr` and
+keeps the file it read as `config.v6.json`.
 
 ## Terminal keys
 

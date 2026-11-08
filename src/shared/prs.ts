@@ -1,5 +1,5 @@
 // Open pull requests for the repository of the focused pane, as the PRs
-// panel shows them, and the agent commands it can send about one.
+// panel shows them, and the prompts a pull request pane sends about one.
 
 export type PrChecks = 'passing' | 'failing' | 'pending' | null
 export type PrReview = 'approved' | 'changes' | 'required' | null
@@ -48,23 +48,6 @@ export function filterPrs(prs: readonly PullRequest[], filter: PrFilter): PullRe
       return prs.filter((p) => p.bot)
   }
 }
-
-/**
- * A prompt the PRs panel's right-click menu sends to an agent about a pull
- * request: `command` with the PR's URL added at the end.
- */
-export interface PrAction {
-  label: string
-  command: string
-}
-
-/** config.json's `prActions` replaces these. */
-export const DEFAULT_PR_ACTIONS: PrAction[] = [{ label: 'Review', command: '/code-review' }]
-
-export const MAX_PR_ACTIONS = 20
-
-export const prPrompt = (action: PrAction, pr: Pick<PullRequest, 'url'>): string =>
-  `${action.command} ${pr.url}`
 
 /** A pull request a pane shows: the repository as `owner/name`, and its number. */
 export interface PrRef {

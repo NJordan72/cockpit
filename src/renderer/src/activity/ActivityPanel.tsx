@@ -10,6 +10,8 @@ import {
 } from '@shared/activity'
 import { ACTIVITY_TABS, type ActivityTab } from '@shared/config'
 import type { PaneSession } from '@shared/ipc'
+import { fileFields, type ItemAction } from '@shared/itemActions'
+import { actionMenu, type ActionMenu, type PromptRequest } from '../itemActions'
 import { formatAgo } from '../sessions'
 import {
   filterLog,
@@ -44,6 +46,9 @@ interface Props {
   onRunCommand: (command: BashCommand) => void
   /** Open the plan dialog on one of the pane's plans, by its file. */
   onShowPlan: (file: string) => void
+  /** config.json's itemActions.file: what a file's right-click menu can send about it. */
+  fileActions: readonly ItemAction[]
+  onPrompt: (req: PromptRequest) => void
 }
 
 const TAB_LABEL: Record<ActivityTab, string> = {
@@ -70,7 +75,9 @@ export function ActivityPanel({
   visible,
   onSavePrompt,
   onRunCommand,
-  onShowPlan
+  onShowPlan,
+  fileActions,
+  onPrompt
 }: Props): React.JSX.Element {
   const activity = usePaneActivity(session.id)
   const [logFilter, setLogFilter] = useState<LogFilter>({ events: true, tools: true })
@@ -141,6 +148,8 @@ export function ActivityPanel({
             files={activity?.files ?? []}
             filter={fileFilter}
             onFilter={setFileFilter}
+            actions={fileActions}
+            onPrompt={onPrompt}
           />
         ) : settings.tab === 'agents' ? (
           <AgentsView agents={activity?.agents ?? []} running={running} />
@@ -189,13 +198,20 @@ async function commandMenu(c: BashCommand, onRun: (c: BashCommand) => void): Pro
   else if (chosen === 'run') onRun(c)
 }
 
-async function fileMenu(file: string): Promise<void> {
+/** `prompts`: the Files tab's entries from config.json's itemActions.file. */
+async function fileMenu(
+  file: string,
+  prompts?: { menu: ActionMenu; run: (req: PromptRequest) => void }
+): Promise<void> {
   const api = window.cockpit
   const chosen = await api.menu([
     { id: 'edit', label: 'Open in editor' },
-    { id: 'copy', label: 'Copy path' }
+    { id: 'copy', label: 'Copy path' },
+    ...(prompts?.menu.items ?? [])
   ])
-  if (chosen === 'edit') api.editor.openFile(file)
+  const req = prompts?.menu.pick(chosen)
+  if (req) prompts?.run(req)
+  else if (chosen === 'edit') api.editor.openFile(file)
   else if (chosen === 'copy') api.clipboard.writeText(file)
 }
 
@@ -425,12 +441,16 @@ function FilesView({
   session,
   files,
   filter,
-  onFilter
+  onFilter,
+  actions,
+  onPrompt
 }: {
   session: PaneSession
   files: FileTouch[]
   filter: FileFilter
   onFilter: (f: FileFilter) => void
+  actions: readonly ItemAction[]
+  onPrompt: (req: PromptRequest) => void
 }): React.JSX.Element {
   const shown = files.filter((f) => (f.change === 'read' ? filter.read : filter.edited))
   const now = useNow(AGO_EVERY_MS)
@@ -460,10 +480,13 @@ function FilesView({
                 <li
                   key={f.path}
                   className="file-row"
-                  title={`${f.path}\n${times.filter(Boolean).join(', ')}\nRight-click to open`}
+                  title={`${f.path}\n${times.filter(Boolean).join(', ')}\nRight-click for more`}
                   onContextMenu={(e) => {
                     e.preventDefault()
-                    void fileMenu(f.path)
+                    void fileMenu(f.path, {
+                      menu: actionMenu('file', actions, fileFields(f.path), { here: session }),
+                      run: onPrompt
+                    })
                   }}
                 >
                   <span className={`file-change ${f.change}`}>{CHANGE_LETTER[f.change]}</span>

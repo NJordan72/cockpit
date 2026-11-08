@@ -3,14 +3,15 @@
 import { ACTIVITY_TABS, type ActivityTab } from './activity'
 import { readFrame, withRunsPanel, withTasksPanel, type FrameNode } from './frame'
 import { builtInLayout, classicFromSidebar, DEFAULT_LAYOUT_ID } from './layouts'
-import { DEFAULT_PR_ACTIONS, isPrRef, MAX_PR_ACTIONS, type PrAction, type PrRef } from './prs'
+import { defaultItemActions, readItemActions, type ItemActions } from './itemActions'
+import { isPrRef, type PrRef } from './prs'
 import { readTaskSettings, type TaskSettings } from './tasks'
 import { DEFAULT_THEME_ID, readTokens, type ThemeOverrides } from './theme'
 import { isWebUrl } from './web'
 
 export { ACTIVITY_TABS, type ActivityTab }
 
-export const CONFIG_VERSION = 6
+export const CONFIG_VERSION = 7
 
 export interface Preset {
   id: string
@@ -259,8 +260,8 @@ export interface CockpitConfig {
    * login shell with the path added. null opens them in their default app.
    */
   editor: string | null
-  /** What the PRs panel's right-click menu can send to an agent about a pull request. */
-  prActions: PrAction[]
+  /** What each panel's right-click menu can send to an agent about an item, by kind of item. */
+  itemActions: ItemActions
   /** Setup for each repository's new task worktrees, by its main checkout ("~/dev/cockpit"). */
   tasks: TaskSettings
   /** The first one is the main window: it reopens when the Dock icon is clicked. */
@@ -374,7 +375,7 @@ export function defaultConfig(): CockpitConfig {
     launcher: { presetId: 'claude' },
     kids: { ...DEFAULT_KIDS },
     editor: null,
-    prActions: DEFAULT_PR_ACTIONS.map((a) => ({ ...a })),
+    itemActions: defaultItemActions(),
     tasks: {},
     windows: [defaultWindow()]
   }
@@ -570,22 +571,6 @@ export function readKids(v: unknown): KidsSettings {
   }
 }
 
-/**
- * A list, even an empty one, replaces the defaults. Entries without a label
- * and a command are dropped.
- */
-export function readPrActions(v: unknown): PrAction[] {
-  if (!Array.isArray(v)) return DEFAULT_PR_ACTIONS.map((a) => ({ ...a }))
-  const actions: PrAction[] = []
-  for (const a of v) {
-    if (!isObj(a) || !isStr(a.label) || !isStr(a.command)) continue
-    const label = a.label.trim().slice(0, 40)
-    const command = a.command.trim()
-    if (label && command) actions.push({ label, command })
-  }
-  return actions.slice(0, MAX_PR_ACTIONS)
-}
-
 /** Theme and layout names: folder names and config.json keys. */
 const NAME = /^[a-z0-9][a-z0-9_-]{0,63}$/
 const MAX_LAYOUTS = 20
@@ -722,7 +707,8 @@ export function migrateConfig(raw: unknown): CockpitConfig {
   // Version 3 moved theme and sidebar into appearance (readAppearance).
   // Version 4 moved the tabs and the layout in use into windows (readWindows).
   // Version 5 added the Tasks panel to saved layouts (withTasksPanel), and
-  // version 6 the Runs panel (withRunsPanel).
+  // version 6 the Runs panel (withRunsPanel). Version 7 moved prActions into
+  // itemActions (readItemActions).
   const rawPresets: unknown = raw.presets
 
   let presets = def.presets
@@ -808,7 +794,7 @@ export function migrateConfig(raw: unknown): CockpitConfig {
     },
     kids: readKids(raw.kids),
     editor: isStr(raw.editor) && raw.editor.trim() ? raw.editor.trim() : null,
-    prActions: readPrActions(raw.prActions),
+    itemActions: readItemActions(raw.itemActions, raw.prActions),
     tasks: readTaskSettings(raw.tasks),
     windows: readWindows(raw, appearance, new Set(presets.map((p) => p.id)))
   }

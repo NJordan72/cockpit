@@ -321,23 +321,12 @@ describe('migrateConfig: recent dirs and launcher', () => {
     expect(migrateConfig({ editor: ['zed'] }).editor).toBeNull()
   })
 
-  it('keeps PR actions with a label and a command, defaulting to a review', () => {
-    expect(migrateConfig({}).prActions).toEqual([{ label: 'Review', command: '/code-review' }])
-    expect(migrateConfig({ prActions: 'x' }).prActions).toEqual([
-      { label: 'Review', command: '/code-review' }
-    ])
-    expect(
-      migrateConfig({
-        prActions: [
-          { label: ' Ship ', command: ' /ship-pr ' },
-          { label: '', command: '/x' },
-          { label: 'No command' },
-          'Review'
-        ]
-      }).prActions
-    ).toEqual([{ label: 'Ship', command: '/ship-pr' }])
-    // An empty list turns the actions off.
-    expect(migrateConfig({ prActions: [] }).prActions).toEqual([])
+  it('moves PR actions into itemActions', () => {
+    const c = migrateConfig({ version: 6, prActions: [{ label: 'Ship', command: '/ship-pr' }] })
+    expect(c.itemActions.pr).toEqual([{ label: 'Ship', command: '/ship-pr' }])
+    expect(c.itemActions.task).toEqual([])
+    expect(c).not.toHaveProperty('prActions')
+    expect(migrateConfig({}).itemActions.pr).toEqual([{ label: 'Review', command: '/code-review' }])
   })
 })
 
@@ -445,7 +434,7 @@ describe('migrateConfig: tasks (version 5)', () => {
     // A layout the user took them out of afterwards stays without them.
     const later = migrateConfig({ version: 6, appearance: { layouts: { classic: saved } } })
     expect(repoTabs(later, 'classic')).toEqual(['prs', 'commands'])
-    expect(c.version).toBe(6)
+    expect(c.version).toBe(7)
   })
 
   it('has them in the built-in layouts', () => {
