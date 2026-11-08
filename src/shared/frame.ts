@@ -16,6 +16,7 @@ export const PANEL_KINDS = [
   'monitor',
   'prs',
   'tasks',
+  'runs',
   'commands'
 ] as const
 
@@ -400,24 +401,37 @@ export function panels(root: FrameNode): FramePanel[] {
 }
 
 /**
+ * Adds a `kind` panel right after the first panel of the `after` kinds the
+ * layout has, in the same group, unless the layout has a `kind` panel already.
+ */
+function withPanelAfter(root: FrameNode, kind: PanelKind, after: readonly PanelKind[]): FrameNode {
+  const all = panels(root)
+  const anchor = after.map((k) => all.find((p) => p.panel === k)).find(Boolean)
+  if (!anchor || all.some((p) => p.panel === kind)) return root
+  let id: string = kind
+  for (let n = 2; findNode(root, id); n++) id = `${kind}-${String(n)}`
+  const added = panel(kind)
+  added.id = id
+  return mapNode(root, (n) => {
+    if (n.type === 'panel') return n
+    const i = n.children.findIndex((c) => c.id === anchor.id)
+    if (i < 0) return n
+    return { ...n, children: [...n.children.slice(0, i + 1), added, ...n.children.slice(i + 1)] }
+  })
+}
+
+/**
  * Config version 5 added the Tasks panel. A layout saved before then gets one
  * right after its pull requests panel, in the same group, unless it has one.
  */
-export function withTasksPanel(root: FrameNode): FrameNode {
-  const all = panels(root)
-  const prs = all.find((p) => p.panel === 'prs')
-  if (!prs || all.some((p) => p.panel === 'tasks')) return root
-  let id = 'tasks'
-  for (let n = 2; findNode(root, id); n++) id = `tasks-${String(n)}`
-  const tasks = panel('tasks')
-  tasks.id = id
-  return mapNode(root, (n) => {
-    if (n.type === 'panel') return n
-    const i = n.children.findIndex((c) => c.id === prs.id)
-    if (i < 0) return n
-    return { ...n, children: [...n.children.slice(0, i + 1), tasks, ...n.children.slice(i + 1)] }
-  })
-}
+export const withTasksPanel = (root: FrameNode): FrameNode => withPanelAfter(root, 'tasks', ['prs'])
+
+/**
+ * Config version 6 added the Runs panel. A layout saved before then gets one
+ * after its Tasks panel, or else after its pull requests panel.
+ */
+export const withRunsPanel = (root: FrameNode): FrameNode =>
+  withPanelAfter(root, 'runs', ['tasks', 'prs'])
 
 /** Replace the node `id` with `fn` of it. */
 export function updateNode(

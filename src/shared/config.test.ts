@@ -432,23 +432,27 @@ describe('migrateConfig: tasks (version 5)', () => {
     return repo && repo.type !== 'panel' ? repo.children.map((n) => n.id) : []
   }
 
-  it('puts the Tasks panel after the pull requests in a layout saved before it, once', () => {
+  it('puts the Tasks and Runs panels after the pull requests in a layout saved before them, once', () => {
     const c = migrateConfig({ version: 4, appearance: { layouts: { classic: saved } } })
-    expect(repoTabs(c, 'classic')).toEqual(['prs', 'tasks', 'commands'])
+    expect(repoTabs(c, 'classic')).toEqual(['prs', 'tasks', 'runs', 'commands'])
     // The group still shows the tab it showed.
     expect(findNode(activeLayout(c.appearance, 'classic'), 'repo')).toMatchObject({
       active: 'commands'
     })
-    // A layout the user took it out of afterwards stays without it.
-    const later = migrateConfig({ version: 5, appearance: { layouts: { classic: saved } } })
+    // A layout the user took the Tasks panel out of gets the Runs panel after the pull requests.
+    const five = migrateConfig({ version: 5, appearance: { layouts: { classic: saved } } })
+    expect(repoTabs(five, 'classic')).toEqual(['prs', 'runs', 'commands'])
+    // A layout the user took them out of afterwards stays without them.
+    const later = migrateConfig({ version: 6, appearance: { layouts: { classic: saved } } })
     expect(repoTabs(later, 'classic')).toEqual(['prs', 'commands'])
-    expect(c.version).toBe(5)
+    expect(c.version).toBe(6)
   })
 
-  it('has it in the built-in layouts', () => {
+  it('has them in the built-in layouts', () => {
     const c = defaultConfig()
-    expect(repoTabs(c, 'classic')).toEqual(['prs', 'tasks', 'commands'])
+    expect(repoTabs(c, 'classic')).toEqual(['prs', 'tasks', 'runs', 'commands'])
     expect(repoTabs(c, 'cockpit')).toContain('tasks')
+    expect(repoTabs(c, 'cockpit')).toContain('runs')
     expect(c.keybindings.newTask).toBe(DEFAULT_KEYBINDINGS.newTask)
   })
 

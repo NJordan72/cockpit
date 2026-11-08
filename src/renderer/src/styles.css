@@ -2548,6 +2548,149 @@ button.icon:hover,
   gap: 6px;
 }
 
+/* ---- runs ---- */
+
+.run + .run {
+  border-top: 1px solid var(--border);
+  margin-top: 4px;
+  padding-top: 4px;
+}
+
+.run-head {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  column-gap: 6px;
+  align-items: center;
+  padding: 3px 8px;
+  font-size: 12px;
+}
+
+.run-head .prs-refresh {
+  margin-left: 0;
+}
+
+.run-title {
+  font-weight: 600;
+}
+
+.run-meta {
+  grid-column: 1 / 4;
+}
+
+.run-items {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.run-row {
+  padding-left: 14px;
+}
+
+.run-phase.review {
+  color: var(--accent);
+}
+
+.run-phase.done {
+  color: var(--magenta);
+}
+
+.run-phase.stuck {
+  color: var(--danger);
+}
+
+.run-phase.working {
+  color: var(--fg);
+}
+
+.status-dot.review {
+  background: var(--accent);
+}
+
+.status-dot.merged {
+  background: var(--magenta);
+}
+
+.status-dot.stuck {
+  background: var(--danger);
+}
+
+.runs code {
+  font-family: var(--font-mono);
+}
+
+.run-dialog {
+  width: min(680px, 94vw);
+  max-height: 88vh;
+}
+
+.run-from {
+  margin-top: 0;
+}
+
+.run-choices {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 6px;
+}
+
+.run-parallel {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.run-parallel .picker-input {
+  width: 4em;
+  margin: 0;
+}
+
+.run-dialog-items {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--border);
+}
+
+.run-dialog-items li {
+  padding: 6px 2px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+}
+
+.run-dialog-item {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.run-dialog-items details {
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.run-prompt {
+  margin: 4px 0 0;
+  padding: 6px 8px;
+  max-height: 14em;
+  overflow: auto;
+  white-space: pre-wrap;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--fg);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
 /* ---- pull requests and commands panels ---- */
 
 .prs,

@@ -9,6 +9,7 @@ import {
   ipcMain,
   Menu,
   nativeImage,
+  Notification,
   screen,
   session,
   shell,
@@ -45,12 +46,14 @@ import {
   type PaneSession,
   type PtyCreateOptions,
   type PtyCreated,
+  type RunResult,
   type WindowInfo
 } from '@shared/ipc'
 import type { SaveResult } from '@shared/commands'
 import {
   isPrRef,
   MERGE_LABEL,
+  prRefFromUrl,
   type PrAct,
   type PrActResult,
   type PrDetailResult,
@@ -68,6 +71,15 @@ import {
   type TaskInfo
 } from '@shared/tasks'
 import { BUILT_IN_LAYOUTS, DEFAULT_LAYOUT_ID, layoutChoices } from '@shared/layouts'
+import {
+  MAX_PARALLEL,
+  RUN_ACTIONS,
+  RUN_MODES,
+  type RunAction,
+  type RunDraft,
+  type RunMode,
+  type RunView
+} from '@shared/runs'
 import { resolveTheme, type ResolvedTheme } from '@shared/theme'
 import { canOpenExternally, isWebUrl, WEB_PARTITION } from '@shared/web'
 import { AgentMonitor } from './agents/monitor'
@@ -85,9 +97,10 @@ import { buildKidsMenu, buildMenu, menuTemplate } from './menu'
 import { abbreviateHome, claudeHome, cockpitHome, codexHome, expandHome } from './paths'
 import { actOnPr, checkLog, listPrs, readPr, readPrAct } from './prs'
 import { PtyManager } from './pty'
+import { RunStore } from './runs'
 import { registerSchemes } from './schemes'
 import { SystemMonitor } from './system'
-import { TaskStore, withSetup } from './tasks'
+import { defaultBranch, mainCheckout, TaskStore, withSetup } from './tasks'
 import { ThemeStore } from './themes'
 import { restartPrompt, signedWithDeveloperId, Updates } from './updater'
 import { TreeWatcher } from './watch'
@@ -115,6 +128,10 @@ let widgets: WidgetHost
 let agents: AgentMonitor
 let tasks: TaskStore
 let tasksTimer: NodeJS.Timeout | null = null
+/** Null until startup makes it, since session changes can arrive before then. */
+let runs: RunStore | null = null
+/** Run notifications, kept so a click still reaches them. */
+const runNotices = new Set<Notification>()
 const branches = new BranchTracker(branchDir, () => sessionsChanged())
 let branchesTimer: NodeJS.Timeout | null = null
 let lastSessions = ''
@@ -265,6 +282,8 @@ function sessionsChanged(): void {
     // The Dock shows how many panes want the user, notifications or not.
     const waiting = list.filter((s) => s.status === 'needs-input' || s.status === 'done').length
     app.dock?.setBadge(waiting > 0 ? String(waiting) : '')
+    // A pane's status changed, or a tab opened or closed.
+    runs?.poke()
   }
   widgets.sessionsChanged()
 }
@@ -374,6 +393,50 @@ function openTaskDraft(draft: TaskDraft): boolean {
   raise(w)
   send(w, IPC.tasksDraft, draft)
   return true
+}
+
+/** Most urgent first, for the one status a run shows for a worktree's agents. */
+const AGENT_URGENCY = ['needs-input', 'working', 'done', 'idle'] as const
+
+/** The status of the agents running in a worktree, the most urgent one, or null with none. */
+function agentIn(dir: string): (typeof AGENT_URGENCY)[number] | null {
+  const statuses = panesIn(dir).flatMap((id) => {
+    const s = agents.status(id)
+    return s && s.agent !== null ? [s.status] : []
+  })
+  return AGENT_URGENCY.find((u) => statuses.includes(u)) ?? null
+}
+
+/**
+ * Asks the terminal window to open a run item's agent in a tab, without
+ * switching to it or raising the window.
+ */
+function openRunItem(req: { path: string; presetId: string; prompt: string }): boolean {
+  const w = terminalWindow()
+  if (!w) return false
+  send(w, IPC.tasksOpen, { ...req, background: true })
+  return true
+}
+
+/** Asks the terminal window to show the dialog that confirms a submitted run. */
+function openRunDraft(draft: RunDraft): boolean {
+  const w = terminalWindow()
+  if (!w) return false
+  raise(w)
+  send(w, IPC.runsDraft, draft)
+  return true
+}
+
+function runNotice(title: string, body: string, worktree: string | null): void {
+  if (kidsActive || !Notification.isSupported()) return
+  const n = new Notification({ title, body })
+  runNotices.add(n)
+  n.on('click', () => {
+    const pane = worktree ? panesIn(worktree)[0] : undefined
+    if (pane) revealPane(pane)
+  })
+  n.on('close', () => runNotices.delete(n))
+  n.show()
 }
 
 /** How often the tasks are read again while a window is on screen. */
@@ -709,6 +772,8 @@ function setKids(active: boolean, from: CockpitWindow | null = null): void {
   }
   applyMenu()
   updateFocus()
+  // Run items wait while kids mode is on.
+  if (!active) runs?.poke()
   if (target) send(target, IPC.kidsChanged, active)
 }
 
@@ -1191,6 +1256,49 @@ function registerIpc(): void {
       ...(typeof presetId === 'string' ? { presetId } : {})
     })
   })
+  ipcMain.handle(IPC.runsList, (e): RunView[] => {
+    if (!trusted(e)) throw new Error('untrusted sender')
+    return runs?.list() ?? []
+  })
+  ipcMain.handle(IPC.runsStart, async (e, req: unknown): Promise<RunResult> => {
+    if (!trusted(e) || !runs || typeof req !== 'object' || req === null) {
+      return { ok: false, error: 'untrusted sender' }
+    }
+    const { id, mode, maxParallel, presetId, repo } = req as Record<string, unknown>
+    if (
+      typeof id !== 'string' ||
+      !RUN_MODES.includes(mode as RunMode) ||
+      typeof maxParallel !== 'number' ||
+      maxParallel > MAX_PARALLEL ||
+      typeof presetId !== 'string' ||
+      !config.get().presets.some((p) => p.id === presetId) ||
+      (repo !== undefined && (typeof repo !== 'string' || repo.length > 1024))
+    ) {
+      return { ok: false, error: "Cockpit can't start the run with those choices" }
+    }
+    return runs.confirm({
+      id,
+      mode: mode as RunMode,
+      maxParallel,
+      presetId,
+      ...(typeof repo === 'string' ? { repo } : {})
+    })
+  })
+  ipcMain.on(IPC.runsDiscard, (e, id: unknown) => {
+    if (trusted(e) && typeof id === 'string') runs?.discard(id)
+  })
+  ipcMain.handle(IPC.runsAct, (e, id: unknown, action: unknown, itemId: unknown) => {
+    if (
+      !trusted(e) ||
+      !runs ||
+      typeof id !== 'string' ||
+      !RUN_ACTIONS.includes(action as RunAction) ||
+      (itemId !== undefined && typeof itemId !== 'string')
+    ) {
+      return { ok: false, error: 'untrusted sender' }
+    }
+    return runs.act(id, action as RunAction, itemId)
+  })
   ipcMain.on(IPC.openGitHub, (e, url: unknown) => {
     if (trusted(e) && typeof url === 'string' && url.startsWith('https://github.com/')) {
       void shell.openExternal(url)
@@ -1443,11 +1551,38 @@ async function startup(): Promise<void> {
   tasks = new TaskStore({
     dir: join(cockpitHome(), 'worktrees'),
     settings: (repo) => config.get().tasks[repo],
-    onChange: (list) => broadcast(IPC.tasksChanged, list)
+    onChange: (list) => {
+      broadcast(IPC.tasksChanged, list)
+      runs?.poke()
+    }
+  })
+  runs = new RunStore({
+    dir: join(cockpitHome(), 'runs'),
+    tasks: () => tasks.list(),
+    scanned: () => tasks.lastScan > 0,
+    create: (req) => tasks.create(req),
+    mainCheckout: async (dir) => {
+      const found = await mainCheckout(dir)
+      return found.ok ? { ok: true, path: abbreviateHome(found.path) } : found
+    },
+    defaultBranch,
+    agentIn,
+    open: openRunItem,
+    canStart: () => !kidsActive && terminalWindow() !== null,
+    confirm: openRunDraft,
+    readPr: async (url) => {
+      const ref = prRefFromUrl(url)
+      const res = ref ? await readPr(ref) : null
+      return res?.ok ? res.pr.state : null
+    },
+    notify: runNotice,
+    onChange: (list) => broadcast(IPC.runsChanged, list)
   })
   void tasks.refresh()
   tasksTimer = setInterval(() => {
-    if (anyVisible()) void tasks.refresh()
+    // A run left going with no window on screen still sees its merges.
+    if (anyVisible() || runs?.needsPolling()) void tasks.refresh()
+    void runs?.tick()
   }, TASKS_POLL_MS)
   branchesTimer = setInterval(() => {
     if (anyVisible()) refreshBranches()

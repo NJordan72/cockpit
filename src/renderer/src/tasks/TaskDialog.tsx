@@ -1,11 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { Preset } from '@shared/config'
-import type { DirEntry } from '@shared/ipc'
 import { validBranch, type TaskDraft } from '@shared/tasks'
-import { rankDirs } from '../components/rankDirs'
-
-/** Suggestions shown under the repository field. */
-const SUGGESTIONS = 6
+import { RepoField } from './RepoField'
 
 export interface CreatedTask {
   /** The worktree, with ~ for home. */
@@ -49,10 +45,6 @@ export function TaskDialog({
         presets[0]
       )?.id ?? 'shell'
   )
-  const [dirs, setDirs] = useState<DirEntry[]>([])
-  /** The repository field was typed in since it took focus, so its suggestions show. */
-  const [choosing, setChoosing] = useState(false)
-  const [selected, setSelected] = useState(0)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const branchRef = useRef<HTMLInputElement>(null)
@@ -62,13 +54,7 @@ export function TaskDialog({
     // A widget's draft names the branch; what's left to write is the prompt.
     if (draft.branch && !draft.prompt) promptRef.current?.focus()
     else branchRef.current?.focus()
-    void window.cockpit.dirs.list().then((l) => setDirs(l.dirs))
   }, [draft])
-
-  const suggestions = useMemo(
-    () => (choosing ? rankDirs(repo, null, dirs).slice(0, SUGGESTIONS) : []),
-    [choosing, repo, dirs]
-  )
 
   const name = branch.trim()
   const branchOk = validBranch(name)
@@ -99,31 +85,6 @@ export function TaskDialog({
         setError(String(err))
         setBusy(false)
       })
-  }
-
-  const pick = (path: string): void => {
-    setRepo(path)
-    setChoosing(false)
-  }
-
-  const onRepoKey = (e: React.KeyboardEvent): void => {
-    if (suggestions.length === 0) return
-    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-      e.preventDefault()
-      const step = e.key === 'ArrowDown' ? 1 : -1
-      setSelected((s) => Math.min(suggestions.length - 1, Math.max(0, s + step)))
-    } else if (e.key === 'Enter') {
-      const item = suggestions[selected]
-      if (item) {
-        e.preventDefault()
-        e.stopPropagation()
-        pick(item.path)
-      }
-    } else if (e.key === 'Escape') {
-      e.preventDefault()
-      e.stopPropagation()
-      setChoosing(false)
-    }
   }
 
   return (
@@ -182,49 +143,15 @@ export function TaskDialog({
         <label className="secret-label" htmlFor="task-repo">
           Repository
         </label>
-        <div className="task-repo">
-          <input
-            id="task-repo"
-            className="picker-input"
-            spellCheck={false}
-            autoComplete="off"
-            placeholder="~/dev/project"
-            value={repo}
-            disabled={busy}
-            role="combobox"
-            aria-expanded={suggestions.length > 0}
-            aria-controls="task-repo-list"
-            onChange={(e) => {
-              setRepo(e.target.value)
-              setChoosing(true)
-              setSelected(0)
-              setError(null)
-            }}
-            onKeyDown={onRepoKey}
-            onBlur={() => setChoosing(false)}
-          />
-          {suggestions.length > 0 && (
-            <ul className="picker-list task-repo-list" id="task-repo-list" role="listbox">
-              {suggestions.map((d, i) => (
-                <li
-                  key={d.path}
-                  role="option"
-                  aria-selected={i === selected}
-                  className={i === selected ? 'selected' : ''}
-                  onMouseEnter={() => setSelected(i)}
-                  // Before the input's blur hides the list.
-                  onMouseDown={(e) => {
-                    e.preventDefault()
-                    pick(d.path)
-                  }}
-                >
-                  <span className="dir-name">{d.label}</span>
-                  <span className="dir-path">{d.path}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+        <RepoField
+          id="task-repo"
+          value={repo}
+          disabled={busy}
+          onChange={(r) => {
+            setRepo(r)
+            setError(null)
+          }}
+        />
 
         <label className="secret-label" htmlFor="task-prompt">
           First prompt <span className="task-optional">(optional)</span>
