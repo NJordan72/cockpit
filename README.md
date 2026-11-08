@@ -409,6 +409,10 @@ Cockpit asks for a Shortcut API token and keeps it encrypted; see
 to start an agent on it, in a new tab, in any open agent pane, or in a new
 [task](#tasks). The widget's
 gear sets the prompt that sends and adds tabs of your own Shortcut searches.
+When a pane's git branch names a story (`nick/sc-1234/fix-login`), a line at
+the top of the pane shows the story's number, title, points, state, and
+owners; hover it for more, and click it to open the story. Any widget with
+`"sessions": "label"` can put a line there.
 
 New widgets go into the layout's Widgets group, stacked by default. Each one
 collapses from its header, and the line between two widgets drags to resize
