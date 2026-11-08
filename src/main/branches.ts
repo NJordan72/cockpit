@@ -51,6 +51,8 @@ export async function readBranch(dir: string): Promise<string | null> {
 
 export class BranchTracker {
   private branches = new Map<string, string | null>()
+  /** Where each pane's process was last found, for reads that don't ask again. */
+  private dirs = new Map<string, string | null>()
   /** Bumped by each read of a pane, so an older read finishing late is dropped. */
   private reads = new Map<string, number>()
 
@@ -65,9 +67,14 @@ export class BranchTracker {
     return this.branches.get(paneId) ?? null
   }
 
-  /** Reads these panes' branches again, then calls `changed` once if any is different. */
-  async refresh(paneIds: readonly string[]): Promise<void> {
-    const changed = await Promise.all(paneIds.map((id) => this.readOne(id)))
+  /**
+   * Reads these panes' branches again, then calls `changed` once if any is
+   * different. With `sameDirs`, a pane whose directory is known reads HEAD
+   * there without asking where its process is: finding that out can mean
+   * running lsof, too much to do for every pane every few seconds.
+   */
+  async refresh(paneIds: readonly string[], sameDirs = false): Promise<void> {
+    const changed = await Promise.all(paneIds.map((id) => this.readOne(id, sameDirs)))
     if (changed.includes(true)) this.changed()
   }
 
@@ -77,15 +84,18 @@ export class BranchTracker {
       if (paneIds.has(id)) continue
       this.reads.delete(id)
       this.branches.delete(id)
+      this.dirs.delete(id)
     }
   }
 
-  private async readOne(paneId: string): Promise<boolean> {
+  private async readOne(paneId: string, sameDir: boolean): Promise<boolean> {
     const n = (this.reads.get(paneId) ?? 0) + 1
     this.reads.set(paneId, n)
     let branch: string | null = null
     try {
-      const dir = await this.cwd(paneId)
+      const known = this.dirs.get(paneId)
+      const dir = sameDir && known !== undefined ? known : await this.cwd(paneId)
+      if (this.reads.get(paneId) === n) this.dirs.set(paneId, dir)
       if (dir !== null) branch = await this.read(dir)
     } catch {
       branch = null

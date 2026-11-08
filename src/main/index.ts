@@ -234,11 +234,15 @@ function sessions(): PaneSession[] {
 /** How often every pane's branch is read again while a window is on screen. */
 const BRANCHES_POLL_MS = 5000
 
-/** Agents switch branches and directories mid-session, so branches are read again often. */
+/**
+ * Agents switch branches mid-turn, so HEAD is read again often. A pane's
+ * directory is found again only when its status changes or its process
+ * starts, since a shell that runs `cd` changes status too.
+ */
 function refreshBranches(): void {
   const ids = sessions().map((s) => s.id)
   branches.retain(new Set(ids))
-  void branches.refresh(ids)
+  void branches.refresh(ids, true)
 }
 
 /** Push the session list to the chrome and to widgets that read it, if it changed. */

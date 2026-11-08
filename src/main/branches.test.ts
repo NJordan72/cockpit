@@ -128,6 +128,30 @@ describe('BranchTracker', () => {
     expect(tracker.get('a')).toBe('new')
   })
 
+  it('reads HEAD in the directory it knows when told the directories are the same', async () => {
+    let asked = 0
+    const dirs: Record<string, string> = { a: '/one' }
+    const heads: Record<string, string> = { '/one': 'main', '/two': 'dev' }
+    const tracker = new BranchTracker(
+      (id) => {
+        asked++
+        return Promise.resolve(dirs[id] ?? null)
+      },
+      () => undefined,
+      (dir) => Promise.resolve(heads[dir] ?? null)
+    )
+    await tracker.refresh(['a'], true)
+    expect([asked, tracker.get('a')]).toEqual([1, 'main'])
+
+    dirs.a = '/two'
+    heads['/one'] = 'feature'
+    await tracker.refresh(['a'], true)
+    expect([asked, tracker.get('a')]).toEqual([1, 'feature'])
+
+    await tracker.refresh(['a'])
+    expect([asked, tracker.get('a')]).toEqual([2, 'dev'])
+  })
+
   it('treats a failed read as no branch', async () => {
     const tracker = new BranchTracker(
       () => Promise.reject(new Error('lsof failed')),
