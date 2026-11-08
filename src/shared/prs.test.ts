@@ -155,4 +155,8 @@ describe('stripHtmlComments', () => {
   it('removes every comment, across lines', () => {
     expect(stripHtmlComments('<!-- a\nb -->Hi<!-- c --> there')).toBe('Hi there')
   })
+  it('leaves no comment opener behind', () => {
+    expect(stripHtmlComments('<!<!-- x -->-- y --> z')).toBe('z')
+    expect(stripHtmlComments('Hi <!-- never closed')).toBe('Hi')
+  })
 })

@@ -220,8 +220,19 @@ const VERDICT_LABEL: Record<ReviewVerdict, string> = {
   dismissed: 'dismissed'
 }
 
-/** Bots put metadata in HTML comments, which GitHub doesn't show. */
-export const stripHtmlComments = (s: string): string => s.replace(/<!--[\s\S]*?-->/g, '').trim()
+/**
+ * Bots put metadata in HTML comments, which GitHub doesn't show. Removing one
+ * can join the text around it into another, so this repeats until none is
+ * left, and an unclosed one hides the rest, as it does in HTML.
+ */
+export function stripHtmlComments(s: string): string {
+  let out = s
+  for (let prev = ''; prev !== out;) {
+    prev = out
+    out = out.replace(/<!--[\s\S]*?-->/g, '')
+  }
+  return out.replace(/<!--[\s\S]*$/, '').trim()
+}
 
 /** `src/a.ts line 42`, `src/a.ts lines 40-42`, or the line it had on an earlier commit. */
 export function threadPlace(
