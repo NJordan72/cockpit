@@ -143,7 +143,7 @@ describe("Shortcut Stories' Burn down epic", () => {
     const first = stories.find((s) => s.id === 202)
     first?.story_links.push({ verb: 'blocks', subject_id: 90, object_id: 202 })
     const graph = run(stories, { 90: { ...story(90), name: 'Publish the tokens' } }) as {
-      items: { id: string; after?: string[]; external?: boolean }[]
+      items: { id: string; title: string; after?: string[]; external?: boolean; url?: string }[]
     }
     expect(graph.items.map((i) => i.id)).not.toContain('sc-201')
     expect(graph.items.find((i) => i.id === 'sc-202')?.after).toEqual(['sc-90'])

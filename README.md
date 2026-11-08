@@ -417,6 +417,117 @@ merged** removes every such task after one question.
 A layout you changed before Tasks existed gets the panel once, next to Pull
 requests, when Cockpit first reads it.
 
+## Runs
+
+A run is a set of tasks with the order they have to go in. Cockpit starts
+every task that waits on nothing, each in a worktree of its own, and starts
+each of the rest once the tasks it waits on are far enough along. The first
+use is burning down a Shortcut epic: right-click a story in the epic in the
+Shortcut widget and choose **Burn down epic**. A widget can also submit a run
+with `cockpit.runs.submit` (see [docs/widgets.md](docs/widgets.md)), and a
+script or an agent can with `cockpit-run`:
+
+```sh
+cockpit-run submit plan.json     # or pipe the JSON in
+cockpit-run list                 # each run and its items' states
+cockpit-run done <run> <item>    # mark an item done
+```
+
+A run is JSON. Each item becomes one task and lists the items it waits on in
+`after`:
+
+```jsonc
+{
+  "title": "Epic 812: Login revamp",
+  "repo": "~/dev/app",
+  "items": [
+    {
+      "id": "sc-101",
+      "title": "Add the session table",
+      "branch": "nick/sc-101/session-table",
+      "prompt": "/start-story sc-101"
+    },
+    {
+      "id": "sc-102",
+      "title": "Issue tokens",
+      "branch": "nick/sc-102/issue-tokens",
+      "prompt": "/start-story sc-102",
+      "after": ["sc-101", "sc-90"]
+    },
+    { "id": "sc-90", "title": "Publish the design tokens", "external": true }
+  ]
+}
+```
+
+An item with `"external": true` stands for work Cockpit waits on and never
+starts, such as a story in another epic. It's done when someone marks it
+done, or, if it names a pull request URL in `pr`, when that pull request
+merges. An item's `repo` and `presetId` override the run's, so one run can
+span a backend and a frontend repository. Cockpit refuses a run with two
+items of one id, an `after` that names no item, or items that wait on each
+other in a loop.
+
+Nothing starts until you confirm the run. Cockpit shows a dialog with every
+item in the order it can start, what it waits on, its repository, agent, and
+branch, and its full prompt. There you pick the agent, how many items work at
+once (3 unless the run says otherwise), the repository when the run doesn't
+name one, and the mode:
+
+- **Wait for merges** starts an item once every item it waits on is done, on
+  a branch from the default branch, which then has the merged work.
+- **Stack pull requests** starts an item before its blockers merge, on top of
+  one of them. The blocker it starts on must have an open pull request, and
+  each of its other blockers must have merged or sit below that one in its
+  stack. The item's branch starts from the blocker's branch. When an item's
+  blockers have two open pull requests, neither stacked on the other, it
+  waits until one of them merges.
+
+After **Start**, Cockpit doesn't ask again for each item. It makes each
+item's task as **New task** would, runs the repository's `setup`, and opens
+the agent in a background tab, so it doesn't pull you away from the tab
+you're in. A notification says which item started and what it was waiting
+on. Cockpit adds a line to each prompt asking the agent to push the branch
+and open a pull request against the item's base branch, since the pull
+request is how Cockpit sees an item move to review and then to done.
+
+The **Runs** panel, in the tab group with Tasks, shows each run's progress
+and each item's state:
+
+| State                | When                                                              |
+| -------------------- | ----------------------------------------------------------------- |
+| Waiting              | An item it waits on isn't far enough along. The row says which.   |
+| Ready                | It could start, but as many items as the run allows are working.  |
+| Working, Needs input | Its task is made and has no pull request yet.                     |
+| In review            | Its pull request is open. An item in review frees its slot.       |
+| Done                 | Its pull request merged, or someone marked it done.               |
+| Stuck                | Its pull request closed, its worktree is gone, or git refused it. |
+
+A finished turn doesn't make an item done, because agents also end turns to
+ask questions. An item stays done after **Clean up merged** removes its
+worktree. Click an item to show its pane or its pull request. Right-click it
+for **Start now**, which starts it even while it waits, **Mark done**,
+**Retry** for a stuck item, and **Open** for its link. The run's own menu has
+**Pause**, which stops new items from starting and leaves running agents
+alone, **Cancel**, which ends the run and leaves its tasks in place, and
+**Remove** once it's finished or cancelled.
+
+Cockpit saves each run to `~/.cockpit/runs/<id>.json`, so a run survives a
+restart. Agents don't, since panes start fresh. An item whose agent was
+working shows **No agent running**, and clicking it opens one in its
+worktree. While a run has items working or in review, Cockpit keeps reading
+their pull requests with no window on screen, so a run left going overnight
+still sees its merges. Nothing starts while kids mode is on.
+
+Cockpit doesn't rebase a stack. When the pull request under a stacked item
+merges, the item's row says its branch needs a rebase, which is yours to do
+or `gh stack`'s.
+
+`cockpit-run` lives in `~/.cockpit/agents/`, which Cockpit puts on the PATH
+of every pane. A shell profile that sets `PATH` outright, rather than adding
+to it, drops the folder; call `~/.cockpit/agents/cockpit-run` by its full path
+then. Outside a Cockpit pane, `cockpit-run` talks to the one Cockpit that's
+running, or to the one `COCKPIT_SOCKET` names.
+
 ## Widgets
 
 Widgets are small HTML pages, each in its own sandboxed iframe, that reach the network, secrets, and storage only through an
