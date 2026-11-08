@@ -1,7 +1,9 @@
 // The local event server that agent hooks report to. It's HTTP over a Unix
 // socket, so the hook script can be a one-line curl call. Only processes
 // running as this user can reach the socket, and an event counts only when
-// it names a session token that Cockpit handed to a live PTY.
+// it names a session token that Cockpit handed to a live PTY. cockpit-run
+// uses the same socket under /v1/runs, and needs no token, since a run it
+// submits starts nothing until the user confirms it in Cockpit.
 import fs from 'node:fs'
 import http from 'node:http'
 import os from 'node:os'
@@ -26,6 +28,16 @@ export interface IncomingEvent {
 
 /** Returns false when the token belongs to no live PTY. */
 export type EventHandler = (e: IncomingEvent) => boolean
+
+/** The most a request to /v1/runs can carry: a run's graph. */
+export const MAX_RUN_BYTES = 1024 * 1024
+
+/** Answers a cockpit-run request with a status and plain text for the terminal. */
+export type RunRequestHandler = (req: {
+  method: string
+  path: string
+  body: string
+}) => Promise<{ status: number; text: string }>
 
 /**
  * Where the socket goes: <home>/run/cockpit-<pid>.sock, one per Cockpit
@@ -70,7 +82,8 @@ export class EventServer {
 
   constructor(
     readonly path: string,
-    private readonly handler: EventHandler
+    private readonly handler: EventHandler,
+    private readonly runs?: RunRequestHandler
   ) {}
 
   async start(): Promise<void> {
@@ -104,6 +117,10 @@ export class EventServer {
     const reply = (status: number): void => {
       res.writeHead(status, { 'content-length': '0', connection: 'close' }).end()
     }
+    if (this.runs && /^\/v1\/runs(?:\/|$)/.test(req.url ?? '')) {
+      this.handleRun(req, res, this.runs)
+      return
+    }
     const match = EVENT_PATH.exec(req.url ?? '')
     const token = req.headers['x-cockpit-session']
     if (req.method !== 'POST' || !match || typeof token !== 'string' || !token) {
@@ -130,6 +147,42 @@ export class EventServer {
       }
       // Answer after handling, so hooks that run one after another arrive in order.
       reply(this.handler({ agent, event, token, payload }) ? 204 : 403)
+    })
+    req.on('error', () => {
+      res.destroy()
+    })
+  }
+
+  private handleRun(
+    req: http.IncomingMessage,
+    res: http.ServerResponse,
+    runs: RunRequestHandler
+  ): void {
+    const reply = (status: number, text: string): void => {
+      res
+        .writeHead(status, {
+          'content-type': 'text/plain; charset=utf-8',
+          'content-length': Buffer.byteLength(text),
+          connection: 'close'
+        })
+        .end(text)
+    }
+    const chunks: Buffer[] = []
+    let size = 0
+    req.on('data', (chunk: Buffer) => {
+      size += chunk.length
+      if (size <= MAX_RUN_BYTES) chunks.push(chunk)
+    })
+    req.on('end', () => {
+      if (size > MAX_RUN_BYTES) {
+        reply(413, 'cockpit-run: the run is over 1 MB\n')
+        return
+      }
+      const body = Buffer.concat(chunks).toString('utf8')
+      runs({ method: req.method ?? 'GET', path: req.url ?? '', body }).then(
+        (r) => reply(r.status, r.text),
+        (err: unknown) => reply(500, `cockpit-run: ${String(err)}\n`)
+      )
     })
     req.on('error', () => {
       res.destroy()

@@ -1,7 +1,7 @@
 {
   "id": "shortcut-stories",
   "name": "Shortcut Stories",
-  "version": "2.3.0",
+  "version": "2.4.0",
   "description": "Your open Shortcut stories, grouped by workflow state, with extra tabs of your own searches.",
   "entry": "index.html",
   "sizing": "fill",

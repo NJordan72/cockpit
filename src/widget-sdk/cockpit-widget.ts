@@ -21,6 +21,7 @@ import type {
   WidgetMethods,
   WidgetToHost
 } from '../shared/widgets'
+import type { WidgetRun } from '../shared/runs'
 
 ;(() => {
   const host = window.parent
@@ -290,6 +291,22 @@ import type {
       async label(id: string, label: SessionLabel | null): Promise<void> {
         await call('sessions.label', { id, label }, 10_000)
       }
+    }),
+
+    runs: Object.freeze({
+      /**
+       * Hands Cockpit a set of work items and the items each waits on.
+       * Cockpit shows the whole run to the user, and starts nothing until
+       * they confirm it there. Resolves with the run's id.
+       */
+      submit: async (graph: unknown): Promise<string> =>
+        (await call('runs.submit', { graph }, 10_000)) as string,
+      /** Marks an item of a run this widget submitted as done, such as an item outside the run. */
+      async markDone(runId: string, itemId: string): Promise<void> {
+        await call('runs.markDone', { runId, itemId }, 10_000)
+      },
+      /** The runs this widget submitted, the ones still waiting for the user included. */
+      list: async (): Promise<WidgetRun[]> => (await call('runs.list', {}, 10_000)) as WidgetRun[]
     }),
 
     theme: Object.freeze({

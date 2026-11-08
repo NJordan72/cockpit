@@ -57,6 +57,7 @@ let drafts: { branch: string; prompt: string }[]
 let sent: [string, string][]
 let sessions: SessionInfo[]
 let labels: [string, string, PaneLabel | null][]
+let submitted: [string, string, unknown][]
 
 beforeEach(() => {
   dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cockpit-broker-'))
@@ -68,6 +69,7 @@ beforeEach(() => {
   sent = []
   sessions = []
   labels = []
+  submitted = []
   broker = new WidgetBroker({
     widget: (id) => widgets[id as keyof typeof widgets],
     storage: new WidgetStorage(dir, () => undefined),
@@ -81,6 +83,19 @@ beforeEach(() => {
     openExternal: (url) => {
       opened.push(url)
       return Promise.resolve()
+    },
+    runs: {
+      submit: (widgetId, widgetName, graph) => {
+        submitted.push([widgetId, widgetName, graph])
+        return { ok: true, id: 'r1' }
+      },
+      markDone: (widgetId, runId) =>
+        Promise.resolve(
+          widgetId === 'prompter' && runId === 'r1'
+            ? { ok: true }
+            : { ok: false, error: 'No such run' }
+        ),
+      list: () => []
     }
   })
 })
@@ -161,6 +176,44 @@ describe('WidgetBroker', () => {
       )
     ).toBe('invalid_argument')
     expect(drafts).toEqual([{ branch: 'nick/sc-1/x', prompt: 'go' }])
+  })
+
+  it('submits runs with "prompt", checks the graph first, and marks only its own runs done', async () => {
+    const graph = {
+      title: 'Epic',
+      items: [{ id: 'a', title: 'A', branch: 'me/a', prompt: 'Start a' }]
+    }
+    expect(errorCode(await broker.call('full', 'runs.submit', { graph }))).toBe('permission_denied')
+    expect(errorCode(await broker.call('labeler', 'runs.list', {}))).toBe('permission_denied')
+    expect(await broker.call('prompter', 'runs.submit', { graph })).toEqual({
+      ok: true,
+      value: 'r1'
+    })
+    expect(submitted).toEqual([['prompter', 'prompter', graph]])
+
+    const loop = await broker.call('prompter', 'runs.submit', {
+      graph: { ...graph, items: [{ ...graph.items[0], after: ['a'] }] }
+    })
+    expect(loop).toEqual({
+      ok: false,
+      error: { code: 'invalid_argument', message: 'Item "a" waits on itself' }
+    })
+    const huge = { ...graph, title: 'x', note: 'y'.repeat(1024 * 1024) }
+    expect(errorCode(await broker.call('prompter', 'runs.submit', { graph: huge }))).toBe(
+      'too_large'
+    )
+    expect(submitted).toHaveLength(1)
+
+    expect(await broker.call('prompter', 'runs.markDone', { runId: 'r1', itemId: 'a' })).toEqual({
+      ok: true,
+      value: null
+    })
+    expect(
+      errorCode(await broker.call('prompter', 'runs.markDone', { runId: 'r2', itemId: 'a' }))
+    ).toBe('not_found')
+    expect(errorCode(await broker.call('prompter', 'runs.markDone', { runId: 'r1' }))).toBe(
+      'invalid_argument'
+    )
   })
 
   it('labels sessions with "label" or "prompt", but not "read"', async () => {

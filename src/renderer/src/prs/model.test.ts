@@ -74,7 +74,8 @@ const task = (path: string, branch: string, prUrl: string | null): TaskInfo => (
         draft: false,
         checks: null,
         review: null,
-        head: 'abc'
+        head: 'abc',
+        base: 'main'
       }
     : null,
   prError: null,

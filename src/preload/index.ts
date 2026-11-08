@@ -15,6 +15,7 @@ import {
   type SystemSample,
   type WindowInfo
 } from '@shared/ipc'
+import type { RunDraft, RunView } from '@shared/runs'
 import type { TaskDraft, TaskInfo } from '@shared/tasks'
 import type { ThemeDefinition } from '@shared/theme'
 import type { SecretPrompt, WidgetEventTopic, WidgetInfo } from '@shared/widgets'
@@ -74,6 +75,8 @@ const onPanesClose: Subscribe<[string[]]> = channel(IPC.panesClose)
 const onTasksChanged: Subscribe<[TaskInfo[]]> = channel(IPC.tasksChanged)
 const onTaskOpen: Subscribe<[TaskOpenRequest]> = channel(IPC.tasksOpen)
 const onTaskDraft: Subscribe<[TaskDraft]> = channel(IPC.tasksDraft)
+const onRunsChanged: Subscribe<[RunView[]]> = channel(IPC.runsChanged)
+const onRunDraft: Subscribe<[RunDraft]> = channel(IPC.runsDraft)
 const onPrPane: Subscribe<[PrPaneRequest]> = channel(IPC.prsPane)
 
 function subscribe<T>(map: Map<string, Set<T>>, id: string, cb: T): () => void {
@@ -166,6 +169,14 @@ const api: CockpitApi = {
     open: (req) => ipcRenderer.send(IPC.tasksOpen, req),
     onOpen: onTaskOpen,
     onDraft: onTaskDraft
+  },
+  runs: {
+    list: () => ipcRenderer.invoke(IPC.runsList),
+    onChange: onRunsChanged,
+    onDraft: onRunDraft,
+    start: (req) => ipcRenderer.invoke(IPC.runsStart, req),
+    discard: (id) => ipcRenderer.send(IPC.runsDiscard, id),
+    act: (id, action, itemId) => ipcRenderer.invoke(IPC.runsAct, id, action, itemId)
   },
   prs: {
     list: (paneId) => ipcRenderer.invoke(IPC.prsList, paneId),

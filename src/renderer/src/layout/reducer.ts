@@ -20,7 +20,7 @@ import {
  */
 export type LayoutAction =
   | { type: 'replace'; layout: Layout }
-  | { type: 'newTab'; pane: PaneNode }
+  | { type: 'newTab'; pane: PaneNode; background?: boolean }
   | { type: 'split'; paneId: string; direction: 'row' | 'column'; pane: PaneNode }
   | { type: 'closePane'; paneId: string; shown?: readonly string[] }
   | { type: 'clearPane'; paneId: string; resume?: boolean }
@@ -69,7 +69,9 @@ export function layoutReducer(layout: Layout, action: LayoutAction): Layout {
       const idx = layout.tabs.findIndex((t) => t.id === layout.activeTabId && !t.pinned)
       const tabs = [...layout.tabs]
       tabs.splice(idx === -1 ? unpinnedCount(tabs) : idx + 1, 0, tab)
-      return { ...layout, tabs, activeTabId: tab.id }
+      // A background tab is selected only when there's no tab to stay on.
+      const keep = action.background && layout.tabs.some((t) => t.id === layout.activeTabId)
+      return { ...layout, tabs, activeTabId: keep ? layout.activeTabId : tab.id }
     }
 
     case 'split': {

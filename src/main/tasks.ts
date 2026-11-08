@@ -52,7 +52,7 @@ const isObj = (v: unknown): v is Obj => typeof v === 'object' && v !== null && !
 const str = (v: unknown): string => (typeof v === 'string' ? v : '')
 
 export const PR_FIELDS =
-  'number,title,url,state,isDraft,reviewDecision,statusCheckRollup,headRefOid'
+  'number,title,url,state,isDraft,reviewDecision,statusCheckRollup,headRefOid,baseRefName'
 
 /**
  * `gh pr list --head <branch> --state all --limit 1 --json <PR_FIELDS>`
@@ -71,7 +71,8 @@ export function parseTaskPr(list: unknown): TaskPr | null {
     draft: json.isDraft === true,
     checks,
     review: review(str(json.reviewDecision)),
-    head: str(json.headRefOid)
+    head: str(json.headRefOid),
+    base: str(json.baseRefName)
   }
 }
 
@@ -145,6 +146,34 @@ async function baseRef(repo: string, remote: string | null): Promise<string | nu
     if (await refExists(repo, `refs/remotes/${remote}/${b}`)) return `${remote}/${b}`
   }
   return null
+}
+
+/** The main checkout of the repository `dir` is in, or an error saying why there's none. */
+export async function mainCheckout(
+  dir: string
+): Promise<{ ok: true; path: string } | { ok: false; error: string }> {
+  const from = expandHome(dir.trim())
+  if (!from || !(await exists(from)))
+    return { ok: false, error: `${dir || 'That folder'} doesn't exist` }
+  const list = await git(from, ['worktree', 'list', '--porcelain', '-z'])
+  const main = list.code === 0 ? parseWorktrees(list.stdout)[0] : undefined
+  if (!main) return { ok: false, error: `${abbreviateHome(from)} isn't in a git repository` }
+  if (main.bare) return { ok: false, error: "Tasks can't be made in a bare repository" }
+  return { ok: true, path: main.path }
+}
+
+/**
+ * The name of the branch a new task's branch starts from in the repository
+ * `dir` is in ("main"), or null when git can't say.
+ */
+export async function defaultBranch(dir: string): Promise<string | null> {
+  const main = await mainCheckout(dir)
+  if (!main.ok) return null
+  const remote = await pickRemote(main.path)
+  const base = await baseRef(main.path, remote)
+  if (base && remote) return base.slice(remote.length + 1)
+  const head = await git(main.path, ['symbolic-ref', '--quiet', '--short', 'HEAD'])
+  return head.code === 0 && head.stdout.trim() ? head.stdout.trim() : null
 }
 
 /** Whether nothing at HEAD is newer than the pull request: it's the PR's head or behind it. */
@@ -241,27 +270,35 @@ export class TaskStore {
   /**
    * Makes a worktree for the branch in the repository `req.repo` is in, after
    * fetching from its remote. A branch that exists already is checked out;
-   * one only on the remote tracks it; a new one starts at the remote's
-   * default branch with no upstream, so the first push sets its own.
+   * one only on the remote tracks it; a new one starts at `req.base` or else
+   * the remote's default branch, with no upstream, so the first push sets
+   * its own.
    */
   create(req: NewTask): Promise<NewTaskResult> {
     return this.serial(async (): Promise<NewTaskResult> => {
       const fail = (error: string): NewTaskResult => ({ ok: false, error })
-      const from = expandHome(req.repo.trim())
-      if (!from || !(await exists(from))) return fail(`${req.repo || 'That folder'} doesn't exist`)
-      const list = await git(from, ['worktree', 'list', '--porcelain', '-z'])
-      const main = list.code === 0 ? parseWorktrees(list.stdout)[0] : undefined
-      if (!main) return fail(`${abbreviateHome(from)} isn't in a git repository`)
-      if (main.bare) return fail("Tasks can't be made in a bare repository")
+      const found = await mainCheckout(req.repo)
+      if (!found.ok) return fail(found.error)
+      const main = found
 
+      const branchName = async (wanted: string): Promise<string | null> => {
+        const checked = await git(main.path, ['check-ref-format', '--branch', wanted])
+        const name = checked.stdout.trim()
+        return wanted && !wanted.startsWith('-') && checked.code === 0 && name === wanted
+          ? name
+          : null
+      }
       const wanted = req.branch.trim()
-      const checked = await git(main.path, ['check-ref-format', '--branch', wanted])
-      const branch = checked.stdout.trim()
-      if (!wanted || wanted.startsWith('-') || checked.code !== 0 || branch !== wanted) {
-        return fail(`"${wanted}" isn't a branch name git accepts`)
+      const branch = await branchName(wanted)
+      if (!branch) return fail(`"${wanted}" isn't a branch name git accepts`)
+      const wantedBase = req.base?.trim()
+      const baseName = wantedBase === undefined ? null : await branchName(wantedBase)
+      if (wantedBase !== undefined && !baseName) {
+        return fail(`"${wantedBase}" isn't a branch name git accepts`)
       }
 
       const root = await this.root()
+      const list = await git(main.path, ['worktree', 'list', '--porcelain', '-z'])
       const worktrees = parseWorktrees(list.stdout)
       const open = worktrees.find((w) => w.branch === branch)
       if (open) {
@@ -279,6 +316,15 @@ export class TaskStore {
           ? `${remote}/${branch}`
           : null
 
+      let start: string | null = null
+      if (!local && !tracked) {
+        if (!baseName) start = await baseRef(main.path, remote)
+        else if (remote && (await refExists(main.path, `refs/remotes/${remote}/${baseName}`))) {
+          start = `${remote}/${baseName}`
+        } else if (await refExists(main.path, `refs/heads/${baseName}`)) start = baseName
+        else return fail(`There's no branch ${baseName} to start ${branch} from`)
+      }
+
       const parent = path.join(root, worktreeName(path.basename(main.path)))
       let target = path.join(parent, worktreeName(branch))
       for (let n = 2; await exists(target); n++) {
@@ -289,10 +335,7 @@ export class TaskStore {
       let args: string[]
       if (local) args = ['worktree', 'add', target, branch]
       else if (tracked) args = ['worktree', 'add', '--track', '-b', branch, target, tracked]
-      else {
-        const base = await baseRef(main.path, remote)
-        args = ['worktree', 'add', '--no-track', '-b', branch, target, ...(base ? [base] : [])]
-      }
+      else args = ['worktree', 'add', '--no-track', '-b', branch, target, ...(start ? [start] : [])]
       const added = await git(main.path, args, ADD_MS)
       if (added.code !== 0) {
         await fs.rmdir(parent).catch(() => undefined)

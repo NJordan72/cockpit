@@ -1,7 +1,7 @@
 // The shape of ~/.cockpit/config.json, its defaults, and migration from older
 // or hand-edited files. Pure so it can be unit tested.
 import { ACTIVITY_TABS, type ActivityTab } from './activity'
-import { readFrame, withTasksPanel, type FrameNode } from './frame'
+import { readFrame, withRunsPanel, withTasksPanel, type FrameNode } from './frame'
 import { builtInLayout, classicFromSidebar, DEFAULT_LAYOUT_ID } from './layouts'
 import { DEFAULT_PR_ACTIONS, isPrRef, MAX_PR_ACTIONS, type PrAction, type PrRef } from './prs'
 import { readTaskSettings, type TaskSettings } from './tasks'
@@ -10,7 +10,7 @@ import { isWebUrl } from './web'
 
 export { ACTIVITY_TABS, type ActivityTab }
 
-export const CONFIG_VERSION = 5
+export const CONFIG_VERSION = 6
 
 export interface Preset {
   id: string
@@ -721,7 +721,8 @@ export function migrateConfig(raw: unknown): CockpitConfig {
   // read. Version 2 added times and presets to recentDirs (readRecentDir).
   // Version 3 moved theme and sidebar into appearance (readAppearance).
   // Version 4 moved the tabs and the layout in use into windows (readWindows).
-  // Version 5 added the Tasks panel to saved layouts (withTasksPanel).
+  // Version 5 added the Tasks panel to saved layouts (withTasksPanel), and
+  // version 6 the Runs panel (withRunsPanel).
   const rawPresets: unknown = raw.presets
 
   let presets = def.presets
@@ -776,12 +777,17 @@ export function migrateConfig(raw: unknown): CockpitConfig {
   }
 
   const read = readAppearance(raw)
+  const saved = typeof raw.version === 'number' ? raw.version : CONFIG_VERSION
+  const upgrade = (tree: FrameNode): FrameNode => {
+    const withTasks = saved < 5 ? withTasksPanel(tree) : tree
+    return saved < 6 ? withRunsPanel(withTasks) : withTasks
+  }
   const appearance =
-    typeof raw.version === 'number' && raw.version < 5
+    saved < 6
       ? {
           ...read,
           layouts: Object.fromEntries(
-            Object.entries(read.layouts).map(([name, tree]) => [name, withTasksPanel(tree)])
+            Object.entries(read.layouts).map(([name, tree]) => [name, upgrade(tree)])
           )
         }
       : read

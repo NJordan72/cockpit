@@ -12,7 +12,7 @@ import { parseClaudeHook, type AgentSignal } from './events'
 import { installAgentFiles, type AgentFiles } from './files'
 import { agentLaunch, type AgentLaunch, type LaunchOptions } from './launch'
 import { Notifier, type NotifierDeps } from './notifier'
-import { EventServer, socketPath, type IncomingEvent } from './server'
+import { EventServer, socketPath, type IncomingEvent, type RunRequestHandler } from './server'
 import { StatusTracker, type PaneStatus } from './tracker'
 import { readTranscript } from './transcript'
 
@@ -43,6 +43,8 @@ export interface AgentMonitorOptions extends Omit<NotifierDeps, 'status'> {
   onChange: (paneId: string) => void
   /** A pane's activity log, files, or subagents changed. */
   onActivity: (update: ActivityUpdate) => void
+  /** Answers cockpit-run on the event socket. */
+  runRequests?: RunRequestHandler
 }
 
 interface Transcript {
@@ -76,7 +78,7 @@ export class AgentMonitor {
       // A turn that ends while the user is looking at it has been seen.
       if (next.status === 'done' && paneId === this.focused) this.tracker.seen(paneId)
     })
-    this.server = new EventServer(socketPath(opts.home), (e) => this.onEvent(e))
+    this.server = new EventServer(socketPath(opts.home), (e) => this.onEvent(e), opts.runRequests)
   }
 
   async start(): Promise<void> {
@@ -103,7 +105,10 @@ export class AgentMonitor {
     else this.codex.delete(paneId)
     this.tracker.spawn(paneId, token, agent)
     this.activity.started(paneId, agent)
-    return { COCKPIT_SESSION_ID: token, COCKPIT_SOCKET: this.server.path }
+    // cockpit-run is in the agents folder. A login shell's path_helper moves
+    // the folder behind the system ones, and it stays on PATH.
+    const PATH = [this.files.dir, process.env.PATH].filter(Boolean).join(':')
+    return { COCKPIT_SESSION_ID: token, COCKPIT_SOCKET: this.server.path, PATH }
   }
 
   status(paneId: string): PaneStatus | null {

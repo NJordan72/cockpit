@@ -1,8 +1,9 @@
 // Launches the built app, opens a shell from the start screen, and checks that
 // a command's output reaches the terminal. Then makes a task in a scratch git
 // repository, checks its worktree, its setup, and the label a widget puts on
-// its pane, and removes it. Exits non-zero on a timeout or on any renderer
-// error. Run `bun run build` first.
+// its pane, and removes it. Then submits a two-item run with cockpit-run and
+// checks that the second item waits for the first. Exits non-zero on a
+// timeout or on any renderer error. Run `bun run build` first.
 //
 //   node scripts/smoke.mjs                              # out/, through electron
 //   node scripts/smoke.mjs dist/mac-arm64/Cockpit.app   # a packaged app
@@ -88,6 +89,20 @@ fs.writeFileSync(
 `
 )
 const worktree = path.join(home, '.cockpit', 'worktrees', 'smoke', 'smoke-task')
+
+// A run of two Shell tasks, where b waits on a.
+fs.writeFileSync(
+  path.join(home, 'plan.json'),
+  JSON.stringify({
+    title: 'Smoke run',
+    repo: '~/dev/smoke',
+    presetId: 'shell',
+    items: [
+      { id: 'a', title: 'First', branch: 'smoke/run-a', prompt: 'first' },
+      { id: 'b', title: 'Second', branch: 'smoke/run-b', prompt: 'second', after: ['a'] }
+    ]
+  })
+)
 
 // The shell computes this, so it only appears once the command has run: the
 // typed command line shows `$((6 * 7))`, not 42.
@@ -296,6 +311,56 @@ try {
     throw new Error('removing the task deleted its unmerged branch')
   }
   step('removing it closed its terminal and deleted the worktree, keeping the branch')
+
+  // A run, submitted from the shell, which finds cockpit-run on its PATH.
+  await page.waitForTimeout(500)
+  await page.keyboard.type('cockpit-run submit ~/plan.json', { delay: 5 })
+  await page.keyboard.press('Enter')
+  await waitForScreen('Submitted run', 'the shell')
+  await page.waitForSelector('.run-dialog', { timeout: 10_000 })
+  const listed = await page.$$eval('.run-dialog-items > li', (lis) => lis.length)
+  if (listed !== 2) throw new Error(`the run dialog lists ${String(listed)} items, not 2`)
+  await page.click('.run-dialog button.primary')
+  await page.waitForSelector('.run-dialog', { state: 'detached', timeout: 10_000 })
+  const inWorktree = (name) =>
+    page.waitForFunction(
+      (dir) => window.__cockpitSessions?.().find((s) => s.cwd.endsWith(dir)) ?? null,
+      `/worktrees/smoke/${name}`,
+      { timeout: 30_000 }
+    )
+  try {
+    await inWorktree('smoke-run-a')
+  } catch (err) {
+    console.error(`smoke: main printed:\n${mainOutput.join('') || '(nothing)'}`)
+    throw err
+  }
+  const phases = () =>
+    page.evaluate(async () =>
+      Object.fromEntries(
+        ((await window.cockpit.runs.list())[0]?.items ?? []).map((i) => [i.id, i.state.phase])
+      )
+    )
+  const first = await phases()
+  if (first.a !== 'working' || first.b !== 'waiting') {
+    throw new Error(`after starting, the run's items are ${JSON.stringify(first)}`)
+  }
+  // The item's tab opened in the background, so the shell still has the keyboard.
+  const focused = await page.evaluate(() => window.__cockpitSessions?.().find((s) => s.focused))
+  if (focused?.cwd.includes('/worktrees/')) {
+    throw new Error("the run's tab took the focus from the shell")
+  }
+  step('cockpit-run submitted a run, and after Start its first item opened in a background tab')
+
+  const runId = await page.evaluate(async () => (await window.cockpit.runs.list())[0]?.id ?? '')
+  await page.keyboard.type(`cockpit-run done ${runId} a`, { delay: 5 })
+  await page.keyboard.press('Enter')
+  await waitForScreen('Marked a done', 'the shell')
+  await inWorktree('smoke-run-b')
+  const second = await phases()
+  if (second.a !== 'done' || second.b !== 'working') {
+    throw new Error(`after marking a done, the run's items are ${JSON.stringify(second)}`)
+  }
+  step('marking the first item done started the second')
 
   // A pull request pane, opened through main the way a window of panels asks
   // for one. The scratch HOME may have no gh login, so the pane shows the

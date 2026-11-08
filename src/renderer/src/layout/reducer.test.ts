@@ -17,6 +17,18 @@ describe('layoutReducer', () => {
     expect(l.activeTabId).toBe(l.tabs[1]?.id ?? null)
   })
 
+  it('opens a background tab after the active one and leaves the active tab selected', () => {
+    const l = run([
+      { type: 'newTab', pane: pane('a') },
+      { type: 'newTab', pane: pane('b') },
+      { type: 'newTab', pane: pane('c'), background: true }
+    ])
+    expect(l.tabs.map((t) => t.activePaneId)).toEqual(['a', 'b', 'c'])
+    expect(l.activeTabId).toBe(l.tabs[1]?.id ?? null)
+    const first = run([{ type: 'newTab', pane: pane('a'), background: true }])
+    expect(first.activeTabId).toBe(first.tabs[0]?.id ?? null)
+  })
+
   it('splits and focuses the new pane', () => {
     const l = run([
       { type: 'newTab', pane: pane('a') },

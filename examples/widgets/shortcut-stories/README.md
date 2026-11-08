@@ -49,6 +49,17 @@ Paste it once; Cockpit keeps it encrypted and the widget reads it from then on.
   branch filled in: the branch name Shortcut gives the story, or else
   `<your mention name>/sc-<id>/<title>` cut to 50 characters, the way
   Shortcut's own tools make one. Nothing is made until you confirm it there.
+- Right-click a story in an epic and choose **Burn down epic** to have
+  Cockpit work through the whole epic (see "Runs" in Cockpit's README). The
+  widget reads the epic's stories and their links, leaves out the ones in a
+  done state, and submits the rest as a run. Each `blocks` link makes the
+  blocked story wait on the story that blocks it. Branches and prompts are
+  the ones **Start story in a new task** would use. A story outside the epic
+  that blocks one in it, and isn't done, becomes an item Cockpit waits on and
+  never starts. The widget checks those stories at each sync and marks each
+  one done when it reaches a done state. While the widget isn't loaded, mark
+  them done by hand in the Runs panel. Cockpit shows the whole run, asks for
+  the repository, and starts nothing until you confirm it.
 - The gear opens the settings, and Enter (or save) applies them right away
   (Cmd+Enter in the tabs box):
   - **Your stories**: the search behind Doing, Next, and All. `{me}` expands

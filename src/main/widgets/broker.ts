@@ -17,6 +17,7 @@ import type { LoadedWidget } from './registry'
 import { MAX_SECRET_LENGTH, type SecretStore } from './secrets'
 import type { WidgetStorage } from './storage'
 import { MAX_BRANCH } from '@shared/tasks'
+import { checkGraph, MAX_GRAPH_BYTES, type WidgetRun } from '@shared/runs'
 
 /** Longest prompt a widget may fill the New task dialog with, as for sessions.send. */
 const MAX_PROMPT = 20_000
@@ -37,6 +38,23 @@ export interface BrokerDeps {
   /** Set a widget's label on a pane, or remove it with null. */
   setLabel: (widgetId: string, paneId: string, label: PaneLabel | null) => void
   openExternal: (url: string) => Promise<void>
+  runs: WidgetRunDeps
+}
+
+/** What a widget can do with runs. Each call names the widget, which sees only its own runs. */
+export interface WidgetRunDeps {
+  /** Asks the user to confirm the run. Fails only when no window can ask. */
+  submit: (
+    widgetId: string,
+    widgetName: string,
+    graph: unknown
+  ) => { ok: true; id: string } | { ok: false; error: string }
+  markDone: (
+    widgetId: string,
+    runId: string,
+    itemId: string
+  ) => Promise<{ ok: true } | { ok: false; error: string }>
+  list: (widgetId: string) => WidgetRun[]
 }
 
 type Obj = Record<string, unknown>
@@ -207,6 +225,38 @@ export class WidgetBroker {
           throw new WidgetCallError('unavailable', 'no window can show the New task dialog')
         }
         return null
+      }
+
+      case 'runs.submit':
+      case 'runs.markDone':
+      case 'runs.list': {
+        // A run gets no permission of its own: nothing in it starts until
+        // the user has seen every item and prompt in Cockpit's dialog.
+        if (permissions.sessions !== 'prompt') {
+          throw denied('runs are not allowed: set "permissions.sessions": "prompt"')
+        }
+        if (method === 'runs.list') return this.deps.runs.list(id)
+        if (method === 'runs.markDone') {
+          const done = await this.deps.runs.markDone(
+            id,
+            str(params, 'runId'),
+            str(params, 'itemId')
+          )
+          if (!done.ok) throw new WidgetCallError('not_found', done.error)
+          return null
+        }
+        let size: number
+        try {
+          size = JSON.stringify(params.graph ?? null).length
+        } catch {
+          throw new WidgetCallError('invalid_argument', 'the run is not JSON')
+        }
+        if (size > MAX_GRAPH_BYTES) throw new WidgetCallError('too_large', 'the run is over 1 MB')
+        const checked = checkGraph(params.graph)
+        if (!checked.ok) throw new WidgetCallError('invalid_argument', checked.error)
+        const sub = this.deps.runs.submit(id, parsed.manifest.name, params.graph)
+        if (!sub.ok) throw new WidgetCallError('unavailable', sub.error)
+        return sub.id
       }
 
       case 'sessions.start':

@@ -12,6 +12,7 @@ const pr = (extra: Partial<TaskPr> = {}): TaskPr => ({
   checks: 'passing',
   review: null,
   head: 'h',
+  base: 'main',
   ...extra
 })
 

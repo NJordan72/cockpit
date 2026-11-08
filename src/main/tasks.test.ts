@@ -4,7 +4,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { mergedAndClean, type RepoTaskSettings, type TaskInfo } from '@shared/tasks'
-import { parseTaskPr, parseWorktrees, TaskStore, withSetup } from './tasks'
+import { defaultBranch, parseTaskPr, parseWorktrees, TaskStore, withSetup } from './tasks'
 
 const git = (cwd: string, ...args: string[]): string =>
   execFileSync(
@@ -88,7 +88,8 @@ describe('parseTaskPr', () => {
         isDraft: false,
         reviewDecision: 'APPROVED',
         statusCheckRollup: [{ status: 'COMPLETED', conclusion: 'SUCCESS' }],
-        headRefOid: 'abc'
+        headRefOid: 'abc',
+        baseRefName: 'main'
       })
     ).toEqual({
       number: 7,
@@ -98,7 +99,8 @@ describe('parseTaskPr', () => {
       draft: false,
       checks: 'passing',
       review: 'approved',
-      head: 'abc'
+      head: 'abc',
+      base: 'main'
     })
     expect(parseTaskPr({ title: 'no number' })).toBeNull()
     expect(parseTaskPr([])).toBeNull()
@@ -196,6 +198,45 @@ describe('TaskStore', () => {
     expect(git(local.path, 'branch', '--show-current')).toBe('local-only')
     expect(git(theirs.path, 'rev-parse', '--abbrev-ref', '@{u}')).toBe('origin/theirs')
     expect(fs.existsSync(path.join(theirs.path, 'c.txt'))).toBe(true)
+  })
+
+  it('starts a new branch from a base branch, on the remote or else local', async () => {
+    const other = path.join(tmp, 'other')
+    git(tmp, 'clone', '-q', origin, other)
+    git(other, 'switch', '-qc', 'feat/a')
+    commit(other, 'a2.txt', 'a2\n')
+    git(other, 'push', '-q', 'origin', 'feat/a')
+    git(repo, 'switch', '-qc', 'mine')
+    commit(repo, 'm.txt', 'm\n')
+    git(repo, 'switch', '-q', 'main')
+
+    const tasks = store()
+    const onRemote = await tasks.create({ repo, branch: 'feat/b', base: 'feat/a' })
+    const onLocal = await tasks.create({ repo, branch: 'feat/c', base: 'mine' })
+    if (!onRemote.ok || !onLocal.ok) throw new Error('not made')
+    expect(git(onRemote.path, 'rev-parse', 'HEAD')).toBe(git(other, 'rev-parse', 'HEAD'))
+    expect(git(onLocal.path, 'rev-parse', 'HEAD')).toBe(git(repo, 'rev-parse', 'mine'))
+    // No upstream, so the first push makes the branch's own.
+    expect(() => git(onRemote.path, 'rev-parse', '--abbrev-ref', '@{u}')).toThrow()
+  })
+
+  it('refuses a base branch that is nowhere, and ignores one for a branch that exists', async () => {
+    git(repo, 'branch', 'kept')
+    const tasks = store()
+    expect(await tasks.create({ repo, branch: 'feat/d', base: 'nope' })).toEqual({
+      ok: false,
+      error: "There's no branch nope to start feat/d from"
+    })
+    expect(fs.existsSync(path.join(tmp, 'worktrees', 'app'))).toBe(false)
+    expect(await tasks.create({ repo, branch: 'feat/d', base: '-x' })).toMatchObject({ ok: false })
+    const kept = await tasks.create({ repo, branch: 'kept', base: 'nope' })
+    if (!kept.ok) throw new Error(kept.error)
+    expect(git(kept.path, 'rev-parse', 'HEAD')).toBe(git(repo, 'rev-parse', 'main'))
+  })
+
+  it("names the branch new tasks start from, from the remote's default branch", async () => {
+    expect(await defaultBranch(repo)).toBe('main')
+    expect(await defaultBranch(path.join(tmp, 'nowhere'))).toBeNull()
   })
 
   it('gives a branch a free folder when another took its name', async () => {

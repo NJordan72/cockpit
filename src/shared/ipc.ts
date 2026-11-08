@@ -11,6 +11,7 @@ import type {
   WindowView
 } from './config'
 import type { PrAct, PrActResult, PrDetailResult, PrList, PrLogResult, PrRef } from './prs'
+import type { RunAction, RunDraft, RunStartRequest, RunView } from './runs'
 import type { NewTask, NewTaskResult, TaskDraft, TaskInfo } from './tasks'
 import type { ThemeDefinition } from './theme'
 import type {
@@ -84,6 +85,12 @@ export const IPC = {
   tasksCleanUp: 'tasks:cleanup',
   tasksOpen: 'tasks:open',
   tasksDraft: 'tasks:draft',
+  runsList: 'runs:list',
+  runsChanged: 'runs:changed',
+  runsDraft: 'runs:draft',
+  runsStart: 'runs:start',
+  runsDiscard: 'runs:discard',
+  runsAct: 'runs:act',
   panesClose: 'panes:close',
   commandsList: 'commands:list',
   commandsSave: 'commands:save',
@@ -136,13 +143,19 @@ export interface OpenSessionRequest {
   prompt: string
 }
 
-/** A tab to open in a task's worktree, asked for by a window of panels. */
+/** A tab to open in a task's worktree, asked for by a window of panels or by a run. */
 export interface TaskOpenRequest {
   /** The worktree, with ~ for home. */
   path: string
   /** The preset to run; the start screen's agent when missing. */
   presetId?: string
+  /** The agent's first prompt. */
+  prompt?: string
+  /** Open the tab without switching to it, so a run doesn't pull the user away from their tab. */
+  background?: boolean
 }
+
+export type RunResult = { ok: true } | { ok: false; error: string }
 
 /** A pull request pane to open, asked for by a window of panels. */
 export interface PrPaneRequest {
@@ -357,6 +370,18 @@ export interface CockpitApi {
     onOpen(cb: (req: TaskOpenRequest) => void): () => void
     /** A widget asked for the New task dialog, filled in. */
     onDraft(cb: (draft: TaskDraft) => void): () => void
+  }
+  runs: {
+    /** Every confirmed run, newest first, with its items' states. */
+    list(): Promise<RunView[]>
+    onChange(cb: (runs: RunView[]) => void): () => void
+    /** A widget or cockpit-run submitted a run, for this window to ask about. */
+    onDraft(cb: (draft: RunDraft) => void): () => void
+    /** Starts a submitted run with what the user chose. */
+    start(req: RunStartRequest): Promise<RunResult>
+    /** The user closed the dialog without starting the run. */
+    discard(id: string): void
+    act(id: string, action: RunAction, itemId?: string): Promise<RunResult>
   }
   prs: {
     /** Open pull requests for the pane's repository, through gh. */

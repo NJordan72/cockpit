@@ -24,6 +24,8 @@ import { builtInLayout, layoutChoices } from '@shared/layouts'
 import { resolveTheme, themeVars, type ResolvedTheme, type ThemeDefinition } from '@shared/theme'
 import type { BashCommand } from '@shared/activity'
 import type { AppearanceCommand, PaneSession, PrPaneRequest, WindowInfo } from '@shared/ipc'
+import { prRefFromUrl } from '@shared/prs'
+import type { RunDraft } from '@shared/runs'
 import { taskAt, type TaskDraft } from '@shared/tasks'
 import type { SecretPrompt, SessionStatus, WidgetInfo } from '@shared/widgets'
 import { ActivityPanel } from './activity/ActivityPanel'
@@ -56,6 +58,9 @@ import { queueRun } from './terminal/run'
 import { applyTheme } from './theme'
 import { OpenUrlDialog, type OpenWhere } from './web/OpenUrlDialog'
 import { webPanes } from './web/registry'
+import { RunDialog } from './runs/RunDialog'
+import { RunsPanel } from './runs/RunsPanel'
+import { useRuns } from './runs/useRuns'
 import { sessionToShow } from './tasks/model'
 import { TaskDialog, type CreatedTask } from './tasks/TaskDialog'
 import { TasksPanel } from './tasks/TasksPanel'
@@ -141,6 +146,9 @@ export function App(): React.JSX.Element {
   } | null>(null)
   const taskDialogs = useRef(0)
   const tasks = useTasks()
+  const runs = useRuns()
+  /** Submitted runs waiting for the user, each with the repository the dialog suggests; the first is shown. */
+  const [runDrafts, setRunDrafts] = useState<{ draft: RunDraft; repo: string }[]>([])
   const loaded = useRef(false)
   /** The appearance main has on disk, as JSON, so it isn't saved back to it. */
   const savedAppearance = useRef<string | null>(null)
@@ -617,6 +625,22 @@ export function App(): React.JSX.Element {
     [api]
   )
 
+  /** The dialog for a submitted run, suggesting the focused pane's repository like the New task dialog. */
+  const openRunDialog = useCallback(
+    async (draft: RunDraft) => {
+      const focusedNow = sessionsRef.current.find((s) => s.focused) ?? null
+      const inTask = focusedNow ? taskAt(tasksRef.current, focusedNow.cwd) : null
+      const repo =
+        inTask?.repo ?? (focusedNow ? ((await api.activity.git(focusedNow.id))?.root ?? '') : '')
+      setPicker(null)
+      setOpeningUrl(false)
+      setRunDrafts((list) => [...list.filter((d) => d.draft.id !== draft.id), { draft, repo }])
+    },
+    [api]
+  )
+
+  useEffect(() => api.runs.onDraft((d) => void openRunDialog(d)), [api, openRunDialog])
+
   const runAction = useCallback(
     (action: Action) => {
       if (!terminals && !OWN_ACTIONS.includes(action)) {
@@ -908,7 +932,7 @@ export function App(): React.JSX.Element {
    * agent if none). A window of panels has the terminal window open it.
    */
   const openInTask = useCallback(
-    (path: string, presetId?: string, prompt?: string) => {
+    (path: string, presetId?: string, prompt?: string, background = false) => {
       const c = configRef.current
       if (!c) return
       const preset =
@@ -920,10 +944,12 @@ export function App(): React.JSX.Element {
         api.tasks.open({ path, presetId: preset.id })
         return
       }
-      setPicker(null)
-      setRestorable(null)
+      if (!background) {
+        setPicker(null)
+        setRestorable(null)
+      }
       const pane = makePane(preset.id, path)
-      dispatch({ type: 'newTab', pane: prompt ? { ...pane, prompt } : pane })
+      dispatch({ type: 'newTab', pane: prompt ? { ...pane, prompt } : pane, background })
     },
     [api, terminals]
   )
@@ -1001,7 +1027,10 @@ export function App(): React.JSX.Element {
   )
 
   const prEnv = useMemo<PrPaneEnv>(() => ({ sessions, tasks, handOff }), [sessions, tasks, handOff])
-  useEffect(() => api.tasks.onOpen((req) => openInTask(req.path, req.presetId)), [api, openInTask])
+  useEffect(
+    () => api.tasks.onOpen((req) => openInTask(req.path, req.presetId, req.prompt, req.background)),
+    [api, openInTask]
+  )
   // Main is removing the task these panes are in.
   useEffect(
     () =>
@@ -1144,6 +1173,21 @@ export function App(): React.JSX.Element {
             onNew={() => runAction('newTask')}
             onOpen={(task, presetId) => openInTask(task.path, presetId)}
             onReveal={revealPane}
+          />
+        )
+      case 'runs':
+        return (
+          <RunsPanel
+            runs={runs}
+            sessions={sessions}
+            presets={config.presets}
+            onReveal={revealPane}
+            onOpen={(path, presetId) => openInTask(path, presetId)}
+            onOpenPr={(url, cwd, title) => {
+              const pr = prRefFromUrl(url)
+              if (pr) openPr({ pr, cwd, title, where: 'tab' })
+              else api.prs.open(url)
+            }}
           />
         )
       case 'commands':
@@ -1331,6 +1375,19 @@ export function App(): React.JSX.Element {
             onCreated={taskCreated}
             onCancel={() => {
               setTaskDialog(null)
+              requestAnimationFrame(focusWorkspace)
+            }}
+          />
+        )}
+        {runDrafts[0] && !kids && (
+          <RunDialog
+            key={runDrafts[0].draft.id}
+            draft={runDrafts[0].draft}
+            presets={config.presets}
+            initialPresetId={config.launcher.presetId}
+            repo={runDrafts[0].repo}
+            onDone={() => {
+              setRunDrafts((list) => list.slice(1))
               requestAnimationFrame(focusWorkspace)
             }}
           />
