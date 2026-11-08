@@ -3,7 +3,7 @@
 import { ACTIVITY_TABS, type ActivityTab } from './activity'
 import { readFrame, withTasksPanel, type FrameNode } from './frame'
 import { builtInLayout, classicFromSidebar, DEFAULT_LAYOUT_ID } from './layouts'
-import { DEFAULT_PR_ACTIONS, MAX_PR_ACTIONS, type PrAction } from './prs'
+import { DEFAULT_PR_ACTIONS, isPrRef, MAX_PR_ACTIONS, type PrAction, type PrRef } from './prs'
 import { readTaskSettings, type TaskSettings } from './tasks'
 import { DEFAULT_THEME_ID, readTokens, type ThemeOverrides } from './theme'
 import { isWebUrl } from './web'
@@ -65,9 +65,14 @@ export interface PaneNode {
   prompt?: string
   /** A web page shown instead of a terminal (http, https, or file). */
   url?: string
-  /** The web page's title, for the tab. */
+  /** A pull request shown instead of a terminal. */
+  pr?: PrRef
+  /** The web page's or pull request's title, for the tab. */
   title?: string
 }
+
+/** A pane that runs a process, as opposed to one showing a web page or a pull request. */
+export const isTerminalPane = (p: PaneNode): boolean => !p.url && !p.pr
 
 export interface SplitNode {
   type: 'split'
@@ -405,6 +410,9 @@ function readNode(v: unknown, seen: Set<string>): LayoutNode | null {
     }
     if (nonEmpty(v.url) && isWebUrl(v.url)) {
       pane.url = v.url
+      if (nonEmpty(v.title)) pane.title = v.title.slice(0, MAX_TITLE)
+    } else if (isPrRef(v.pr)) {
+      pane.pr = { repo: v.pr.repo, number: v.pr.number }
       if (nonEmpty(v.title)) pane.title = v.title.slice(0, MAX_TITLE)
     }
     return pane

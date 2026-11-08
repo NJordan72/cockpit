@@ -4,6 +4,7 @@ import type { Layout, Preset, TerminalSettings } from '@shared/config'
 import { allPanes, arrange, dragSizes, findSplit, type Divider } from '../layout/model'
 import type { LayoutAction } from '../layout/reducer'
 import { TerminalPane } from '../terminal/TerminalPane'
+import { PrPane } from '../prs/PrPane'
 import { WebPane } from '../web/WebPane'
 
 interface Props {
@@ -105,6 +106,14 @@ export function Workspace({
                 visible={visible}
                 onFocus={() => dispatch({ type: 'focusPane', paneId: pane.id })}
                 onPage={(url, title) => dispatch({ type: 'setPage', paneId: pane.id, url, title })}
+              />
+            ) : pane.pr ? (
+              <PrPane
+                pane={{ ...pane, pr: pane.pr }}
+                focused={tab.activePaneId === pane.id && (multi || visible)}
+                visible={visible}
+                onFocus={() => dispatch({ type: 'focusPane', paneId: pane.id })}
+                onTitle={(title) => dispatch({ type: 'setPrTitle', paneId: pane.id, title })}
               />
             ) : (
               <TerminalPane

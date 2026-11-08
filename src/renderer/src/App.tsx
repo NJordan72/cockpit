@@ -23,7 +23,7 @@ import {
 import { builtInLayout, layoutChoices } from '@shared/layouts'
 import { resolveTheme, themeVars, type ResolvedTheme, type ThemeDefinition } from '@shared/theme'
 import type { BashCommand } from '@shared/activity'
-import type { AppearanceCommand, PaneSession, WindowInfo } from '@shared/ipc'
+import type { AppearanceCommand, PaneSession, PrPaneRequest, WindowInfo } from '@shared/ipc'
 import { taskAt, type TaskDraft } from '@shared/tasks'
 import type { SecretPrompt, SessionStatus, WidgetInfo } from '@shared/widgets'
 import { ActivityPanel } from './activity/ActivityPanel'
@@ -44,9 +44,11 @@ import { slotName } from './frame/layout'
 import { Monitor } from './frame/Monitor'
 import { KidsMode, type KidsStatus } from './kids/KidsMode'
 import { actionFor, compileKeymap } from './keybindings'
-import { findPane, makePane, makeWebPane } from './layout/model'
+import { findPane, findPrPane, makePane, makePrPane, makeWebPane } from './layout/model'
 import { CommandsPanel } from './panels/CommandsPanel'
 import { PrPanel, type RunWhere } from './panels/PrPanel'
+import { PrPaneContext, type PrPaneEnv } from './prs/context'
+import type { HandOffTarget } from './prs/model'
 import { activeTab, layoutReducer } from './layout/reducer'
 import { shownTabs, tabDirs, tabFolders } from './layout/tabs'
 import { terminals } from './terminal/registry'
@@ -172,6 +174,11 @@ export function App(): React.JSX.Element {
   // panels follow it.
   const focused = sessions.find((s) => s.focused) ?? null
   const hasFocus = focused !== null
+  // Opening a pull request focuses its pane, which isn't a session, so the
+  // PRs panel keeps listing the repository of the last terminal focused.
+  const [lastFocusedId, setLastFocusedId] = useState<string | null>(null)
+  if (focused && focused.id !== lastFocusedId) setLastFocusedId(focused.id)
+  const prsSession = focused ?? sessions.find((s) => s.id === lastFocusedId) ?? null
   // Panels with nothing to show take no room.
   const frameState = useMemo<FrameState>(() => {
     const absent = new Set<string>()
@@ -935,6 +942,61 @@ export function App(): React.JSX.Element {
   )
 
   useEffect(() => api.tasks.onDraft((d) => void openTaskDialog(d)), [api, openTaskDialog])
+
+  /** A pull request in a new tab or beside the focused pane, or its pane if one is open. */
+  const openPr = useCallback(
+    (req: PrPaneRequest) => {
+      if (!terminals) {
+        api.prs.openPane(req)
+        return
+      }
+      const open = findPrPane(layoutRef.current.tabs, req.pr)
+      if (open) {
+        revealPane(open.paneId)
+        return
+      }
+      setPicker(null)
+      setRestorable(null)
+      const pane = makePrPane(req.pr, req.cwd, req.title)
+      const tab = activeTab(layoutRef.current)
+      if (req.where === 'row' && tab) {
+        dispatch({ type: 'split', paneId: tab.activePaneId, direction: 'row', pane })
+      } else dispatch({ type: 'newTab', pane })
+    },
+    [api, terminals, revealPane]
+  )
+
+  useEffect(() => api.prs.onOpenPane(openPr), [api, openPr])
+
+  /** Feedback from a pull request pane goes to an agent pane, a task, a new task, or a new agent tab. */
+  const handOff = useCallback(
+    async (prompt: string, target: HandOffTarget): Promise<boolean> => {
+      switch (target.kind) {
+        case 'pane': {
+          const ok = await api.sessions.send(target.paneId, prompt)
+          if (ok) revealPane(target.paneId)
+          return ok
+        }
+        case 'task':
+          openInTask(target.path, undefined, prompt)
+          return true
+        case 'newTask':
+          await openTaskDialog({ branch: target.branch, prompt, repo: target.repo })
+          return true
+        case 'newSession': {
+          const c = configRef.current
+          const agent = c && newSessionTarget(c.presets, null)
+          if (!agent) return false
+          setRestorable(null)
+          dispatch({ type: 'newTab', pane: { ...makePane(agent.presetId, target.cwd), prompt } })
+          return true
+        }
+      }
+    },
+    [api, revealPane, openInTask, openTaskDialog]
+  )
+
+  const prEnv = useMemo<PrPaneEnv>(() => ({ sessions, tasks, handOff }), [sessions, tasks, handOff])
   useEffect(() => api.tasks.onOpen((req) => openInTask(req.path, req.presetId)), [api, openInTask])
   // Main is removing the task these panes are in.
   useEffect(
@@ -1059,10 +1121,13 @@ export function App(): React.JSX.Element {
       case 'prs':
         return (
           <PrPanel
-            session={focused}
+            session={prsSession}
             visible={windowVisible && place.visible}
             actions={config.prActions}
             onRun={runPrompt}
+            onOpen={(pr, title, where) => {
+              if (prsSession) openPr({ pr, cwd: prsSession.cwd, title, where })
+            }}
           />
         )
       case 'tasks':
@@ -1147,13 +1212,15 @@ export function App(): React.JSX.Element {
                 }}
               >
                 {layout.tabs.length > 0 ? (
-                  <Workspace
-                    layout={layout}
-                    presets={config.presets}
-                    settings={config.terminal}
-                    theme={terminalTheme}
-                    dispatch={dispatch}
-                  />
+                  <PrPaneContext.Provider value={prEnv}>
+                    <Workspace
+                      layout={layout}
+                      presets={config.presets}
+                      settings={config.terminal}
+                      theme={terminalTheme}
+                      dispatch={dispatch}
+                    />
+                  </PrPaneContext.Provider>
                 ) : (
                   <Launcher
                     presets={config.presets}

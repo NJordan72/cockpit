@@ -4,9 +4,11 @@ import {
   filterPrs,
   PR_FILTERS,
   prPrompt,
+  prRefFromUrl,
   type PrAction,
   type PrFilter,
   type PrList,
+  type PrRef,
   type PullRequest
 } from '@shared/prs'
 
@@ -22,6 +24,8 @@ interface Props {
   actions: readonly PrAction[]
   /** Send a prompt to a new agent tab or to the focused pane's agent. */
   onRun: (prompt: string, where: RunWhere) => void
+  /** Show a pull request in a pane: a new tab, or beside the focused pane. */
+  onOpen: (pr: PrRef, title: string, where: 'tab' | 'row') => void
 }
 
 const REVIEW_LABEL = {
@@ -38,7 +42,7 @@ function age(ms: number): string {
 }
 
 /** The focused pane's repository's open pull requests, with prompts to send about each. */
-export function PrPanel({ session, visible, actions, onRun }: Props): React.JSX.Element {
+export function PrPanel({ session, visible, actions, onRun, onOpen }: Props): React.JSX.Element {
   const api = window.cockpit
   const paneId = session?.id ?? null
   const cwd = session?.cwd ?? null
@@ -75,8 +79,16 @@ export function PrPanel({ session, visible, actions, onRun }: Props): React.JSX.
     }
   }, [visible, paneId, load])
 
+  const show = (pr: PullRequest, where: 'tab' | 'row'): void => {
+    const ref = prRefFromUrl(pr.url)
+    if (ref) onOpen(ref, pr.title, where)
+    else api.prs.open(pr.url)
+  }
+
   const menu = async (pr: PullRequest): Promise<void> => {
     const items: MenuItem[] = [
+      { id: 'pane', label: 'Open in a new tab' },
+      { id: 'split', label: 'Open beside this pane' },
       { id: 'open', label: 'Open on GitHub' },
       { id: 'copy', label: 'Copy URL' },
       ...(actions.length > 0 ? [{ type: 'separator' } as const] : []),
@@ -89,7 +101,9 @@ export function PrPanel({ session, visible, actions, onRun }: Props): React.JSX.
       }))
     ]
     const chosen = await api.menu(items)
-    if (chosen === 'open') api.prs.open(pr.url)
+    if (chosen === 'pane') show(pr, 'tab')
+    else if (chosen === 'split') show(pr, 'row')
+    else if (chosen === 'open') api.prs.open(pr.url)
     else if (chosen === 'copy') api.clipboard.writeText(pr.url)
     else if (chosen) {
       const [where, index] = chosen.split(':') as [RunWhere, string]
@@ -141,8 +155,10 @@ export function PrPanel({ session, visible, actions, onRun }: Props): React.JSX.
                 type="button"
                 tabIndex={-1}
                 className={`prs-row${pr.draft ? ' draft' : ''}`}
-                title={`${pr.title}\n${pr.branch}\nRight-click for actions`}
-                onClick={() => api.prs.open(pr.url)}
+                title={`${pr.title}\n${pr.branch}\nClick to open, Shift-click to open beside this pane, right-click for more`}
+                onClick={(e) => {
+                  show(pr, e.shiftKey ? 'row' : 'tab')
+                }}
                 onContextMenu={(e) => {
                   e.preventDefault()
                   void menu(pr)

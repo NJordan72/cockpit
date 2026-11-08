@@ -25,6 +25,7 @@ import {
   DEFAULT_KEYBINDINGS,
   defaultWindow,
   MAX_WINDOWS,
+  isTerminalPane,
   paneIds,
   type AppearanceSettings,
   type LauncherSettings,
@@ -47,7 +48,16 @@ import {
   type WindowInfo
 } from '@shared/ipc'
 import type { SaveResult } from '@shared/commands'
-import type { PrList } from '@shared/prs'
+import {
+  isPrRef,
+  MERGE_LABEL,
+  type PrAct,
+  type PrActResult,
+  type PrDetailResult,
+  type PrList,
+  type PrLogResult,
+  type PrRef
+} from '@shared/prs'
 import {
   deletesBranch,
   MAX_BRANCH,
@@ -72,7 +82,7 @@ import { gitRoot, gitStatus } from './git'
 import { listCharacters } from './kids'
 import { buildKidsMenu, buildMenu, menuTemplate } from './menu'
 import { abbreviateHome, claudeHome, cockpitHome, codexHome, expandHome } from './paths'
-import { listPrs } from './prs'
+import { actOnPr, checkLog, listPrs, readPr, readPrAct } from './prs'
 import { PtyManager } from './pty'
 import { registerSchemes } from './schemes'
 import { SystemMonitor } from './system'
@@ -340,7 +350,7 @@ function panesIn(dir: string): string[] {
   const all = (n: LayoutNode): PaneNode[] => (n.type === 'pane' ? [n] : n.children.flatMap(all))
   return allTabs()
     .tabs.flatMap((t) => all(t.root))
-    .filter((p) => !p.url && (p.cwd === dir || p.cwd.startsWith(`${dir}/`)))
+    .filter((p) => isTerminalPane(p) && (p.cwd === dir || p.cwd.startsWith(`${dir}/`)))
     .map((p) => p.id)
 }
 
@@ -356,6 +366,31 @@ function closePanes(ids: string[]): void {
 }
 
 const taskName = (t: TaskInfo): string => t.branch ?? basename(t.path)
+
+/**
+ * Closing and merging can't be taken back from Cockpit, so main asks first,
+ * naming the pull request as GitHub has it now. Everything else just runs.
+ */
+async function confirmPrAct(ref: PrRef, act: PrAct): Promise<boolean> {
+  if (act.type !== 'close' && act.type !== 'merge') return true
+  const read = await readPr(ref)
+  const name = read.ok ? `#${String(ref.number)} "${read.pr.title}"` : `#${String(ref.number)}`
+  const base = read.ok ? read.pr.base : 'its base branch'
+  const merging = act.type === 'merge'
+  const { response } = await showDialog({
+    type: 'question',
+    message: merging
+      ? `${MERGE_LABEL[act.method]} pull request ${name}?`
+      : `Close pull request ${name}?`,
+    detail: merging
+      ? `${ref.repo}: it goes into ${base}. Its branch is kept.`
+      : `${ref.repo}: it's closed without merging. Its branch is kept, and it can be reopened.`,
+    buttons: [merging ? 'Merge' : 'Close Pull Request', 'Cancel'],
+    defaultId: 0,
+    cancelId: 1
+  })
+  return response === 0
+}
 
 /**
  * Removes a task after asking, unless nothing would be lost: its pull
@@ -1030,6 +1065,46 @@ function registerIpc(): void {
     if (!trusted(e) || typeof paneId !== 'string') return { ok: false, error: 'No pane' }
     const cwd = await paneCwd(paneId)
     return cwd ? listPrs(cwd) : { ok: false, error: 'No pane' }
+  })
+  ipcMain.handle(IPC.prsView, (e, pr: unknown): Promise<PrDetailResult> | PrDetailResult => {
+    if (!trusted(e) || !isPrRef(pr)) return { ok: false, error: 'Not a pull request' }
+    return readPr(pr)
+  })
+  ipcMain.handle(IPC.prsAct, async (e, pr: unknown, act: unknown): Promise<PrActResult> => {
+    if (!trusted(e) || !isPrRef(pr)) return { ok: false, error: 'Not a pull request' }
+    if (kidsActive) return { ok: false, error: 'Not while kids mode is on' }
+    const checked = readPrAct(act)
+    if (!checked) return { ok: false, error: 'That action is missing something' }
+    if (!(await confirmPrAct(pr, checked))) return { ok: false, cancelled: true }
+    return actOnPr(pr, checked)
+  })
+  ipcMain.handle(
+    IPC.prsLog,
+    (e, pr: unknown, jobId: unknown): Promise<PrLogResult> | PrLogResult => {
+      if (
+        !trusted(e) ||
+        !isPrRef(pr) ||
+        typeof jobId !== 'number' ||
+        !Number.isSafeInteger(jobId)
+      ) {
+        return { ok: false, error: 'Not a job' }
+      }
+      return checkLog(pr, jobId)
+    }
+  )
+  // A window of panels opens pull request panes in the window with terminals.
+  ipcMain.on(IPC.prsPane, (e, req: unknown) => {
+    const target = terminalWindow()
+    if (!trusted(e) || !target || typeof req !== 'object' || req === null) return
+    const { pr, cwd, title, where } = req as Record<string, unknown>
+    if (!isPrRef(pr)) return
+    raise(target)
+    send(target, IPC.prsPane, {
+      pr: { repo: pr.repo, number: pr.number },
+      cwd: typeof cwd === 'string' && cwd.length < 4096 ? cwd : '~',
+      ...(typeof title === 'string' ? { title: title.slice(0, 200) } : {}),
+      where: where === 'row' ? 'row' : 'tab'
+    })
   })
   ipcMain.handle(IPC.tasksList, (e): TaskInfo[] => {
     if (!trusted(e)) throw new Error('untrusted sender')

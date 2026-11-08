@@ -126,6 +126,20 @@ describe('layoutReducer', () => {
     expect(layoutReducer(term, { type: 'setPage', paneId: 't', url: 'https://x.dev/' })).toBe(term)
   })
 
+  it("keeps a pull request pane's title, and ignores other panes", () => {
+    const prPane: PaneNode = { ...pane('p'), pr: { repo: 'o/r', number: 7 } }
+    const l = run([
+      { type: 'newTab', pane: prPane },
+      { type: 'newTab', pane: pane('t') }
+    ])
+    const after = layoutReducer(l, { type: 'setPrTitle', paneId: 'p', title: 'Fix login' })
+    expect(after.tabs[0]?.root).toEqual({ ...prPane, title: 'Fix login' })
+    expect(layoutReducer(after, { type: 'setPrTitle', paneId: 'p', title: 'Fix login' })).toBe(
+      after
+    )
+    expect(layoutReducer(l, { type: 'setPrTitle', paneId: 't', title: 'x' })).toBe(l)
+  })
+
   it('moves a tab to a new position and keeps the selection', () => {
     const l = run([
       { type: 'newTab', pane: pane('a') },

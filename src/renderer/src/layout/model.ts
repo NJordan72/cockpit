@@ -1,6 +1,7 @@
 // Pure operations on the split tree. A tab's root is either one pane or a
 // split whose children are laid out in a row or a column.
 import { normalizeSizes, type LayoutNode, type PaneNode, type SplitNode } from '@shared/config'
+import type { PrRef } from '@shared/prs'
 
 export type Direction = 'left' | 'right' | 'up' | 'down'
 
@@ -31,6 +32,23 @@ export function makePane(presetId: string, cwd: string): PaneNode {
 /** A pane showing a web page. `cwd` is where a split or shell opened from it starts. */
 export function makeWebPane(url: string, cwd: string): PaneNode {
   return { ...makePane('shell', cwd), url }
+}
+
+/** A pane showing a pull request. `cwd` is the checkout it was opened from. */
+export function makePrPane(pr: PrRef, cwd: string, title?: string): PaneNode {
+  return { ...makePane('shell', cwd), pr, ...(title ? { title } : {}) }
+}
+
+/** The tab already showing this pull request, and the pane that does. */
+export function findPrPane(
+  tabs: readonly { id: string; root: LayoutNode }[],
+  pr: PrRef
+): { tabId: string; paneId: string } | null {
+  for (const tab of tabs) {
+    const pane = allPanes(tab.root).find((p) => p.pr?.repo === pr.repo && p.pr.number === pr.number)
+    if (pane) return { tabId: tab.id, paneId: pane.id }
+  }
+  return null
 }
 
 export function findPane(node: LayoutNode, id: string): PaneNode | null {

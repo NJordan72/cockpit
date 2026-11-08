@@ -291,11 +291,39 @@ own `gh` login. The dot is the checks (green passing, yellow running, red
 failing), and the second line shows the author, draft, review state, and age.
 **All**, **Mine**, **To review** (you're a requested reviewer), **Others**,
 and **Bots** (authors gh marks as bots, or with `[bot]` or `app/` in the
-name) filter it. Click a pull request to open it on GitHub. Right-click it to
-send a prompt about it, in a new agent tab or in the focused pane. The prompts
-come from `prActions` in `config.json` (see [Config](#config)). Each is a
-command with the PR's URL added at the end, and the default is one,
-**Review**, which sends `/code-review <url>`.
+name) filter it. Click a pull request to open it in a pane of its own, or
+Shift-click to open it beside the focused pane. Right-click it to open it on
+GitHub or to send a prompt about it, in a new agent tab or in the focused
+pane. The prompts come from `prActions` in `config.json` (see
+[Config](#config)). Each is a command with the PR's URL added at the end, and
+the default is one, **Review**, which sends `/code-review <url>`.
+
+A **pull request pane** shows one pull request, read through `gh` when it
+opens, every minute while it's on screen, after anything you do in it, and
+on ⟳ or Cmd+R. Its tabs are:
+
+- **Threads**: the inline review threads, open ones first, with the lines
+  each one is about. Resolved and outdated threads start folded, and resolved
+  ones are hidden until you ask for them. Reply to a thread, or resolve and
+  unresolve it, from here.
+- **Conversation**: the description, then the comments and reviews in order.
+  Below them, write a comment, or approve or request changes on someone else's
+  pull request.
+- **Checks**: the checks on the latest commit, failing ones first.
+
+**→ Agent** on a thread, comment, review, or failing check sends it to an
+agent. Tick several and use **Send to an agent** to send them together. The
+menu offers the agent working in the pull request's task, a new agent in that
+task, or a new task on its branch (which opens the New task dialog filled
+in). Then it lists every other agent pane, and a new agent tab in the
+repository. The prompt lists each piece of feedback with its file and line,
+its author, and its text. A failing GitHub Actions check goes with the end of
+its failed log.
+
+The header has **Ready for review**, **Merge** (with the methods the
+repository allows), **Close**, and **Reopen**, as your access allows. Cockpit
+asks before merging or closing. Merging keeps the branch. The pane is
+restored on relaunch.
 
 **Commands** lists Claude Code slash commands from the repository's
 `.claude/commands/` and from `~/.claude/commands/`. Click one to run it in the
