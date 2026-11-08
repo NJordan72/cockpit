@@ -14,6 +14,7 @@ import type { PrList } from './prs'
 import type { NewTask, NewTaskResult, TaskDraft, TaskInfo } from './tasks'
 import type { ThemeDefinition } from './theme'
 import type {
+  PaneLabel,
   SecretPrompt,
   SessionInfo,
   WidgetCallResult,
@@ -59,6 +60,8 @@ export const IPC = {
   secretPrompt: 'secret:prompt',
   secretAnswer: 'secret:answer',
   secretDone: 'secret:done',
+  widgetStarted: 'widget:started',
+  widgetLabelOpen: 'widget:label-open',
   sessionsList: 'sessions:list',
   sessionsChanged: 'sessions:changed',
   paneFocus: 'pane:focus',
@@ -98,11 +101,14 @@ export const IPC = {
 
 /**
  * A session as the chrome sees it. Widgets get SessionInfo without
- * `message`, which can quote a command waiting for approval.
+ * `message`, which can quote a command waiting for approval, and without
+ * `labels`.
  */
 export interface PaneSession extends SessionInfo {
   /** What the agent is waiting for, while status is needs-input. */
   message: string | null
+  /** What widgets show in a strip above the pane, ordered by widget id. */
+  labels: PaneLabel[]
 }
 
 export interface PtyCreateOptions {
@@ -296,6 +302,10 @@ export interface CockpitApi {
     answerSecret(promptId: string, value: string | null): void
     /** A prompt was answered, maybe in another window. */
     onSecretDone(cb: (promptId: string) => void): () => void
+    /** A widget's page has started (again); main drops what its last one left. */
+    started(widgetId: string): void
+    /** Opens the URL of a widget's label on a pane, if the widget may still open it. */
+    openLabel(paneId: string, widgetId: string): void
   }
   sessions: {
     /** One entry per pane, with its status. */

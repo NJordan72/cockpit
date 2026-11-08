@@ -1,6 +1,6 @@
 // Reads widget.json. Anything malformed is an error with a message that says
 // which field is wrong, shown in the widget's panel instead of the widget.
-import type { WidgetManifest, WidgetPermissions } from '@shared/widgets'
+import type { SessionsAccess, WidgetManifest, WidgetPermissions } from '@shared/widgets'
 import { parseHostPattern, parseUrlPattern, type HostPattern, type UrlPattern } from './permissions'
 
 export const MANIFEST_FILE = 'widget.json'
@@ -23,6 +23,14 @@ type Obj = Record<string, unknown>
 const isObj = (v: unknown): v is Obj => typeof v === 'object' && v !== null && !Array.isArray(v)
 
 const PERMISSION_KEYS = new Set(['network', 'openExternal', 'secrets', 'storage', 'sessions'])
+
+/** Least to most: each allows what the ones before it do. */
+export const SESSIONS_ACCESS: readonly SessionsAccess[] = ['read', 'label', 'prompt']
+
+/** Whether a widget granted `granted` may do what needs `needed`. */
+export function sessionsAllow(granted: SessionsAccess | null, needed: SessionsAccess): boolean {
+  return granted !== null && SESSIONS_ACCESS.indexOf(granted) >= SESSIONS_ACCESS.indexOf(needed)
+}
 
 function stringList(perms: Obj, key: string): string[] {
   const v = perms[key]
@@ -93,13 +101,9 @@ export function parseManifest(raw: unknown, folder: string): ParsedManifest {
   if (perms.storage !== undefined && typeof perms.storage !== 'boolean') {
     throw new Error('"permissions.storage" must be true or false')
   }
-  if (
-    perms.sessions !== undefined &&
-    perms.sessions !== 'read' &&
-    perms.sessions !== 'prompt' &&
-    perms.sessions !== false
-  ) {
-    throw new Error('"permissions.sessions" must be "read", "prompt", or false')
+  const sessions = SESSIONS_ACCESS.find((level) => level === perms.sessions) ?? null
+  if (perms.sessions !== undefined && perms.sessions !== false && sessions === null) {
+    throw new Error('"permissions.sessions" must be "read", "label", "prompt", or false')
   }
 
   const permissions: WidgetPermissions = {
@@ -107,7 +111,7 @@ export function parseManifest(raw: unknown, folder: string): ParsedManifest {
     openExternal: externalList,
     secrets: [...new Set(secrets)],
     storage: perms.storage === true,
-    sessions: perms.sessions === 'read' || perms.sessions === 'prompt' ? perms.sessions : null
+    sessions
   }
 
   return {

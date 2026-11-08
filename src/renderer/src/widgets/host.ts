@@ -59,6 +59,8 @@ function onMessage(e: MessageEvent): void {
   if (!isObj(msg) || msg.cockpit !== 1) return
   switch (msg.type) {
     case 'hello':
+      // Labels its last page set are dropped; this one sets its own.
+      window.cockpit.widgets.started(id)
       post(frame, { cockpit: 1, type: 'init', init: initFor(id, frame) })
       return
     case 'call': {

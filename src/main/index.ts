@@ -222,7 +222,11 @@ function sessions(): PaneSession[] {
   return listSessions(
     allTabs(),
     config.get().presets,
-    { status: (id) => agents.status(id), branch: (id) => branches.get(id) },
+    {
+      status: (id) => agents.status(id),
+      branch: (id) => branches.get(id),
+      labels: (id) => widgets.labels.of(id)
+    },
     focusedPaneId()
   )
 }
@@ -1338,6 +1342,7 @@ async function startup(): Promise<void> {
     startSession: openSession,
     startTask: (draft) => openTaskDraft(draft),
     sendPrompt,
+    labelsChanged: sessionsChanged,
     changed: windowsChanged
   })
   widgets.start()

@@ -1,7 +1,8 @@
 // Main-process side of widgets: serves widget files over
 // cockpit-widget://, answers widget API calls from the chrome, asks the user
-// for secrets, and pushes storage and session changes to the chrome, which
-// forwards them into the right iframe.
+// for secrets, keeps the labels widgets put on sessions, and pushes storage
+// and session changes to the chrome, which forwards them into the right
+// iframe.
 import { randomUUID } from 'node:crypto'
 import fs from 'node:fs/promises'
 import path from 'node:path'
@@ -25,7 +26,9 @@ import {
   type WidgetEventTopic,
   type WidgetEvents
 } from '@shared/widgets'
-import { WidgetBroker } from './broker'
+import { openableUrl, WidgetBroker } from './broker'
+import { SessionLabels } from './labels'
+import { sessionsAllow } from './manifest'
 import { WidgetRegistry, type LoadedWidget } from './registry'
 import { SecretStore } from './secrets'
 import { contentType, injectIntoHtml, injection, resolveWidgetFile, widgetHeaders } from './serve'
@@ -40,6 +43,8 @@ export interface WidgetHostOptions {
   startSession: (prompt: string) => boolean
   startTask: (draft: { branch: string; prompt: string }) => boolean
   sendPrompt: (paneId: string, prompt: string) => boolean
+  /** A label on a session changed; the chrome's session list carries them. */
+  labelsChanged: () => void
   /** Only accept IPC from the chrome's own top-level frame. */
   trusted: (e: IpcMainEvent | IpcMainInvokeEvent) => boolean
   /** Widgets were installed, removed, or edited. */
@@ -48,6 +53,7 @@ export interface WidgetHostOptions {
 
 export class WidgetHost {
   readonly registry: WidgetRegistry
+  readonly labels = new SessionLabels()
   private readonly storage: WidgetStorage
   private readonly secrets: SecretStore
   private readonly broker: WidgetBroker
@@ -66,6 +72,11 @@ export class WidgetHost {
   constructor(private readonly opts: WidgetHostOptions) {
     this.registry = new WidgetRegistry(path.join(opts.home, 'widgets'), (list) => {
       this.send(IPC.widgetsChanged, list)
+      // A widget that's gone, broken, or no longer allowed to label takes its labels with it.
+      const labelers = list.filter((w) =>
+        sessionsAllow(w.manifest?.permissions.sessions ?? null, 'label')
+      )
+      if (this.labels.retainWidgets(new Set(labelers.map((w) => w.id)))) opts.labelsChanged()
       opts.changed?.()
     })
     this.storage = new WidgetStorage(path.join(opts.home, 'data'), (id, key, value) => {
@@ -83,6 +94,9 @@ export class WidgetHost {
       startSession: opts.startSession,
       startTask: opts.startTask,
       sendPrompt: opts.sendPrompt,
+      setLabel: (widgetId, paneId, label) => {
+        if (this.labels.set(paneId, widgetId, label)) opts.labelsChanged()
+      },
       openExternal: (url) => shell.openExternal(url)
     })
   }
@@ -153,6 +167,8 @@ export class WidgetHost {
   /** Recompute sessions and push them to widgets that may read them, if changed. */
   sessionsChanged(): void {
     const list = this.opts.sessions()
+    // A pane that closed takes its labels with it.
+    this.labels.retainPanes(new Set(list.map((s) => s.id)))
     const json = JSON.stringify(list)
     if (json === this.lastSessions) return
     this.lastSessions = json
@@ -182,6 +198,28 @@ export class WidgetHost {
       pending.resolve(answer)
       // Every window was told about the prompt; the others drop it now.
       this.send(IPC.secretDone, promptId)
+    })
+    // A widget's page loaded: the first time, or after a reload, a change to
+    // its files, or a move to another window. Hiding it doesn't unload it.
+    ipcMain.on(IPC.widgetStarted, (e, widgetId: unknown) => {
+      if (!trusted(e) || typeof widgetId !== 'string') return
+      if (this.labels.dropWidget(widgetId)) this.opts.labelsChanged()
+    })
+    ipcMain.on(IPC.widgetLabelOpen, (e, paneId: unknown, widgetId: unknown) => {
+      if (!trusted(e) || typeof paneId !== 'string' || typeof widgetId !== 'string') return
+      const url = this.labels.get(paneId, widgetId)?.url
+      const parsed = this.registry.get(widgetId)?.parsed
+      if (!url || !parsed) return
+      // Checked again: the widget's manifest may have changed since it set the label.
+      let allowed: string
+      try {
+        allowed = openableUrl(url, parsed)
+      } catch {
+        return
+      }
+      shell.openExternal(allowed).catch((err: unknown) => {
+        console.warn(`could not open ${allowed}:`, err)
+      })
     })
   }
 

@@ -11,6 +11,7 @@ import type {
   FetchResult,
   HostToWidget,
   SessionInfo,
+  SessionLabel,
   WidgetCallResult,
   WidgetError,
   WidgetErrorCode,
@@ -281,6 +282,13 @@ import type {
       /** Types `prompt` into a session running Claude Code or Codex, and submits it. */
       async send(id: string, prompt: string): Promise<void> {
         await call('sessions.send', { id, prompt }, 10_000)
+      },
+      /**
+       * Shows `label` in a strip above the session's pane, replacing this
+       * widget's last one there. null removes it.
+       */
+      async label(id: string, label: SessionLabel | null): Promise<void> {
+        await call('sessions.label', { id, label }, 10_000)
       }
     }),
 

@@ -1,6 +1,7 @@
 import { useMemo, useRef } from 'react'
 import type { ITheme } from '@xterm/xterm'
 import type { Layout, Preset, TerminalSettings } from '@shared/config'
+import type { PaneLabel } from '@shared/widgets'
 import { allPanes, arrange, dragSizes, findSplit, type Divider } from '../layout/model'
 import type { LayoutAction } from '../layout/reducer'
 import { TerminalPane } from '../terminal/TerminalPane'
@@ -11,6 +12,8 @@ interface Props {
   presets: Preset[]
   settings: TerminalSettings
   theme: ITheme
+  /** Widgets' labels by pane id. */
+  labels: ReadonlyMap<string, PaneLabel[]>
   dispatch: (a: LayoutAction) => void
 }
 
@@ -26,6 +29,7 @@ export function Workspace({
   presets,
   settings,
   theme,
+  labels,
   dispatch
 }: Props): React.JSX.Element {
   const ref = useRef<HTMLDivElement>(null)
@@ -114,6 +118,7 @@ export function Workspace({
                 theme={theme}
                 focused={tab.activePaneId === pane.id && (multi || visible)}
                 visible={visible}
+                labels={labels.get(pane.id)}
                 onFocus={() => dispatch({ type: 'focusPane', paneId: pane.id })}
                 onStarted={(cwd) => dispatch({ type: 'setCwd', paneId: pane.id, cwd })}
               />

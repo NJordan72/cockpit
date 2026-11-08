@@ -1,14 +1,18 @@
 import type { Layout, LayoutNode, PaneNode, Preset } from '@shared/config'
 import type { PaneSession } from '@shared/ipc'
-import type { SessionInfo } from '@shared/widgets'
+import type { PaneLabel, SessionInfo } from '@shared/widgets'
 import type { PaneStatus } from '../agents/tracker'
 
 function panes(node: LayoutNode): PaneNode[] {
   return node.type === 'pane' ? [node] : node.children.flatMap(panes)
 }
 
-/** What widgets may see of a session. */
-export function widgetSession({ message: _message, ...info }: PaneSession): SessionInfo {
+/** What widgets may see of a session: not what an agent waits for, nor other widgets' labels. */
+export function widgetSession({
+  message: _message,
+  labels: _labels,
+  ...info
+}: PaneSession): SessionInfo {
   return info
 }
 
@@ -16,6 +20,7 @@ export function widgetSession({ message: _message, ...info }: PaneSession): Sess
 export interface PaneLookup {
   status: (paneId: string) => PaneStatus | null
   branch: (paneId: string) => string | null
+  labels: (paneId: string) => PaneLabel[]
 }
 
 /** The active tab's focused pane. */
@@ -53,7 +58,8 @@ export function listSessions(
           message: s?.message ?? null,
           title: s?.title ?? null,
           tokens: s?.tokens ?? null,
-          focused: p.id === focused
+          focused: p.id === focused,
+          labels: lookup.labels(p.id)
         }
       })
   )
