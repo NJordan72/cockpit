@@ -11,9 +11,8 @@ read, changed, and ran; and a sidebar of sandboxed widgets that can call out
 to services like Shortcut. Layouts arrange the window, and themes style it.
 
 It's a personal project, built around one person's setup. It runs on Apple
-silicon Macs. It was built with Claude Code, working from
-[INSTRUCTIONS.md](INSTRUCTIONS.md): the build plan, plus a status note for
-every feature as it landed.
+silicon Macs. It was built with Claude Code. Planned work and known gaps are
+in [issues](https://github.com/NJordan72/cockpit/issues).
 
 ## Install
 
