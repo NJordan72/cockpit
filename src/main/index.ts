@@ -75,6 +75,7 @@ import {
   MAX_PARALLEL,
   RUN_ACTIONS,
   RUN_MODES,
+  toWidgetRun,
   type RunAction,
   type RunDraft,
   type RunMode,
@@ -1543,6 +1544,17 @@ async function startup(): Promise<void> {
     startSession: openSession,
     startTask: (draft) => openTaskDraft(draft),
     sendPrompt,
+    runs: {
+      submit: (widgetId, widgetName, graph) =>
+        runs
+          ? runs.submit(graph, { kind: 'widget', widgetId }, widgetName)
+          : { ok: false, error: 'Cockpit is still starting' },
+      markDone: (widgetId, runId, itemId) =>
+        runs
+          ? runs.markDoneFor(widgetId, runId, itemId)
+          : Promise.resolve({ ok: false, error: 'No such run' }),
+      list: (widgetId) => (runs?.listFor(widgetId) ?? []).map(toWidgetRun)
+    },
     labelsChanged: sessionsChanged,
     changed: windowsChanged
   })

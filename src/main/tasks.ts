@@ -153,7 +153,8 @@ export async function mainCheckout(
   dir: string
 ): Promise<{ ok: true; path: string } | { ok: false; error: string }> {
   const from = expandHome(dir.trim())
-  if (!from || !(await exists(from))) return { ok: false, error: `${dir || 'That folder'} doesn't exist` }
+  if (!from || !(await exists(from)))
+    return { ok: false, error: `${dir || 'That folder'} doesn't exist` }
   const list = await git(from, ['worktree', 'list', '--porcelain', '-z'])
   const main = list.code === 0 ? parseWorktrees(list.stdout)[0] : undefined
   if (!main) return { ok: false, error: `${abbreviateHome(from)} isn't in a git repository` }

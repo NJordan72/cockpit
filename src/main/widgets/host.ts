@@ -26,7 +26,7 @@ import {
   type WidgetEventTopic,
   type WidgetEvents
 } from '@shared/widgets'
-import { openableUrl, WidgetBroker } from './broker'
+import { openableUrl, WidgetBroker, type WidgetRunDeps } from './broker'
 import { SessionLabels } from './labels'
 import { sessionsAllow } from './manifest'
 import { WidgetRegistry, type LoadedWidget } from './registry'
@@ -43,6 +43,7 @@ export interface WidgetHostOptions {
   startSession: (prompt: string) => boolean
   startTask: (draft: { branch: string; prompt: string }) => boolean
   sendPrompt: (paneId: string, prompt: string) => boolean
+  runs: WidgetRunDeps
   /** A label on a session changed; the chrome's session list carries them. */
   labelsChanged: () => void
   /** Only accept IPC from the chrome's own top-level frame. */
@@ -97,7 +98,8 @@ export class WidgetHost {
       setLabel: (widgetId, paneId, label) => {
         if (this.labels.set(paneId, widgetId, label)) opts.labelsChanged()
       },
-      openExternal: (url) => shell.openExternal(url)
+      openExternal: (url) => shell.openExternal(url),
+      runs: opts.runs
     })
   }
 

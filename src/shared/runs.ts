@@ -573,6 +573,48 @@ export interface RunView {
 
 export type RunItemView = RunItem & { state: ItemState }
 
+/** A run as a widget sees it through cockpit.runs.list(). */
+export interface WidgetRun {
+  id: string
+  title: string
+  /** Waiting for the user to confirm it. */
+  pending: boolean
+  mode: RunMode
+  paused: boolean
+  cancelled: boolean
+  finished: boolean
+  items: WidgetRunItem[]
+}
+
+export interface WidgetRunItem {
+  id: string
+  title: string
+  external: boolean
+  phase: ItemPhase
+  pr: { number: number; url: string; state: TaskPr['state'] } | null
+}
+
+export function toWidgetRun(v: RunView): WidgetRun {
+  return {
+    id: v.id,
+    title: v.title,
+    pending: v.pending,
+    mode: v.mode,
+    paused: v.paused,
+    cancelled: v.cancelled,
+    finished: v.finished,
+    items: v.items.map((i) => ({
+      id: i.id,
+      title: i.title,
+      external: i.external === true,
+      phase: i.state.phase,
+      pr: i.state.pr
+        ? { number: i.state.pr.number, url: i.state.pr.url, state: i.state.pr.state }
+        : null
+    }))
+  }
+}
+
 /** A submitted run waiting for the user to confirm it, for the dialog. */
 export interface RunDraft {
   id: string

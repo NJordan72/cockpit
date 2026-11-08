@@ -97,8 +97,9 @@ separate values.
 **`sessions`**: `"read"` to use `cockpit.sessions.list` and `subscribe`.
 `"label"` allows those too, plus `cockpit.sessions.label`, which shows a line
 of text at the top of a pane. `"prompt"` allows all of that, plus
-`cockpit.sessions.start` and `send`, which type into Claude Code or Codex, and
-`startTask`, which fills in the New task dialog. An agent can run commands,
+`cockpit.sessions.start` and `send`, which type into Claude Code or Codex,
+`startTask`, which fills in the New task dialog, and `cockpit.runs`, which
+hands Cockpit a set of tasks to start in order. An agent can run commands,
 so give `"prompt"` only to widgets you trust as much as the terminal.
 
 ## What the sandbox allows
@@ -164,8 +165,8 @@ try {
 | `cancelled`         | The user dismissed a secret prompt.                                    |
 | `timeout`           | The call or the HTTP request took too long.                            |
 | `network_error`     | The HTTP request failed (DNS, refused connection, too many redirects). |
-| `too_large`         | A response over 10 MB, or storage over 5 MB.                           |
-| `unavailable`       | Secret storage can't reach the Keychain.                               |
+| `too_large`         | A response over 10 MB, storage over 5 MB, or a run over 1 MB.          |
+| `unavailable`       | Secret storage can't reach the Keychain, or no window can show a run.  |
 | `not_found`         | The widget is no longer loaded, or the session is gone.                |
 | `internal`          | Anything else.                                                         |
 
@@ -334,6 +335,84 @@ window is on screen, and `subscribe` hears about the change. It's read from
 the repository's `HEAD` in the directory Claude Code last reported, or else
 the one the pane's process is in, or else where the pane started. During a
 rebase it's the branch being rebased.
+
+### cockpit.runs
+
+A run is a set of work items, each listing the items it waits on. Cockpit
+starts each item as a task of its own once the items it waits on are far
+enough along (see "Runs" in the README). Every call needs
+`"sessions": "prompt"`. A run gets no permission of its own, because nothing
+in it starts until the user has seen every item and prompt in Cockpit's
+dialog and clicked **Start**.
+
+- `submit(graph)` shows the dialog for the run and resolves with the run's
+  id. A graph Cockpit can't take rejects with `invalid_argument` and says why,
+  such as two items with one id or items that wait on each other in a loop.
+- `markDone(runId, itemId)` marks an item done, typically an item outside the
+  run once the work it stands for is finished. A widget can only mark the
+  runs it submitted.
+- `list()` returns the runs this widget submitted, so a widget that reloads
+  can go back to watching them.
+
+```js
+const id = await cockpit.runs.submit({
+  title: 'Epic 812: Login revamp',
+  mode: 'stack', // or 'merge', the default; the user can change it
+  maxParallel: 3, // how many items work at once without a pull request yet
+  items: [
+    {
+      id: 'sc-101',
+      title: 'Add the session table',
+      branch: 'nick/sc-101/session-table',
+      prompt: 'Work on Shortcut story sc-101',
+      url: 'https://app.shortcut.com/acme/story/101'
+    },
+    {
+      id: 'sc-102',
+      title: 'Issue tokens',
+      branch: 'nick/sc-102/issue-tokens',
+      prompt: 'Work on Shortcut story sc-102',
+      after: ['sc-101', 'sc-90']
+    },
+    // Work Cockpit waits on and never starts. It's done when markDone says
+    // so, or, with `pr`, when that pull request merges.
+    { id: 'sc-90', title: 'Publish the design tokens', external: true }
+  ]
+})
+await cockpit.runs.markDone(id, 'sc-90')
+```
+
+Every item needs `id`, `title`, `branch`, and `prompt`, and an external item
+needs only `id` and `title`. An id is up to 64 letters, digits, `.`, `_`, or
+`-`. `after`, `url`, `repo`, and `presetId` are optional. An item's `repo` and
+`presetId` override the run's, so one run can span two repositories. When
+neither names a repository, the dialog asks for one. A run has at most 100
+items, branches are at most 200 characters, and prompts at most 20,000.
+
+Cockpit adds a line to each prompt asking the agent to push the branch and
+open a pull request against the item's base branch. The pull request is how
+Cockpit sees an item move to review and then to done.
+
+```js
+{
+  id: 'rmhk2x1a9f3c',
+  title: 'Epic 812: Login revamp',
+  pending: false,   // true until the user starts it in the dialog
+  mode: 'stack',
+  paused: false,
+  cancelled: false,
+  finished: false,  // every item is done
+  items: [
+    {
+      id: 'sc-101',
+      title: 'Add the session table',
+      external: false,
+      phase: 'review', // waiting, ready, working, review, done, or stuck
+      pr: { number: 12, url: 'https://github.com/acme/app/pull/12', state: 'open' }
+    }
+  ]
+}
+```
 
 ### cockpit.theme
 

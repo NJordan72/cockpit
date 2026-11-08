@@ -163,6 +163,9 @@ export interface WidgetMethods {
   'sessions.startTask': { branch: string; prompt: string }
   'sessions.send': { id: string; prompt: string }
   'sessions.label': { id: string; label: SessionLabel | null }
+  'runs.submit': { graph: unknown }
+  'runs.markDone': { runId: string; itemId: string }
+  'runs.list': Record<string, never>
 }
 
 export type WidgetMethod = keyof WidgetMethods
@@ -180,7 +183,10 @@ export const WIDGET_METHODS: readonly WidgetMethod[] = [
   'sessions.start',
   'sessions.startTask',
   'sessions.send',
-  'sessions.label'
+  'sessions.label',
+  'runs.submit',
+  'runs.markDone',
+  'runs.list'
 ]
 
 /** Events the host pushes into a widget. */
