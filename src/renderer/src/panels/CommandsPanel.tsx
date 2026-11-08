@@ -2,10 +2,11 @@ import { useCallback, useEffect, useState } from 'react'
 import type { ActivityEntry } from '@shared/activity'
 import type { CommandList, SavedCommand } from '@shared/commands'
 import type { MenuItem, PaneSession } from '@shared/ipc'
-import type { RunWhere } from './PrPanel'
 
 /** Recent prompts offered by "Save a prompt". */
 const RECENT = 12
+
+export type RunWhere = 'new' | 'here'
 
 interface Props {
   session: PaneSession | null

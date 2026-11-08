@@ -1,29 +1,26 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { MenuItem, PaneSession } from '@shared/ipc'
+import { prFields, type ItemAction } from '@shared/itemActions'
 import {
   filterPrs,
   PR_FILTERS,
-  prPrompt,
   prRefFromUrl,
-  type PrAction,
   type PrFilter,
   type PrList,
   type PrRef,
   type PullRequest
 } from '@shared/prs'
+import { actionMenu, type PromptRequest } from '../itemActions'
 
 /** How often the list is read again while the panel is on screen. */
 const REFRESH_MS = 60_000
 
-export type RunWhere = 'new' | 'here'
-
 interface Props {
   session: PaneSession | null
   visible: boolean
-  /** config.json's prActions: what the right-click menu can send about a PR. */
-  actions: readonly PrAction[]
-  /** Send a prompt to a new agent tab or to the focused pane's agent. */
-  onRun: (prompt: string, where: RunWhere) => void
+  /** config.json's itemActions.pr: what the right-click menu can send about a PR. */
+  actions: readonly ItemAction[]
+  onPrompt: (req: PromptRequest) => void
   /** Show a pull request in a pane: a new tab, or beside the focused pane. */
   onOpen: (pr: PrRef, title: string, where: 'tab' | 'row') => void
 }
@@ -42,7 +39,7 @@ function age(ms: number): string {
 }
 
 /** The focused pane's repository's open pull requests, with prompts to send about each. */
-export function PrPanel({ session, visible, actions, onRun, onOpen }: Props): React.JSX.Element {
+export function PrPanel({ session, visible, actions, onPrompt, onOpen }: Props): React.JSX.Element {
   const api = window.cockpit
   const paneId = session?.id ?? null
   const cwd = session?.cwd ?? null
@@ -51,8 +48,6 @@ export function PrPanel({ session, visible, actions, onRun, onOpen }: Props): Re
   const [read, setRead] = useState<{ key: string; list: PrList } | null>(null)
   const [loading, setLoading] = useState(false)
   const [filter, setFilter] = useState<PrFilter>('all')
-  const hasAgent =
-    session?.agent !== undefined && session.agent !== null && session.status !== 'exited'
   // Another pane or directory: show nothing rather than the last repo's PRs.
   const list = read?.key === key ? read.list : null
 
@@ -86,30 +81,21 @@ export function PrPanel({ session, visible, actions, onRun, onOpen }: Props): Re
   }
 
   const menu = async (pr: PullRequest): Promise<void> => {
+    const prompts = actionMenu('pr', actions, prFields(pr), { here: session })
     const items: MenuItem[] = [
       { id: 'pane', label: 'Open in a new tab' },
       { id: 'split', label: 'Open beside this pane' },
       { id: 'open', label: 'Open on GitHub' },
       { id: 'copy', label: 'Copy URL' },
-      ...(actions.length > 0 ? [{ type: 'separator' } as const] : []),
-      ...actions.map((a, i): MenuItem => ({
-        label: a.label,
-        submenu: [
-          { id: `new:${String(i)}`, label: 'In a new session' },
-          { id: `here:${String(i)}`, label: 'In this session', enabled: hasAgent }
-        ]
-      }))
+      ...prompts.items
     ]
     const chosen = await api.menu(items)
-    if (chosen === 'pane') show(pr, 'tab')
+    const req = prompts.pick(chosen)
+    if (req) onPrompt(req)
+    else if (chosen === 'pane') show(pr, 'tab')
     else if (chosen === 'split') show(pr, 'row')
     else if (chosen === 'open') api.prs.open(pr.url)
     else if (chosen === 'copy') api.clipboard.writeText(pr.url)
-    else if (chosen) {
-      const [where, index] = chosen.split(':') as [RunWhere, string]
-      const action = actions[Number(index)]
-      if (action) onRun(prPrompt(action, pr), where)
-    }
   }
 
   if (!session) return <p className="activity-empty">No pane</p>

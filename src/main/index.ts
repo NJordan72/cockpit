@@ -1249,12 +1249,15 @@ function registerIpc(): void {
   ipcMain.on(IPC.tasksOpen, (e, req: unknown) => {
     const target = terminalWindow()
     if (!trusted(e) || !target || typeof req !== 'object' || req === null) return
-    const { path, presetId } = req as Record<string, unknown>
+    const { path, presetId, prompt } = req as Record<string, unknown>
     if (typeof path !== 'string' || !tasks.list().some((t) => t.path === path)) return
     raise(target)
     send(target, IPC.tasksOpen, {
       path,
-      ...(typeof presetId === 'string' ? { presetId } : {})
+      ...(typeof presetId === 'string' ? { presetId } : {}),
+      ...(typeof prompt === 'string' && prompt.trim() && prompt.length <= MAX_PROMPT
+        ? { prompt }
+        : {})
     })
   })
   ipcMain.handle(IPC.runsList, (e): RunView[] => {

@@ -44,11 +44,12 @@ import { FrameView, type PanelPlace } from './frame/FrameView'
 import { ImagePanel } from './frame/ImagePanel'
 import { slotName } from './frame/layout'
 import { Monitor } from './frame/Monitor'
+import { takesPrompts, type PromptRequest } from './itemActions'
 import { KidsMode, type KidsStatus } from './kids/KidsMode'
 import { actionFor, compileKeymap } from './keybindings'
 import { findPane, findPrPane, makePane, makePrPane, makeWebPane } from './layout/model'
-import { CommandsPanel } from './panels/CommandsPanel'
-import { PrPanel, type RunWhere } from './panels/PrPanel'
+import { CommandsPanel, type RunWhere } from './panels/CommandsPanel'
+import { PrPanel } from './panels/PrPanel'
 import { PrPaneContext, type PrPaneEnv } from './prs/context'
 import type { HandOffTarget } from './prs/model'
 import { activeTab, layoutReducer } from './layout/reducer'
@@ -941,7 +942,7 @@ export function App(): React.JSX.Element {
         c.presets[0]
       if (!preset) return
       if (!terminals) {
-        api.tasks.open({ path, presetId: preset.id })
+        api.tasks.open({ path, presetId: preset.id, ...(prompt ? { prompt } : {}) })
         return
       }
       if (!background) {
@@ -972,6 +973,29 @@ export function App(): React.JSX.Element {
   )
 
   useEffect(() => api.tasks.onDraft((d) => void openTaskDialog(d)), [api, openTaskDialog])
+
+  /**
+   * A panel's item action: into a pane's agent, a new session, or the agent
+   * running in a worktree. A worktree with none running gets a new one.
+   */
+  const runItemPrompt = useCallback(
+    ({ prompt, target }: PromptRequest) => {
+      if (target.kind === 'pane') sendPrompt(target.paneId, prompt)
+      else if (target.kind === 'new') openSession(prompt)
+      else {
+        const open = sessionToShow(
+          sessionsRef.current.filter(
+            (s) => takesPrompts(s) && (s.cwd === target.path || s.cwd.startsWith(`${target.path}/`))
+          )
+        )
+        const agent =
+          target.presetId ?? newSessionTarget(configRef.current?.presets ?? [], focused)?.presetId
+        if (open) sendPrompt(open.id, prompt)
+        else openInTask(target.path, agent, prompt)
+      }
+    },
+    [focused, sendPrompt, openSession, openInTask]
+  )
 
   /** A pull request in a new tab or beside the focused pane, or its pane if one is open. */
   const openPr = useCallback(
@@ -1149,6 +1173,8 @@ export function App(): React.JSX.Element {
             onShowPlan={(file) => {
               showPlan(focused, file)
             }}
+            fileActions={config.itemActions.file}
+            onPrompt={runItemPrompt}
           />
         ) : null
       case 'prs':
@@ -1156,8 +1182,8 @@ export function App(): React.JSX.Element {
           <PrPanel
             session={prsSession}
             visible={windowVisible && place.visible}
-            actions={config.prActions}
-            onRun={runPrompt}
+            actions={config.itemActions.pr}
+            onPrompt={runItemPrompt}
             onOpen={(pr, title, where) => {
               if (prsSession) openPr({ pr, cwd: prsSession.cwd, title, where })
             }}
@@ -1169,10 +1195,12 @@ export function App(): React.JSX.Element {
             tasks={tasks}
             sessions={sessions}
             presets={config.presets}
+            actions={config.itemActions.task}
             visible={windowVisible && place.visible}
             onNew={() => runAction('newTask')}
             onOpen={(task, presetId) => openInTask(task.path, presetId)}
             onReveal={revealPane}
+            onPrompt={runItemPrompt}
           />
         )
       case 'runs':
@@ -1181,6 +1209,7 @@ export function App(): React.JSX.Element {
             runs={runs}
             sessions={sessions}
             presets={config.presets}
+            actions={config.itemActions.runItem}
             onReveal={revealPane}
             onOpen={(path, presetId) => openInTask(path, presetId)}
             onOpenPr={(url, cwd, title) => {
@@ -1188,6 +1217,7 @@ export function App(): React.JSX.Element {
               if (pr) openPr({ pr, cwd, title, where: 'tab' })
               else api.prs.open(url)
             }}
+            onPrompt={runItemPrompt}
           />
         )
       case 'commands':

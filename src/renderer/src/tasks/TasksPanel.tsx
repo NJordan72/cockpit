@@ -1,19 +1,24 @@
 import { useEffect } from 'react'
 import type { Preset } from '@shared/config'
 import type { MenuItem, PaneSession } from '@shared/ipc'
+import { taskFields, type ItemAction } from '@shared/itemActions'
 import { mergedAndClean, type TaskInfo } from '@shared/tasks'
+import { actionMenu, type PromptRequest } from '../itemActions'
 import { prChip, prTone, sessionsByTask, sessionToShow, taskMeta } from './model'
 
 interface Props {
   tasks: readonly TaskInfo[]
   sessions: readonly PaneSession[]
   presets: readonly Preset[]
+  /** config.json's itemActions.task: what the right-click menu can send about a task. */
+  actions: readonly ItemAction[]
   visible: boolean
   onNew: () => void
   /** Open a tab in the task's worktree running the preset (the start screen's agent if none). */
   onOpen: (task: TaskInfo, presetId?: string) => void
   /** Show a pane that's open in a task. */
   onReveal: (paneId: string) => void
+  onPrompt: (req: PromptRequest) => void
 }
 
 /** Every task's worktree, newest first, with its pull request and what's open in it. */
@@ -21,10 +26,12 @@ export function TasksPanel({
   tasks,
   sessions,
   presets,
+  actions,
   visible,
   onNew,
   onOpen,
-  onReveal
+  onReveal,
+  onPrompt
 }: Props): React.JSX.Element {
   const api = window.cockpit
   const open = sessionsByTask(tasks, sessions)
@@ -45,6 +52,10 @@ export function TasksPanel({
   }
 
   const menu = async (task: TaskInfo): Promise<void> => {
+    const prompts = actionMenu('task', actions, taskFields(task), {
+      here: sessions.find((s) => s.focused) ?? null,
+      worktree: task.path
+    })
     const items: MenuItem[] = [
       {
         label: 'Open in a new tab',
@@ -52,6 +63,7 @@ export function TasksPanel({
       },
       ...(task.pr ? [{ id: 'pr', label: `Open pull request #${String(task.pr.number)}` }] : []),
       { id: 'editor', label: 'Open in editor' },
+      ...prompts.items,
       { type: 'separator' },
       { id: 'copy-path', label: 'Copy path' },
       ...(task.branch ? [{ id: 'copy-branch', label: 'Copy branch name' }] : []),
@@ -59,7 +71,9 @@ export function TasksPanel({
       { id: 'remove', label: 'Remove…' }
     ]
     const chosen = await api.menu(items)
-    if (chosen?.startsWith('open:')) onOpen(task, chosen.slice('open:'.length))
+    const req = prompts.pick(chosen)
+    if (req) onPrompt(req)
+    else if (chosen?.startsWith('open:')) onOpen(task, chosen.slice('open:'.length))
     else if (chosen === 'pr' && task.pr) api.prs.open(task.pr.url)
     else if (chosen === 'editor') api.editor.openFile(task.path)
     else if (chosen === 'copy-path') api.clipboard.writeText(task.path)

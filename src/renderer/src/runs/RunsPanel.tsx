@@ -1,6 +1,8 @@
 import type { Preset } from '@shared/config'
 import type { MenuItem, PaneSession } from '@shared/ipc'
+import { runItemFields, type ItemAction } from '@shared/itemActions'
 import type { RunAction, RunItemView, RunView } from '@shared/runs'
+import { actionMenu, type PromptRequest } from '../itemActions'
 import { sessionToShow } from '../tasks/model'
 import { itemDot, itemMeta, phaseLabel, runMeta, sessionsIn } from './model'
 
@@ -8,12 +10,15 @@ interface Props {
   runs: readonly RunView[]
   sessions: readonly PaneSession[]
   presets: readonly Preset[]
+  /** config.json's itemActions.runItem: what an item's right-click menu can send about it. */
+  actions: readonly ItemAction[]
   /** Show a pane that's open in an item's worktree. */
   onReveal: (paneId: string) => void
   /** Open a tab in an item's worktree running the preset. */
   onOpen: (path: string, presetId: string) => void
   /** Open an item's pull request in a pane, from its worktree. */
   onOpenPr: (url: string, cwd: string, title: string) => void
+  onPrompt: (req: PromptRequest) => void
 }
 
 /** Every run Cockpit is working through, newest first, with each item in the order it can start. */
@@ -21,9 +26,11 @@ export function RunsPanel({
   runs,
   sessions,
   presets,
+  actions,
   onReveal,
   onOpen,
-  onOpenPr
+  onOpenPr,
+  onPrompt
 }: Props): React.JSX.Element {
   const api = window.cockpit
 
@@ -45,6 +52,11 @@ export function RunsPanel({
   const itemMenu = async (run: RunView, item: RunItemView): Promise<void> => {
     const s = item.state
     const startable = !item.external && !run.cancelled
+    const prompts = actionMenu('runItem', actions, runItemFields(item), {
+      here: sessions.find((x) => x.focused) ?? null,
+      worktree: s.path,
+      presetId: item.external ? run.presetId : (item.presetId ?? run.presetId)
+    })
     const items: MenuItem[] = [
       {
         id: 'startNow',
@@ -56,10 +68,13 @@ export function RunsPanel({
       { type: 'separator' },
       ...(item.url ? [{ id: 'open', label: 'Open' }] : []),
       ...(s.pr ? [{ id: 'pr', label: `Open pull request #${String(s.pr.number)}` }] : []),
-      ...(!item.external ? [{ id: 'copy-branch', label: 'Copy branch name' }] : [])
+      ...(!item.external ? [{ id: 'copy-branch', label: 'Copy branch name' }] : []),
+      ...prompts.items
     ]
     const chosen = await api.menu(items)
-    if (chosen === 'startNow' || chosen === 'markDone' || chosen === 'retry') {
+    const req = prompts.pick(chosen)
+    if (req) onPrompt(req)
+    else if (chosen === 'startNow' || chosen === 'markDone' || chosen === 'retry') {
       act(run, chosen, item.id)
     } else if (chosen === 'open' && item.url) api.web.openExternal(item.url)
     else if (chosen === 'pr' && s.pr) api.prs.open(s.pr.url)
