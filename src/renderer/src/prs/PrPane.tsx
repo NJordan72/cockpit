@@ -58,7 +58,7 @@ const VERDICT_LABEL = {
 
 const STATE_LABEL = { open: 'Open', closed: 'Closed', merged: 'Merged' }
 
-const NOT_SENT = "That pane isn't running Claude Code or Codex any more, so nothing was sent"
+const NOT_SENT = "That pane isn't running an agent any more, so nothing was sent"
 
 const openLink = (href: string): void => window.cockpit.web.openExternal(href)
 

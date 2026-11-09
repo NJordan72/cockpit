@@ -471,10 +471,10 @@ describe('ActivityLog', () => {
 
   it('logs what Codex reports', () => {
     log.started('p2', 'codex')
-    log.codex('p2', { kind: 'working', clears: true })
-    log.codex('p2', { kind: 'waiting', key: null, message: null })
-    log.codex('p2', { kind: 'waiting', key: null, message: 'Approval requested: ls' })
-    log.codex('p2', { kind: 'done', message: null })
+    log.terminal('p2', { kind: 'working', clears: true })
+    log.terminal('p2', { kind: 'waiting', key: null, message: null })
+    log.terminal('p2', { kind: 'waiting', key: null, message: 'Approval requested: ls' })
+    log.terminal('p2', { kind: 'done', message: null })
     log.exited('p2')
     expect(log.snapshot('p2').entries.map((e) => [e.kind, e.label, e.text])).toEqual([
       ['session', 'Started', 'Codex'],
@@ -482,6 +482,27 @@ describe('ActivityLog', () => {
       ['ask', 'Approval', 'Approval requested: ls'],
       ['stop', '', 'Turn complete'],
       ['session', 'Exited', '']
+    ])
+  })
+
+  it('logs what agy reports, naming the kind of request', () => {
+    log.started('p3', 'agy')
+    log.terminal('p3', {
+      kind: 'waiting',
+      key: null,
+      ask: 'permission',
+      message: 'Trust this folder?'
+    })
+    log.terminal('p3', { kind: 'working', clears: true })
+    log.terminal('p3', { kind: 'waiting', key: null, ask: 'question', message: 'Which branch?' })
+    log.terminal('p3', { kind: 'working', clears: false })
+    log.terminal('p3', { kind: 'done', failed: true, message: 'API not enabled' })
+    expect(log.snapshot('p3').entries.map((e) => [e.kind, e.label, e.text])).toEqual([
+      ['session', 'Started', 'Antigravity CLI'],
+      ['ask', 'Approval', 'Trust this folder?'],
+      ['prompt', '', 'Turn started'],
+      ['ask', 'Question', 'Which branch?'],
+      ['fail', 'Turn failed', 'API not enabled']
     ])
   })
 

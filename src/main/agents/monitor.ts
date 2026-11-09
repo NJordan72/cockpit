@@ -1,16 +1,17 @@
 // Ties agent awareness together: the event socket, the files Claude Code's
-// hooks use, Codex's terminal reports, each pane's status and activity,
-// notifications, and transcript details.
+// hooks use, Codex's and agy's terminal reports, each pane's status and
+// activity, notifications, and transcript details.
 import { randomUUID } from 'node:crypto'
 import fs from 'node:fs'
 import type { ActivityUpdate } from '@shared/activity'
 import type { AgentKind } from '@shared/widgets'
 import { claudeHome } from '../paths'
 import { ActivityLog } from './activity'
+import { AgyWatcher } from './agy'
 import { CodexWatcher } from './codex'
-import { parseClaudeHook, type AgentSignal } from './events'
+import { parseClaudeHook, type AgentReport, type AgentSignal } from './events'
 import { installAgentFiles, type AgentFiles } from './files'
-import { agentLaunch, type AgentLaunch, type LaunchOptions } from './launch'
+import { agentEnv, agentLaunch, type AgentLaunch, type LaunchOptions } from './launch'
 import { Notifier, type NotifierDeps } from './notifier'
 import { EventServer, socketPath, type IncomingEvent, type RunRequestHandler } from './server'
 import { StatusTracker, type PaneStatus } from './tracker'
@@ -47,6 +48,11 @@ export interface AgentMonitorOptions extends Omit<NotifierDeps, 'status'> {
   runRequests?: RunRequestHandler
 }
 
+/** Reads an agent's reports out of its pane's output (Codex, agy). */
+interface TerminalWatcher {
+  feed(chunk: string): AgentReport[]
+}
+
 interface Transcript {
   path: string
   lastRead: number
@@ -61,7 +67,7 @@ export class AgentMonitor {
   private readonly server: EventServer
   private readonly tracker: StatusTracker
   private readonly notifier: Notifier
-  private codex = new Map<string, CodexWatcher>()
+  private watchers = new Map<string, { agent: AgentKind; watcher: TerminalWatcher }>()
   private transcripts = new Map<string, Transcript>()
   private focused: string | null = null
 
@@ -97,18 +103,23 @@ export class AgentMonitor {
     return agentLaunch(command, this.files, opts)
   }
 
-  /** A pane's process is about to start. Returns the env vars that tie its events to it. */
+  /**
+   * A pane's process is about to start. Returns the env vars that tie its
+   * events to it, and any its agent needs to report at all.
+   */
   spawn(paneId: string, agent: AgentKind | null): Record<string, string> {
     const token = randomUUID()
     this.transcripts.delete(paneId)
-    if (agent === 'codex') this.codex.set(paneId, new CodexWatcher())
-    else this.codex.delete(paneId)
+    const watcher =
+      agent === 'codex' ? new CodexWatcher() : agent === 'agy' ? new AgyWatcher() : null
+    if (agent && watcher) this.watchers.set(paneId, { agent, watcher })
+    else this.watchers.delete(paneId)
     this.tracker.spawn(paneId, token, agent)
     this.activity.started(paneId, agent)
     // cockpit-run is in the agents folder. A login shell's path_helper moves
     // the folder behind the system ones, and it stays on PATH.
     const PATH = [this.files.dir, process.env.PATH].filter(Boolean).join(':')
-    return { COCKPIT_SESSION_ID: token, COCKPIT_SOCKET: this.server.path, PATH }
+    return { ...agentEnv(agent), COCKPIT_SESSION_ID: token, COCKPIT_SOCKET: this.server.path, PATH }
   }
 
   status(paneId: string): PaneStatus | null {
@@ -117,12 +128,12 @@ export class AgentMonitor {
 
   output(paneId: string, data: string): void {
     this.tracker.output(paneId)
-    const watcher = this.codex.get(paneId)
-    if (!watcher) return
-    for (const r of watcher.feed(data)) {
-      logReport(paneId, 'codex', r.signal)
+    const watched = this.watchers.get(paneId)
+    if (!watched) return
+    for (const r of watched.watcher.feed(data)) {
+      logReport(paneId, watched.agent, r.signal)
       this.tracker.reportPane(paneId, r)
-      this.activity.codex(paneId, r.signal)
+      this.activity.terminal(paneId, r.signal)
     }
   }
 
@@ -135,13 +146,13 @@ export class AgentMonitor {
   }
 
   exited(paneId: string): void {
-    this.codex.delete(paneId)
+    this.watchers.delete(paneId)
     this.tracker.exit(paneId)
     this.activity.exited(paneId)
   }
 
   killed(paneId: string): void {
-    this.codex.delete(paneId)
+    this.watchers.delete(paneId)
     this.transcripts.delete(paneId)
     this.notifier.dismiss(paneId)
     this.tracker.remove(paneId)

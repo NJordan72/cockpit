@@ -280,7 +280,7 @@ import type { WidgetRun } from '../shared/runs'
       async startTask(prompt: string, branch: string): Promise<void> {
         await call('sessions.startTask', { prompt, branch }, 10_000)
       },
-      /** Types `prompt` into a session running Claude Code or Codex, and submits it. */
+      /** Types `prompt` into a session running Claude Code, Codex, or Antigravity CLI, and submits it. */
       async send(id: string, prompt: string): Promise<void> {
         await call('sessions.send', { id, prompt }, 10_000)
       },

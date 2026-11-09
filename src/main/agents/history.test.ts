@@ -2,7 +2,14 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { claudeLastUsed, claudeProjectDir, codexLastUsed, parseCodexCwd } from './history'
+import {
+  agyLastUsed,
+  claudeLastUsed,
+  claudeProjectDir,
+  codexLastUsed,
+  parseAgyLatest,
+  parseCodexCwd
+} from './history'
 
 const T = Date.UTC(2026, 9, 17) / 1000
 
@@ -38,6 +45,21 @@ describe('parseCodexCwd', () => {
     expect(parseCodexCwd('{"type":"event_msg","payload":{"cwd":"/x"}}')).toBeNull()
     expect(parseCodexCwd(meta('relative'))).toBeNull()
     expect(parseCodexCwd('')).toBeNull()
+  })
+})
+
+describe('parseAgyLatest', () => {
+  it('keeps absolute directories whose ids are plain file names', () => {
+    expect(
+      parseAgyLatest({
+        '/dev/a': 'b4904bc1-79b3-448a-9dac-1d79c8149886',
+        relative: 'abc',
+        '/dev/b': '../../etc/passwd',
+        '/dev/c': 42
+      })
+    ).toEqual([['/dev/a', 'b4904bc1-79b3-448a-9dac-1d79c8149886']])
+    expect(parseAgyLatest(['/dev/a'])).toEqual([])
+    expect(parseAgyLatest(null)).toEqual([])
   })
 })
 
@@ -81,8 +103,29 @@ describe('usage history', () => {
     expect(Object.fromEntries(newest)).toEqual({ '/dev/b': (T - 5) * 1000 })
   })
 
+  it("takes each directory's latest agy conversation, counting its write-ahead log", async () => {
+    const agy = path.join(root, 'agy')
+    const conversations = path.join(agy, 'conversations')
+    put(
+      path.join(agy, 'cache', 'last_conversations.json'),
+      JSON.stringify({ '/dev/a': 'conv-a', '/dev/b': 'conv-b', '/dev/c': 'conv-gone' }),
+      T
+    )
+    put(path.join(conversations, 'conv-a.db'), '', T - 100)
+    put(path.join(conversations, 'conv-b.db'), '', T - 300)
+    put(path.join(conversations, 'conv-b.db-wal'), '', T - 30)
+    // Older conversations in a directory don't matter; the cache names the latest.
+    put(path.join(conversations, 'conv-old.db'), '', T)
+
+    expect(Object.fromEntries(await agyLastUsed(agy))).toEqual({
+      '/dev/a': (T - 100) * 1000,
+      '/dev/b': (T - 30) * 1000
+    })
+  })
+
   it('finds nothing when the agents have no files', async () => {
     expect((await claudeLastUsed(['/dev/a'], path.join(root, 'none'))).size).toBe(0)
     expect((await codexLastUsed(path.join(root, 'none'))).size).toBe(0)
+    expect((await agyLastUsed(path.join(root, 'none'))).size).toBe(0)
   })
 })

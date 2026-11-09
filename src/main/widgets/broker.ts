@@ -274,7 +274,7 @@ export class WidgetBroker {
             'invalid_argument',
             method === 'sessions.start'
               ? 'could not start a session'
-              : 'that session is not running Claude Code or Codex'
+              : 'that session is not running Claude Code, Codex, or Antigravity CLI'
           )
         }
         return null

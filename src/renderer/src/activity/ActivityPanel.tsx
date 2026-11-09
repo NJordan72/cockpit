@@ -366,7 +366,7 @@ function LogView({
                   entry={e}
                   open={openRow === key}
                   onToggle={toggleRow}
-                  // Codex logs only that a turn started, not what was asked.
+                  // Codex and agy log only that a turn started, not what was asked.
                   promptsSavable={session.agent === 'claude'}
                   onSavePrompt={savePrompt}
                   onRunCommand={runCommand}
@@ -377,7 +377,8 @@ function LogView({
           </ol>
         ) : session.agent === null ? (
           <Empty>
-            Only Claude Code and Codex panes report activity. This one runs {session.name}.
+            Only Claude Code, Codex, and Antigravity CLI panes report activity. This one runs{' '}
+            {session.name}.
           </Empty>
         ) : (
           <Empty>Nothing yet.</Empty>
@@ -506,8 +507,11 @@ function FilesView({
               )
             })}
           </ul>
-        ) : session.agent === 'codex' ? (
-          <Empty>Codex doesn&apos;t report the files it touches.</Empty>
+        ) : session.agent === 'codex' || session.agent === 'agy' ? (
+          <Empty>
+            {session.agent === 'codex' ? 'Codex' : 'Antigravity CLI'} doesn&apos;t report the files
+            it touches.
+          </Empty>
         ) : (
           <Empty>No files touched yet.</Empty>
         )}

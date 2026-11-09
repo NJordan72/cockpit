@@ -59,8 +59,14 @@ interface Pane {
   quiet: NodeJS.Timeout | null
 }
 
+const AGENT_NAMES: Record<AgentKind, string> = {
+  claude: 'Claude',
+  codex: 'Codex',
+  agy: 'Antigravity'
+}
+
 export function agentName(agent: AgentKind | null): string {
-  return agent === 'codex' ? 'Codex' : agent === 'claude' ? 'Claude' : 'The program'
+  return agent ? AGENT_NAMES[agent] : 'The program'
 }
 
 export type StatusListener = (paneId: string, prev: PaneStatus | null, next: PaneStatus) => void
@@ -186,7 +192,7 @@ export class StatusTracker {
     return true
   }
 
-  /** The agent reported through the pane's own output (Codex). */
+  /** The agent reported through the pane's own output (Codex, agy). */
   reportPane(paneId: string, report: AgentReport): void {
     const pane = this.panes.get(paneId)
     if (pane && pane.state.status !== 'exited') this.apply(pane, report)

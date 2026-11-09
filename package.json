@@ -2,7 +2,7 @@
   "name": "cockpit",
   "version": "0.4.0",
   "private": true,
-  "description": "A macOS terminal host for Claude Code and Codex, with agent status, an activity log, and a sandboxed widget sidebar",
+  "description": "A macOS terminal host for Claude Code, Codex, and Antigravity CLI, with agent status, an activity log, and a sandboxed widget sidebar",
   "license": "MIT",
   "author": "Nick Jordan (https://github.com/NJordan72)",
   "homepage": "https://github.com/NJordan72/cockpit",

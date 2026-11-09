@@ -271,7 +271,8 @@ export interface CockpitConfig {
 export const DEFAULT_PRESETS: Preset[] = [
   { id: 'shell', name: 'Shell', cwd: '~' },
   { id: 'claude', name: 'Claude Code', command: 'claude', cwd: '~/dev' },
-  { id: 'codex', name: 'Codex', command: 'codex', cwd: '~/dev' }
+  { id: 'codex', name: 'Codex', command: 'codex', cwd: '~/dev' },
+  { id: 'agy', name: 'Antigravity CLI', command: 'agy', cwd: '~/dev' }
 ]
 
 export const DEFAULT_KEYBINDINGS: Keybindings = {

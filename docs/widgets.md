@@ -97,7 +97,7 @@ separate values.
 **`sessions`**: `"read"` to use `cockpit.sessions.list` and `subscribe`.
 `"label"` allows those too, plus `cockpit.sessions.label`, which shows a line
 of text at the top of a pane. `"prompt"` allows all of that, plus
-`cockpit.sessions.start` and `send`, which type into Claude Code or Codex,
+`cockpit.sessions.start` and `send`, which type into Claude Code, Codex, or Antigravity CLI,
 `startTask`, which fills in the New task dialog, and `cockpit.runs`, which
 hands Cockpit a set of tasks to start in order. An agent can run commands,
 so give `"prompt"` only to widgets you trust as much as the terminal.
@@ -282,10 +282,11 @@ With `"sessions": "prompt"`:
 
 - `start(prompt)` opens a new agent tab in the focused pane's directory that
   starts with `prompt`. It uses the focused pane's preset if that runs an
-  agent, and otherwise the first Claude Code preset.
+  agent, and otherwise the first Claude Code preset (then Codex, then
+  Antigravity CLI).
 - `send(id, prompt)` pastes `prompt` into the pane `id` and presses Enter. It
-  rejects with `invalid_argument` if that pane isn't running Claude Code or
-  Codex.
+  rejects with `invalid_argument` if that pane isn't running Claude Code,
+  Codex, or Antigravity CLI.
 - `startTask(prompt, branch)` opens Cockpit's New task dialog with the branch
   and the first prompt filled in, suggesting the focused pane's repository
   (see "Tasks" in the README). It resolves once the dialog is up. The
@@ -308,7 +309,7 @@ await cockpit.sessions.startTask('/start-story sc-1234', 'nick/sc-1234/fix-the-l
   branch: 'nick/sc-1234/fix-the-login', // checked out where the pane is now, or null
   status: 'needs-input',
   since: 1760703361000,   // when status last changed (ms since the epoch)
-  agent: 'claude',        // 'claude', 'codex', or null for anything else
+  agent: 'claude',        // 'claude', 'codex', 'agy', or null for anything else
   title: 'Fix the login redirect', // Claude Code's name for the conversation, or null
   tokens: 48213,          // tokens in Claude Code's context after the last turn, or null
   focused: true           // the focused pane of the active tab
@@ -323,7 +324,7 @@ await cockpit.sessions.startTask('/start-story sc-1234', 'nick/sc-1234/fix-the-l
 | `done`        | An agent finished a turn nobody has looked at yet. Focusing the pane makes it `idle`. |
 | `exited`      | The pane's process has ended.                                                         |
 
-Claude Code and Codex panes report through hooks and terminal events, so all
+Claude Code, Codex, and Antigravity CLI panes report through hooks and terminal events, so all
 five statuses apply to them. Any other program only gets `idle`, `working`,
 and `exited`, from how recently it printed. What an agent is waiting for
 isn't shared with widgets, since it can quote the command it wants to run. See "Agent awareness" in the
