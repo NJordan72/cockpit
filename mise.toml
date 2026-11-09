@@ -8,4 +8,4 @@ node = "24.22.2"
 # Linters for the workflows and shell scripts, run by bun run verify.
 actionlint = "1.7.12"
 shellcheck = "0.11.0"
-zizmor = "1.31.1"
+zizmor = "1.32.0"

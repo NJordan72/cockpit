@@ -42,7 +42,7 @@ jobs:
           persist-credentials: false
       # Installs the bun and Node versions in mise.toml. No cache, so a
       # release never runs tools restored from a cache another run wrote.
-      - uses: jdx/mise-action@6612f0ef07ed2a736cd1e00a94a065522dd41195 # v5.2.5
+      - uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
         with:
           cache: false
       # Changesets only needs its own JavaScript here, not Electron or the
@@ -66,7 +66,7 @@ jobs:
           persist-credentials: false
       # Installs the bun and Node versions in mise.toml. No cache, so a
       # release never runs tools restored from a cache another run wrote.
-      - uses: jdx/mise-action@6612f0ef07ed2a736cd1e00a94a065522dd41195 # v5.2.5
+      - uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
         with:
           cache: false
       - run: bun install --frozen-lockfile --ignore-scripts
@@ -92,7 +92,7 @@ jobs:
           persist-credentials: false
       # Installs the bun and Node versions in mise.toml. No cache, so a
       # release never runs tools restored from a cache another run wrote.
-      - uses: jdx/mise-action@6612f0ef07ed2a736cd1e00a94a065522dd41195 # v5.2.5
+      - uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
         with:
           cache: false
       - run: bun install --frozen-lockfile

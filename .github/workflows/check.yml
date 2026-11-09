@@ -29,7 +29,7 @@ jobs:
         with:
           persist-credentials: false
       # Installs the bun and Node versions in mise.toml.
-      - uses: jdx/mise-action@6612f0ef07ed2a736cd1e00a94a065522dd41195 # v5.2.5
+      - uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
       - run: bun install --frozen-lockfile
       - run: bun run verify
         env:
@@ -65,7 +65,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       # Installs the bun and Node versions in mise.toml.
-      - uses: jdx/mise-action@6612f0ef07ed2a736cd1e00a94a065522dd41195 # v5.2.5
+      - uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
       - run: bun install --frozen-lockfile --ignore-scripts
       # Passes when the PR adds a changeset, or only touches files outside
       # changedFilePatterns in .changeset/config.json (docs, tests, CI).
