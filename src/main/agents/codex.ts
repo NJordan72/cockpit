@@ -2,65 +2,7 @@
 // titles carry its run state, and OSC 9 notifications say when a turn is
 // complete or it wants approval. This reads both out of the PTY stream.
 import type { AgentReport, AgentSignal } from './events'
-
-export interface Osc {
-  code: number
-  text: string
-}
-
-/** Longer than any title or notification Codex sends; past it, a sequence is dropped. */
-const MAX_OSC = 8192
-
-/** Finds OSC sequences in terminal output, including ones split across chunks. */
-export class OscScanner {
-  private partial = ''
-
-  feed(chunk: string): Osc[] {
-    // Most output has no escape sequences at all.
-    if (!this.partial && !chunk.includes('\x1b')) return []
-    const data = this.partial + chunk
-    this.partial = ''
-    const found: Osc[] = []
-    let i = 0
-    for (;;) {
-      const start = data.indexOf('\x1b]', i)
-      if (start === -1) {
-        if (data.endsWith('\x1b')) this.partial = '\x1b'
-        return found
-      }
-      // Terminated by BEL or by ST (ESC \). Any other ESC aborts the sequence.
-      let end = -1
-      let next = -1
-      for (let j = start + 2; j < data.length; j++) {
-        const c = data.charCodeAt(j)
-        if (c === 0x07) {
-          end = j
-          next = j + 1
-          break
-        }
-        if (c === 0x1b) {
-          if (j + 1 === data.length) break
-          end = data[j + 1] === '\\' ? j : -2
-          next = data[j + 1] === '\\' ? j + 2 : j
-          break
-        }
-      }
-      if (next === -1) {
-        const rest = data.slice(start)
-        if (rest.length <= MAX_OSC) this.partial = rest
-        return found
-      }
-      if (end >= 0) {
-        const body = data.slice(start + 2, end)
-        const semi = body.indexOf(';')
-        const code = Number(semi === -1 ? body : body.slice(0, semi))
-        if (Number.isInteger(code))
-          found.push({ code, text: semi === -1 ? '' : body.slice(semi + 1) })
-      }
-      i = next
-    }
-  }
-}
+import { OscScanner } from './osc'
 
 export type CodexTitleState = 'working' | 'waiting' | 'ready'
 

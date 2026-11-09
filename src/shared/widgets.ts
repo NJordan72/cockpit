@@ -95,7 +95,7 @@ export interface FetchResult {
 export type SessionStatus = 'idle' | 'working' | 'needs-input' | 'done' | 'exited'
 
 /** Agents Cockpit can hear from directly; other programs get the output heuristic. */
-export type AgentKind = 'claude' | 'codex'
+export type AgentKind = 'claude' | 'codex' | 'agy'
 
 export interface SessionInfo {
   /** Pane id. */

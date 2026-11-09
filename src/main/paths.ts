@@ -12,6 +12,9 @@ export const claudeHome = (): string =>
 /** Codex's config and session logs. */
 export const codexHome = (): string => process.env.CODEX_HOME ?? path.join(os.homedir(), '.codex')
 
+/** Antigravity CLI's settings, conversations, and caches. */
+export const agyHome = (): string => path.join(os.homedir(), '.gemini', 'antigravity-cli')
+
 export function expandHome(p: string): string {
   if (p === '~') return os.homedir()
   if (p.startsWith('~/')) return path.join(os.homedir(), p.slice(2))

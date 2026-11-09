@@ -24,6 +24,7 @@ export type AgentSignal =
    * running, since answering can change a call's input and with it the key.
    * `message` says what it wants; null keeps the one already shown, and so
    * does a `reminder` (it only fills in a message when there is none).
+   * `ask` is what kind of request it is, when the agent says.
    */
   | {
       kind: 'waiting'
@@ -32,9 +33,10 @@ export type AgentSignal =
       starts?: ToolCall
       message: string | null
       reminder?: boolean
+      ask?: 'permission' | 'question' | 'auth'
     }
-  /** The agent finished its turn. */
-  | { kind: 'done'; message: string | null }
+  /** The agent finished its turn; `failed` when the turn ended on an error. */
+  | { kind: 'done'; message: string | null; failed?: boolean }
   | { kind: 'none' }
 
 export interface AgentReport {

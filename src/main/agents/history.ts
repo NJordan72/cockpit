@@ -1,9 +1,11 @@
-// When Claude Code and Codex last ran in each directory, read from files they
-// keep anyway. Claude Code has one folder of transcripts per working directory
-// (~/.claude/projects/<dir>/*.jsonl). Codex logs each session to
+// When Claude Code, Codex, and agy last ran in each directory, read from files
+// they keep anyway. Claude Code has one folder of transcripts per working
+// directory (~/.claude/projects/<dir>/*.jsonl). Codex logs each session to
 // ~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl, whose first line names the
-// directory. A session appends to its file, so the file's mtime is when it
-// last ran.
+// directory. agy keeps each conversation in a SQLite file
+// (~/.gemini/antigravity-cli/conversations/<id>.db) and names each
+// directory's latest one in cache/last_conversations.json. A session writes
+// to its file as it goes, so the file's mtime is when it last ran.
 import fs from 'node:fs/promises'
 import path from 'node:path'
 
@@ -129,5 +131,43 @@ export async function codexLastUsed(
       })
     )
   }
+  return used
+}
+
+/** Directory to conversation id, from agy's last_conversations.json. Ids must be plain file names. */
+export function parseAgyLatest(json: unknown): [string, string][] {
+  if (typeof json !== 'object' || json === null || Array.isArray(json)) return []
+  return Object.entries(json).filter(
+    (e): e is [string, string] =>
+      path.isAbsolute(e[0]) && typeof e[1] === 'string' && /^[A-Za-z0-9-]{1,64}$/.test(e[1])
+  )
+}
+
+/** The last time agy wrote to each directory's latest conversation, keyed by absolute path. */
+export async function agyLastUsed(agyHome: string): Promise<Map<string, number>> {
+  const used = new Map<string, number>()
+  let latest: [string, string][]
+  try {
+    const file = path.join(agyHome, 'cache', 'last_conversations.json')
+    latest = parseAgyLatest(JSON.parse(await fs.readFile(file, 'utf8')))
+  } catch {
+    return used
+  }
+  await Promise.all(
+    latest.map(async ([cwd, id]) => {
+      const db = path.join(agyHome, 'conversations', `${id}.db`)
+      // A running session writes to the write-ahead log first.
+      const times = await Promise.all(
+        [db, `${db}-wal`].map((f) =>
+          fs.stat(f).then(
+            (st) => st.mtimeMs,
+            () => 0
+          )
+        )
+      )
+      const last = Math.max(...times)
+      if (last > 0) used.set(cwd, last)
+    })
+  )
   return used
 }

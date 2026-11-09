@@ -1,5 +1,5 @@
 // Each pane's activity for the Activity panel: a log of what Claude
-// Code's hooks and Codex's notifications report, the plans Claude proposed,
+// Code's hooks and Codex's and agy's terminal reports say, the plans Claude proposed,
 // the files its tools touched, and the subagents it started. It's kept in memory only and goes
 // to the chrome, never to widgets, since the log quotes commands and prompts.
 import os from 'node:os'
@@ -301,7 +301,8 @@ export class ActivityLog {
   /** A pane's process started. Claude Code says so itself, through SessionStart. */
   started(paneId: string, agent: AgentKind | null): void {
     const pane = this.pane(paneId)
-    if (agent === 'codex') this.add(pane, { kind: 'session', label: 'Started', text: 'Codex' })
+    const name = agent === 'codex' ? 'Codex' : agent === 'agy' ? 'Antigravity CLI' : null
+    if (name) this.add(pane, { kind: 'session', label: 'Started', text: name })
   }
 
   /** A pane's process ended. Shells, which never logged anything, stay empty. */
@@ -468,14 +469,21 @@ export class ActivityLog {
     }
   }
 
-  /** What Codex reported through its terminal (see CodexWatcher). */
-  codex(paneId: string, signal: AgentSignal): void {
+  /**
+   * What Codex or agy reported through its terminal (see CodexWatcher and
+   * AgyWatcher). Neither says what was asked, only that a turn started.
+   */
+  terminal(paneId: string, signal: AgentSignal): void {
     const pane = this.panes.get(paneId)
     if (!pane) return
     if (signal.kind === 'working' && signal.clears) {
       this.add(pane, { kind: 'prompt', label: '', text: 'Turn started' })
     } else if (signal.kind === 'waiting' && signal.message) {
-      this.add(pane, { kind: 'ask', label: 'Approval', ...clip(signal.message) })
+      const label =
+        signal.ask === 'question' ? 'Question' : signal.ask === 'auth' ? 'Sign-in' : 'Approval'
+      this.add(pane, { kind: 'ask', label, ...clip(signal.message) })
+    } else if (signal.kind === 'done' && signal.failed) {
+      this.add(pane, { kind: 'fail', label: 'Turn failed', ...clip(signal.message ?? '') })
     } else if (signal.kind === 'done') {
       this.add(pane, { kind: 'stop', label: '', ...clip(signal.message ?? 'Turn complete') })
     }

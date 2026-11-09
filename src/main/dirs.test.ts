@@ -21,10 +21,11 @@ describe('listDirs', () => {
     fs.utimesSync(p, ms / 1000, ms / 1000)
   }
 
-  it('sorts by the latest use from Cockpit, Claude Code, or Codex, then by mtime', async () => {
+  it('sorts by the latest use from Cockpit, Claude Code, Codex, or agy, then by mtime', async () => {
     const dev = path.join(root, 'dev')
     const at = (name: string): string => path.join(dev, name)
-    for (const name of ['a', 'b', 'c', 'old', 'older']) fs.mkdirSync(at(name), { recursive: true })
+    for (const name of ['a', 'b', 'c', 'd', 'old', 'older'])
+      fs.mkdirSync(at(name), { recursive: true })
     fs.mkdirSync(path.join(root, 'elsewhere'))
 
     const claude = path.join(root, 'claude')
@@ -38,6 +39,15 @@ describe('listDirs', () => {
     fs.mkdirSync(path.dirname(rollout), { recursive: true })
     fs.writeFileSync(rollout, JSON.stringify({ type: 'session_meta', payload: { cwd: at('c') } }))
     touch(rollout, T - 1000)
+
+    const agy = path.join(root, 'agy')
+    const latest = path.join(agy, 'cache', 'last_conversations.json')
+    const conversation = path.join(agy, 'conversations', 'conv-d.db')
+    fs.mkdirSync(path.dirname(latest), { recursive: true })
+    fs.mkdirSync(path.dirname(conversation), { recursive: true })
+    fs.writeFileSync(latest, JSON.stringify({ [at('d')]: 'conv-d' }))
+    fs.writeFileSync(conversation, '')
+    touch(conversation, T - 500)
 
     touch(at('old'), T - 10_000)
     touch(at('older'), T - 20_000)
@@ -54,10 +64,11 @@ describe('listDirs', () => {
           { path: at('old'), at: 0 }
         ]
       },
-      { claude, codex }
+      { claude, codex, agy }
     )
 
     expect(dirs.map((d) => [d.name, d.usedMs && T - d.usedMs, d.usedPresetId])).toEqual([
+      ['d', 500, 'agy'],
       ['c', 1000, 'codex'],
       ['b', 2000, 'claude'],
       ['a', 3000, 'shell'],
@@ -82,7 +93,7 @@ describe('listDirs', () => {
 
     const [dir] = await listDirs(
       { projectsDir: dev, presets: [{ id: 'shell', name: 'Shell', cwd: '~' }], recentDirs: [] },
-      { claude, codex: path.join(root, 'codex') }
+      { claude, codex: path.join(root, 'codex'), agy: path.join(root, 'agy') }
     )
     expect(dir?.usedMs).toBeGreaterThan(0)
     expect(dir?.usedPresetId).toBeNull()

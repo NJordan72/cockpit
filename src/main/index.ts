@@ -95,7 +95,7 @@ import { editorCommand, openInEditor } from './editor'
 import { gitRoot, gitStatus } from './git'
 import { listCharacters } from './kids'
 import { buildKidsMenu, buildMenu, menuTemplate } from './menu'
-import { abbreviateHome, claudeHome, cockpitHome, codexHome, expandHome } from './paths'
+import { abbreviateHome, agyHome, claudeHome, cockpitHome, codexHome, expandHome } from './paths'
 import { actOnPr, checkLog, listPrs, readPr, readPrAct } from './prs'
 import { PtyManager } from './pty'
 import { runRequests, RunStore } from './runs'
@@ -362,7 +362,7 @@ const DISPLAY_SETTLE_MS = 2000
 const MAX_PROMPT = 20_000
 
 /**
- * Types a prompt into a pane running Claude Code or Codex, as a bracketed
+ * Types a prompt into a pane running Claude Code, Codex, or agy, as a bracketed
  * paste so newlines stay in the prompt, then presses Enter. The pause lets
  * the agent finish taking the paste, or it reads the Enter as part of it.
  */
@@ -1408,7 +1408,11 @@ function registerIpc(): void {
   ipcMain.handle(IPC.dirsList, async (e): Promise<DirListing> => {
     if (!trusted(e)) throw new Error('untrusted sender')
     return {
-      dirs: await listDirs(config.get(), { claude: claudeHome(), codex: codexHome() }, tasks)
+      dirs: await listDirs(
+        config.get(),
+        { claude: claudeHome(), codex: codexHome(), agy: agyHome() },
+        tasks
+      )
     }
   })
   ipcMain.handle(IPC.webRecent, (e): RecentPage[] => {

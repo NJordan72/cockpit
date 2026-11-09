@@ -1,36 +1,8 @@
 import { describe, expect, it } from 'bun:test'
-import { codexTitleState, CodexWatcher, OscScanner, parseCodexNotification } from './codex'
+import { codexTitleState, CodexWatcher, parseCodexNotification } from './codex'
 
 const title = (t: string): string => `\x1b]0;${t}\x07`
 const notify = (t: string): string => `\x1b]9;${t}\x07`
-
-describe('OscScanner', () => {
-  it('finds sequences ended by BEL or ST among other output', () => {
-    const s = new OscScanner()
-    expect(s.feed(`plain \x1b[1mbold\x1b[0m ${title('Ready')} more \x1b]9;hi\x1b\\ end`)).toEqual([
-      { code: 0, text: 'Ready' },
-      { code: 9, text: 'hi' }
-    ])
-  })
-
-  it('joins a sequence split across chunks, even at the ESC', () => {
-    const s = new OscScanner()
-    expect(s.feed('abc \x1b')).toEqual([])
-    expect(s.feed(']0;Work')).toEqual([])
-    expect(s.feed('ing\x07 tail')).toEqual([{ code: 0, text: 'Working' }])
-  })
-
-  it('drops a sequence that another escape interrupts', () => {
-    const s = new OscScanner()
-    expect(s.feed('\x1b]0;half\x1b[2J' + title('Ready'))).toEqual([{ code: 0, text: 'Ready' }])
-  })
-
-  it('gives up on a sequence that never ends', () => {
-    const s = new OscScanner()
-    s.feed('\x1b]0;' + 'x'.repeat(10_000))
-    expect(s.feed(title('Ready'))).toEqual([{ code: 0, text: 'Ready' }])
-  })
-})
 
 describe('codexTitleState', () => {
   it('reads the run state', () => {

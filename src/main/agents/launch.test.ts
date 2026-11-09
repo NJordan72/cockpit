@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { agentLaunch, CODEX_SETTINGS, detectAgent, shQuote } from './launch'
+import { agentEnv, agentLaunch, CODEX_SETTINGS, detectAgent, shQuote } from './launch'
 
 const files = { claudeSettings: '/Users/me/.cockpit/agents/claude-settings.json' }
 
@@ -9,12 +9,15 @@ describe('detectAgent', () => {
     expect(detectAgent('  codex --search')).toEqual({ agent: 'codex', end: 7 })
     expect(detectAgent('~/.local/bin/claude -c')?.agent).toBe('claude')
     expect(detectAgent('FOO=1 BAR=x claude')?.agent).toBe('claude')
+    expect(detectAgent('agy --model x')).toEqual({ agent: 'agy', end: 3 })
+    expect(detectAgent('~/.local/share/mise/shims/agy')?.agent).toBe('agy')
   })
 
   it('leaves other commands alone', () => {
     expect(detectAgent(undefined)).toBeNull()
     expect(detectAgent('')).toBeNull()
     expect(detectAgent('claude-monitor')).toBeNull()
+    expect(detectAgent('agy-wrapper')).toBeNull()
     expect(detectAgent('cd ~/dev && claude')).toBeNull()
     expect(detectAgent('echo claude')).toBeNull()
   })
@@ -40,6 +43,28 @@ describe('agentLaunch', () => {
       `codex ${CODEX_SETTINGS.map((s) => `-c ${shQuote(s)}`).join(' ')} resume --last`
     )
     expect(r.command).toContain(`-c 'tui.notification_method="osc9"'`)
+  })
+
+  it('runs agy as it is; its reporting is switched on in the environment', () => {
+    expect(agentLaunch('agy --model x', files)).toEqual({ command: 'agy --model x', agent: 'agy' })
+    expect(agentEnv('agy')).toEqual({ AGY_CLI_OSC7501: 'on' })
+    expect(agentEnv('claude')).toEqual({})
+    expect(agentEnv(null)).toEqual({})
+  })
+
+  it("continues agy's latest conversation when resuming, since it has no picker flag", () => {
+    expect(agentLaunch('agy --model x', files, { resume: true }).command).toBe(
+      'agy --continue --model x'
+    )
+  })
+
+  it('passes agy a first prompt as one word, so a leading "--" stays text', () => {
+    expect(agentLaunch('agy', files, { prompt: ' --fix it' }).command).toBe(
+      `agy '--prompt-interactive=--fix it'`
+    )
+    expect(agentLaunch('agy', files, { prompt: "it's" }).command).toBe(
+      `agy '--prompt-interactive=it'\\''s'`
+    )
   })
 
   it('opens the session picker when resuming', () => {
