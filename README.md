@@ -2,7 +2,7 @@
 
 [![check](https://github.com/NJordan72/cockpit/actions/workflows/check.yml/badge.svg)](https://github.com/NJordan72/cockpit/actions/workflows/check.yml)
 
-A macOS app for running Claude Code and Codex side by side. Each agent runs in
+A macOS app for running Claude Code, Codex, and Antigravity CLI side by side. Each agent runs in
 its own terminal with its usual interface, and Cockpit adds what goes around
 them: tabs, splits, and presets; a status for every pane (working, needs
 input, done) with notifications; tasks, which give each agent a branch and a
@@ -66,22 +66,23 @@ bun run start   # run the production build
 ```
 
 Panes run their commands through a login shell (`$SHELL -l`), so `claude`,
-`codex`, and anything else on your login PATH work as usual.
+`codex`, `agy`, and anything else on your login PATH work as usual.
 
 ## Start screen
 
 Cockpit opens on a list of your projects: the folders in `~/dev`, plus recent
 directories elsewhere, most recently used first. "Used" counts a Cockpit pane
-started there, and Claude Code or Codex run there from anywhere (Cockpit reads
-when each last wrote to its transcripts in `~/.claude/projects/` and its
-session logs in `~/.codex/sessions/`). Each row says which agent ran last and
-how long ago.
+started there, and Claude Code, Codex, or Antigravity CLI run there from
+anywhere. Cockpit reads when each last wrote to its transcripts in
+`~/.claude/projects/`, its session logs in `~/.codex/sessions/`, and the
+folder's latest conversation in `~/.gemini/antigravity-cli/conversations/`.
+Each row says which agent ran last and how long ago.
 
 The switch at the top picks the agent (`Tab` flips it), and `Enter` or a click
 opens the selected project in a new tab with that agent. The switch remembers
 the agent you launched last. Type to filter, or type a path starting with `~`
-or `/`. The switch lists every preset with a command (Claude Code and Codex by
-default).
+or `/`. The switch lists every preset with a command (Claude Code, Codex, and
+Antigravity CLI by default).
 
 If the last session left tabs open, **Restore last session** brings them back
 instead. Launching a project starts fresh, and the old layout is gone. Closing
@@ -89,8 +90,8 @@ the last tab returns to the start screen.
 
 ## Tabs, splits, presets
 
-`Cmd+T` opens a picker: choose a preset with `Tab` (Shell, Claude Code, Codex
-by default), pick a directory (the current pane's, then the start screen's
+`Cmd+T` opens a picker: choose a preset with `Tab` (Shell, Claude Code, Codex,
+Antigravity CLI by default), pick a directory (the current pane's, then the start screen's
 list), and press `Enter`. Type to filter, or type a path starting with `~` or
 `/`. Split keys open the same picker, starting in the focused pane's directory
 and preset. Drag a tab along the tab bar to move it.
@@ -151,9 +152,11 @@ button once its agent has proposed a plan (see [Plans](#plans)). Its buttons ope
 a new tab, a plain shell tab (no agent) in the focused pane's directory, a new [task](#tasks), split right or down, clear the pane, and hide or show the panels, and its menu
 switches layouts. Clear ends the pane's process and starts its preset again in
 the same directory, with a new terminal and an empty status, activity log, and
-file list; the old conversation stays in Claude Code's or Codex's own history.
-Resume does the same, but starts the agent at its own list of past sessions
-in that directory (`claude --resume`, `codex resume`) so you can pick one up again.
+file list; the old conversation stays in the agent's own history. Resume
+does the same, but starts the agent at its own list of past sessions in that
+directory (`claude --resume`, `codex resume`) so you can pick one up again.
+Antigravity CLI has no flag for its list, so Resume continues the directory's
+latest conversation (`agy --continue`); type `/resume` there to pick another.
 Editor opens the focused pane's project, which is its git repository or, outside
 one, its directory, with the `editor` command from `config.json` (see
 [Config](#config)). Hover a button to see its shortcut. The toolbar stays put
@@ -186,17 +189,25 @@ How each kind of pane is followed:
   pane's output. `~/.codex/config.toml` isn't touched. Any `-c` makes Codex
   run without its shared background server (it says so in a startup warning),
   so these sessions don't show up in `codex agents`.
+- **Antigravity CLI** (a command starting with `agy`, 1.4.0 or later): Cockpit
+  sets `AGY_CLI_OSC7501=on` in the pane's environment, so agy reports in
+  [OSC 7501](https://www.superlogical.com/rex/docs/build/program-status)
+  sequences when it's working, waiting for you (with the command it wants to
+  run or the question it's asking), done (with its last message), or failed,
+  and reads them from the pane's output. agy reads hooks only from
+  `~/.gemini/config/hooks.json`, a trusted folder's `.agents/hooks.json`, and
+  plugins, none of which Cockpit edits, so those reports are all it gets.
 - **Anything else**: a pane that keeps printing for a second is working, and
   one that has been quiet for a few seconds is idle. Typing and redraws after
   a resize don't count.
 
 A dialog counts as answered when you press Enter, Esc, or a number key (which
-picks that option in Claude Code's dialogs), or when the tool call it asked
+picks that option in Claude Code's and agy's dialogs), or when the tool call it asked
 about finishes, and a reminder Claude sends after you answered doesn't bring
 needs input back.
 
-Agent awareness needs the preset's command to start with `claude` or `codex`
-(optionally after `VAR=value` settings). Running `claude` by hand in a Shell
+Agent awareness needs the preset's command to start with `claude`, `codex`,
+or `agy` (optionally after `VAR=value` settings). Running `claude` by hand in a Shell
 pane gets the output heuristic only. Interrupting a turn with Esc sends no
 hook, so an interrupted Claude turn turns idle once its spinner has been still
 for 10 seconds.
@@ -235,9 +246,10 @@ tabs, each with a count:
   shows, and when the window comes forward.
 
 Claude Code panes fill every tab, from the same hooks that drive their status
-plus SubagentStart and SubagentStop. Codex panes log the start and end of each
-turn and its approval requests, which is all Codex reports through the
-terminal, so their Files and Agents tabs stay empty. Shell panes only have
+plus SubagentStart and SubagentStop. Codex and Antigravity CLI panes log the
+start and end of each turn, its approval requests, and (for agy) its
+questions, which is all they report through the terminal, so their Files and
+Agents tabs stay empty. Shell panes only have
 Git. The log is kept in memory, never written to disk, and never shown to
 widgets. Each pane keeps its newest 1,000 entries until the pane closes or
 Cockpit quits.
@@ -385,8 +397,8 @@ from the main checkout into each new worktree. `setup` runs in the task's
 first terminal before the agent starts, so you see its output. If it fails,
 Cockpit says so and starts the agent anyway. mise trusts a worktree of a
 checkout it trusts, so tools pinned in `mise.toml` work there without another
-`mise trust`. Claude Code and Codex may ask whether to trust the new folder
-the first time an agent starts in it.
+`mise trust`. Claude Code, Codex, and Antigravity CLI may ask whether to trust
+the new folder the first time an agent starts in it.
 
 The **Tasks** panel, in the tab group with Pull requests, lists every task,
 newest first. Each row shows the branch, the repository, how many terminals
@@ -711,7 +723,8 @@ to `config.json.broken-<time>` before being replaced.
   "presets": [
     { "id": "shell", "name": "Shell", "cwd": "~" },
     { "id": "claude", "name": "Claude Code", "command": "claude", "cwd": "~/dev" },
-    { "id": "codex", "name": "Codex", "command": "codex", "cwd": "~/dev" }
+    { "id": "codex", "name": "Codex", "command": "codex", "cwd": "~/dev" },
+    { "id": "agy", "name": "Antigravity CLI", "command": "agy", "cwd": "~/dev" }
   ],
   "keybindings": { "newTab": "Cmd+T", "splitRight": "Cmd+D" /* ... */ },
   "terminal": { "fontFamily": "...", "fontSize": 13, "scrollback": 5000 },
