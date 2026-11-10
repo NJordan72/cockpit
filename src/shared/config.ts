@@ -115,6 +115,8 @@ export interface TerminalSettings {
   fontSize: number
   /** Lines each terminal keeps above the screen. A full one at 200 columns holds about 2.4 KB a line. */
   scrollback: number
+  /** Copy text to the clipboard as soon as it's selected with the mouse. */
+  copyOnSelect: boolean
 }
 
 export interface WidgetPlacement {
@@ -311,7 +313,8 @@ export const DEFAULT_TERMINAL: TerminalSettings = {
   fontFamily:
     '"0xProto Nerd Font Mono", "JetBrainsMono Nerd Font Mono", ui-monospace, Menlo, monospace',
   fontSize: 13,
-  scrollback: 5000
+  scrollback: 5000,
+  copyOnSelect: true
 }
 
 /**
@@ -740,6 +743,9 @@ export function migrateConfig(raw: unknown): CockpitConfig {
     const lines = raw.terminal.scrollback
     if (typeof lines === 'number' && Number.isInteger(lines) && lines >= 0 && lines <= 100_000) {
       terminal.scrollback = lines
+    }
+    if (typeof raw.terminal.copyOnSelect === 'boolean') {
+      terminal.copyOnSelect = raw.terminal.copyOnSelect
     }
   }
 
