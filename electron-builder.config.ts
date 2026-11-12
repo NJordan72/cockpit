@@ -55,6 +55,9 @@ const config: Configuration = {
     extendInfo: {
       NSAppleEventsUsageDescription:
         'A program running in a Cockpit terminal wants to control another app.',
+      NSMicrophoneUsageDescription:
+        'A program running in a Cockpit terminal wants to use the microphone.',
+      NSCameraUsageDescription: 'A program running in a Cockpit terminal wants to use the camera.',
       NSDesktopFolderUsageDescription:
         'A program running in a Cockpit terminal wants to use files on your Desktop.',
       NSDocumentsFolderUsageDescription:

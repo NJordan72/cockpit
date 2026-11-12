@@ -13,5 +13,11 @@
     <!-- Lets programs in a pane send Apple Events (osascript), after macOS asks. -->
     <key>com.apple.security.automation.apple-events</key>
     <true/>
+    <!-- Lets programs in a pane use the microphone, after macOS asks. -->
+    <key>com.apple.security.device.audio-input</key>
+    <true/>
+    <!-- Lets programs in a pane use the camera, after macOS asks. -->
+    <key>com.apple.security.device.camera</key>
+    <true/>
   </dict>
 </plist>
