@@ -727,7 +727,7 @@ to `config.json.broken-<time>` before being replaced.
     { "id": "agy", "name": "Antigravity CLI", "command": "agy", "cwd": "~/dev" }
   ],
   "keybindings": { "newTab": "Cmd+T", "splitRight": "Cmd+D" /* ... */ },
-  "terminal": { "fontFamily": "...", "fontSize": 13, "scrollback": 5000 },
+  "terminal": { "fontFamily": "...", "fontSize": 13, "scrollback": 5000, "copyOnSelect": true },
   "appearance": {
     "theme": "midnight",
     "overrides": { "accent": "#ff9e64" },
@@ -841,6 +841,11 @@ keeps the file it read as `config.v6.json`.
 | Option        | Acts as Meta (Alt+b, Alt+f, ...)                          |
 | Cmd+C / Cmd+V | Copy selection / paste (bracketed paste when enabled)     |
 | Cmd+K         | Clear the screen and scrollback                           |
+
+Selecting text with the mouse copies it, as in iTerm2. Set
+`terminal.copyOnSelect` to `false` to copy only with Cmd+C. Claude Code,
+Codex and other full-screen programs read the mouse themselves, so hold
+Option while dragging to select text in their panes.
 
 Click a URL to open it in the browser. Click a file path (`~/deck/index.html`,
 `/etc/hosts`, `src/app.ts:12`, `slides/`) to open it in its default app, or a

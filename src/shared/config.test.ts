@@ -76,6 +76,9 @@ describe('migrateConfig', () => {
     expect(migrateConfig({ terminal: { scrollback: 20_000 } }).terminal.scrollback).toBe(20_000)
     expect(migrateConfig({ terminal: { scrollback: -1 } }).terminal.scrollback).toBe(5000)
     expect(migrateConfig({ terminal: { scrollback: 1.5 } }).terminal.scrollback).toBe(5000)
+    expect(migrateConfig({}).terminal.copyOnSelect).toBe(true)
+    expect(migrateConfig({ terminal: { copyOnSelect: false } }).terminal.copyOnSelect).toBe(false)
+    expect(migrateConfig({ terminal: { copyOnSelect: 'no' } }).terminal.copyOnSelect).toBe(true)
   })
 
   it('repairs a layout: bad nodes dropped, single-child splits collapsed, missing presets become shell', () => {

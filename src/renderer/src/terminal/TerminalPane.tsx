@@ -50,6 +50,7 @@ export function TerminalPane({
   const webglFailed = useRef(false)
   const [exit, setExit] = useState<PtyExitInfo | null>(null)
   const exitRef = useRef<PtyExitInfo | null>(null)
+  const copyOnSelectRef = useRef(settings.copyOnSelect)
 
   // Values the long-lived terminal effect reads later without re-running.
   const spawnArgs = useRef({
@@ -62,6 +63,7 @@ export function TerminalPane({
   })
   useLayoutEffect(() => {
     exitRef.current = exit
+    copyOnSelectRef.current = settings.copyOnSelect
     spawnArgs.current = {
       presetId: pane.presetId,
       cwd: pane.cwd,
@@ -222,6 +224,27 @@ export function TerminalPane({
     }
     term.textarea?.addEventListener('focus', onFocusIn)
 
+    // Copy on mouse release rather than on every selection change, so a drag
+    // writes the clipboard once and search highlights never do. The release is
+    // watched on the window because a drag can end outside the pane. A click
+    // that only clears the selection leaves the clipboard alone.
+    let copyTimer = 0
+    const onSelectEnd = (): void => {
+      window.removeEventListener('mouseup', onSelectEnd)
+      // xterm finishes the selection in its own mouseup handler; read it after.
+      copyTimer = window.setTimeout(() => {
+        if (!disposed && copyOnSelectRef.current && term.hasSelection()) {
+          api.clipboard.writeText(term.getSelection())
+        }
+      })
+    }
+    const onSelectStart = (e: MouseEvent): void => {
+      if (e.button !== 0) return
+      window.removeEventListener('mouseup', onSelectEnd)
+      window.addEventListener('mouseup', onSelectEnd)
+    }
+    host.addEventListener('mousedown', onSelectStart)
+
     start()
 
     let frame = 0
@@ -240,6 +263,9 @@ export function TerminalPane({
       observer.disconnect()
       cancelAnimationFrame(frame)
       term.textarea?.removeEventListener('focus', onFocusIn)
+      host.removeEventListener('mousedown', onSelectStart)
+      window.removeEventListener('mouseup', onSelectEnd)
+      clearTimeout(copyTimer)
       onInput.dispose()
       onBinary.dispose()
       onResize.dispose()
