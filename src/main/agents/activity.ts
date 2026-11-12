@@ -471,7 +471,7 @@ export class ActivityLog {
 
   /**
    * What Codex or agy reported through its terminal (see CodexWatcher and
-   * AgyWatcher). Neither says what was asked, only that a turn started.
+   * ProgramStatusWatcher). Neither says what was asked, only that a turn started.
    */
   terminal(paneId: string, signal: AgentSignal): void {
     const pane = this.panes.get(paneId)

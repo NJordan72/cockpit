@@ -107,6 +107,11 @@ export class PtyManager {
     s.proc.write(data)
   }
 
+  /** Answers the program the way its terminal would. Not the user's typing, so not observed. */
+  reply(id: string, data: string): void {
+    this.sessions.get(id)?.proc.write(data)
+  }
+
   /** The pane's terminal has parsed `chars` more characters of output. */
   ack(id: string, chars: number): void {
     this.sessions.get(id)?.output.ack(chars)

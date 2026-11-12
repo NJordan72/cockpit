@@ -8,6 +8,7 @@ import { AgentMonitor } from './monitor'
 let home: string
 let monitor: AgentMonitor
 let changed: string[]
+let replies: [string, string][]
 
 function hook(env: Record<string, string>, event: string, payload: object): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -31,7 +32,9 @@ function hook(env: Record<string, string>, event: string, payload: object): Prom
 beforeEach(async () => {
   home = fs.mkdtempSync(path.join(os.tmpdir(), 'ck-mon-'))
   changed = []
+  replies = []
   monitor = new AgentMonitor({
+    reply: (id, data) => replies.push([id, data]),
     home,
     onChange: (id) => changed.push(id),
     onActivity: () => undefined,
@@ -49,6 +52,34 @@ afterEach(() => {
 })
 
 describe('AgentMonitor', () => {
+  it('follows a remote Claude from its terminal until its hooks get through', async () => {
+    const osc = (state: string): string => `\x1b]7501;state=${state}:app=claude-code\x1b\\`
+    const launch = monitor.launch('claude', {}, true)
+    expect(launch.command).toStartWith(`claude --settings '{"hooks":`)
+    const env = monitor.spawn('p1', 'claude', true)
+    monitor.output('p1', '\x1b]7501;?\x1b\\\x1b[c')
+    expect(replies).toEqual([['p1', '\x1b]7501;?\x1b\\']])
+    monitor.output('p1', osc('working'))
+    expect(monitor.status('p1')?.status).toBe('working')
+
+    const cmd = monitor.remoteCommand('box', '~', launch, env)
+    expect(cmd).toContain(`-R /tmp/cockpit-${env.COCKPIT_SESSION_ID ?? ''}.sock:`)
+
+    // Once a hook arrives, the terminal's reports no longer drive the status.
+    expect(await hook(env, 'Stop', { transcript_path: '/nowhere.jsonl' })).toBe(204)
+    expect(monitor.status('p1')?.status).toBe('done')
+    monitor.output('p1', osc('working'))
+    expect(monitor.status('p1')?.status).toBe('done')
+  })
+
+  it('forwards nothing for a remote agent that reports through its terminal', () => {
+    const launch = monitor.launch('codex', {}, true)
+    const env = monitor.spawn('p2', 'codex', true)
+    const cmd = monitor.remoteCommand('box', '~', launch, env)
+    expect(cmd).not.toContain('-R')
+    expect(cmd).not.toContain('COCKPIT_SESSION_ID')
+  })
+
   it('writes the hook script and settings, and launches Claude with them', () => {
     expect(fs.statSync(monitor.files.hook).mode & 0o777).toBe(0o755)
     expect(fs.statSync(monitor.files.run).mode & 0o777).toBe(0o755)

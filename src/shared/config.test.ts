@@ -55,6 +55,26 @@ describe('migrateConfig', () => {
     })
   })
 
+  it('keeps a preset’s ssh host, and drops one that could pass for an option', () => {
+    const c = migrateConfig({
+      presets: [
+        { id: 'box', name: 'Box', command: 'claude', cwd: '~/src', host: ' me@box.local ' },
+        { id: 'v6', name: 'V6', host: '[fe80::1]' },
+        { id: 'opt', name: 'Opt', host: '-oProxyCommand=evil' },
+        { id: 'sp', name: 'Sp', host: 'a b' },
+        { id: 'num', name: 'Num', host: 42 }
+      ]
+    })
+    expect(c.presets.map((p) => p.host)).toEqual([
+      undefined,
+      'me@box.local',
+      '[fe80::1]',
+      undefined,
+      undefined,
+      undefined
+    ])
+  })
+
   it('drops malformed and duplicate presets', () => {
     const c = migrateConfig({
       presets: [{ id: 'shell', name: 'Sh' }, { id: 'shell', name: 'dup' }, { name: 'no id' }, 42]

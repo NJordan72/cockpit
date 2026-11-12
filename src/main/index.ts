@@ -329,10 +329,20 @@ function windowsChanged(): void {
   }
 }
 
-/** Where a pane's agent runs now: as its hooks last said, else its process's cwd, else where it started. */
+/** The ssh host a pane's preset runs on; null for this machine. */
+function paneHost(pane: PaneNode): string | null {
+  return config.get().presets.find((p) => p.id === pane.presetId)?.host ?? null
+}
+
+/**
+ * Where a pane's agent runs now: as its hooks last said, else its process's
+ * cwd, else where it started. null for a remote pane, whose directory is on
+ * another machine, so the branch, PRs, commands, and files that depend on it
+ * aren't looked up here.
+ */
 async function paneCwd(paneId: string): Promise<string | null> {
   const pane = findPaneNode(paneId)
-  if (!pane) return null
+  if (!pane || paneHost(pane)) return null
   let cwd = agents.activity.cwd(pane.id)
   if (!cwd) {
     const pid = ptys.pid(pane.id)
@@ -347,7 +357,7 @@ async function paneCwd(paneId: string): Promise<string | null> {
  */
 async function branchDir(paneId: string): Promise<string | null | undefined> {
   const pane = findPaneNode(paneId)
-  if (!pane) return null
+  if (!pane || paneHost(pane)) return null
   const hooked = agents.activity.cwd(pane.id)
   if (hooked) return hooked
   const pid = ptys.pid(pane.id)
@@ -785,7 +795,8 @@ function captureCwds(only?: CockpitWindow): void {
   const update = (n: LayoutNode): LayoutNode => {
     if (n.type === 'split') return { ...n, children: n.children.map(update) }
     const pid = pids.get(n.id)
-    const cwd = pid === undefined ? null : processCwdSync(pid)
+    // A remote pane's local process is ssh, wherever it started.
+    const cwd = pid === undefined || paneHost(n) ? null : processCwdSync(pid)
     return cwd ? { ...n, cwd: abbreviateHome(cwd) } : n
   }
   const live = new Set(windows.filter((w) => w.shown && (!only || w === only)).map((w) => w.id))
@@ -1023,25 +1034,34 @@ function registerIpc(): void {
     if (!trusted(e)) throw new Error('untrusted sender')
     const preset = config.get().presets.find((p) => p.id === opts.presetId)
     if (!preset) throw new Error(`unknown preset: ${opts.presetId}`)
-    const cwd = await resolveCwd(opts.cwd, preset.cwd)
+    const { host } = preset
+    // A remote preset runs in its own directory on its host; ssh starts in the home folder here.
+    if (host && opts.strictCwd) throw new Error(`${preset.name} runs on ${host}, not here`)
+    const cwd = host ? expandHome('~') : await resolveCwd(opts.cwd, preset.cwd)
     // A command meant for that directory mustn't run anywhere else.
     if (opts.strictCwd && cwd !== expandHome(opts.cwd ?? '')) {
       throw new Error(`not a directory: ${opts.cwd ?? '(none)'}`)
     }
-    const launch = agents.launch(preset.command, {
-      resume: opts.resume === true,
-      prompt: opts.prompt
-    })
-    const env = agents.spawn(opts.id, launch.agent)
+    const launch = agents.launch(
+      preset.command,
+      { resume: opts.resume === true, prompt: opts.prompt },
+      host !== undefined
+    )
+    const env = agents.spawn(opts.id, launch.agent, host !== undefined)
     // A new task's worktree runs its repository's setup first, once.
-    const setup = tasks.takeSetup(cwd)
+    const setup = host ? null : tasks.takeSetup(cwd)
+    const command = host
+      ? agents.remoteCommand(host, preset.cwd, launch, env)
+      : setup
+        ? withSetup(setup, launch.command)
+        : launch.command
     let pid: number
     try {
       ;({ pid } = ptys.create(e.sender, {
         id: opts.id,
         cols: opts.cols,
         rows: opts.rows,
-        command: setup ? withSetup(setup, launch.command) : launch.command,
+        command,
         cwd,
         env
       }))
@@ -1049,8 +1069,8 @@ function registerIpc(): void {
       agents.killed(opts.id)
       throw err
     }
-    const display = abbreviateHome(cwd)
-    if (display !== '~') config.addRecentDir(display, preset.id)
+    const display = host ? `${host}:${preset.cwd}` : abbreviateHome(cwd)
+    if (!host && display !== '~') config.addRecentDir(display, preset.id)
     sessionsChanged()
     void branches.refresh([opts.id])
     return { pid, cwd: display }
@@ -1615,6 +1635,7 @@ async function startup(): Promise<void> {
     },
     onActivity: (update) => broadcast(IPC.activityUpdate, update),
     runRequests: runRequests(runs),
+    reply: (paneId, data) => ptys.reply(paneId, data),
     // No notifications over kids mode; the tab badges have them afterwards.
     windowFocused: () => kidsActive || anyFocused(),
     describe: (paneId) => {

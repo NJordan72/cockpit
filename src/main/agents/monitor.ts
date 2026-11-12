@@ -1,18 +1,19 @@
 // Ties agent awareness together: the event socket, the files Claude Code's
-// hooks use, Codex's and agy's terminal reports, each pane's status and
-// activity, notifications, and transcript details.
+// hooks use, terminal reports (Codex's, agy's, and Claude's in remote panes),
+// each pane's status and activity, notifications, and transcript details.
 import { randomUUID } from 'node:crypto'
 import fs from 'node:fs'
 import type { ActivityUpdate } from '@shared/activity'
 import type { AgentKind } from '@shared/widgets'
 import { claudeHome } from '../paths'
 import { ActivityLog } from './activity'
-import { AgyWatcher } from './agy'
 import { CodexWatcher } from './codex'
 import { parseClaudeHook, type AgentReport, type AgentSignal } from './events'
 import { installAgentFiles, type AgentFiles } from './files'
 import { agentEnv, agentLaunch, type AgentLaunch, type LaunchOptions } from './launch'
 import { Notifier, type NotifierDeps } from './notifier'
+import { ProgramStatusWatcher } from './programStatus'
+import { remoteClaudeSettings, remoteCommand, remoteSocketPath } from './remote'
 import { EventServer, socketPath, type IncomingEvent, type RunRequestHandler } from './server'
 import { StatusTracker, type PaneStatus } from './tracker'
 import { readTranscript } from './transcript'
@@ -46,11 +47,20 @@ export interface AgentMonitorOptions extends Omit<NotifierDeps, 'status'> {
   onActivity: (update: ActivityUpdate) => void
   /** Answers cockpit-run on the event socket. */
   runRequests?: RunRequestHandler
+  /** Writes to a pane's input as its terminal would, to answer an agent's probe. */
+  reply?: (paneId: string, data: string) => void
 }
 
-/** Reads an agent's reports out of its pane's output (Codex, agy). */
+/** Reads an agent's reports out of its pane's output (Codex, agy, remote Claude). */
 interface TerminalWatcher {
   feed(chunk: string): AgentReport[]
+}
+
+interface Watched {
+  agent: AgentKind
+  watcher: TerminalWatcher
+  /** Claude's hooks got through, so they drive the status and its terminal reports don't. */
+  hooked: boolean
 }
 
 interface Transcript {
@@ -67,14 +77,18 @@ export class AgentMonitor {
   private readonly server: EventServer
   private readonly tracker: StatusTracker
   private readonly notifier: Notifier
-  private watchers = new Map<string, { agent: AgentKind; watcher: TerminalWatcher }>()
+  private watchers = new Map<string, Watched>()
+  /** Panes whose agent runs on another machine; its files aren't on this one. */
+  private remote = new Set<string>()
   private transcripts = new Map<string, Transcript>()
   private focused: string | null = null
 
   private readonly onChange: (paneId: string) => void
+  private readonly reply: (paneId: string, data: string) => void
 
   constructor(opts: AgentMonitorOptions) {
     this.onChange = opts.onChange
+    this.reply = opts.reply ?? (() => undefined)
     this.files = installAgentFiles(opts.home)
     this.activity = new ActivityLog(opts.onActivity)
     this.notifier = new Notifier({ ...opts, status: (id) => this.tracker.get(id) })
@@ -98,21 +112,33 @@ export class AgentMonitor {
     this.activity.close()
   }
 
-  /** The command to run for a preset, with whatever its agent needs to report here. */
-  launch(command: string | undefined, opts: LaunchOptions = {}): AgentLaunch {
-    return agentLaunch(command, this.files, opts)
+  /**
+   * The command to run for a preset, with whatever its agent needs to report
+   * here. On a remote machine, Claude's hooks go inline, since the settings
+   * file is on this one.
+   */
+  launch(command: string | undefined, opts: LaunchOptions = {}, remote = false): AgentLaunch {
+    const files = remote ? { claudeSettings: remoteClaudeSettings() } : this.files
+    return agentLaunch(command, files, opts)
   }
 
   /**
    * A pane's process is about to start. Returns the env vars that tie its
    * events to it, and any its agent needs to report at all.
    */
-  spawn(paneId: string, agent: AgentKind | null): Record<string, string> {
+  spawn(paneId: string, agent: AgentKind | null, remote = false): Record<string, string> {
     const token = randomUUID()
     this.transcripts.delete(paneId)
+    if (remote) this.remote.add(paneId)
+    else this.remote.delete(paneId)
+    const reply = (data: string): void => this.reply(paneId, data)
     const watcher =
-      agent === 'codex' ? new CodexWatcher() : agent === 'agy' ? new AgyWatcher() : null
-    if (agent && watcher) this.watchers.set(paneId, { agent, watcher })
+      agent === 'codex'
+        ? new CodexWatcher()
+        : agent === 'agy' || (agent === 'claude' && remote)
+          ? new ProgramStatusWatcher(agent, reply)
+          : null
+    if (agent && watcher) this.watchers.set(paneId, { agent, watcher, hooked: false })
     else this.watchers.delete(paneId)
     this.tracker.spawn(paneId, token, agent)
     this.activity.started(paneId, agent)
@@ -120,6 +146,35 @@ export class AgentMonitor {
     // the folder behind the system ones, and it stays on PATH.
     const PATH = [this.files.dir, process.env.PATH].filter(Boolean).join(':')
     return { ...agentEnv(agent), COCKPIT_SESSION_ID: token, COCKPIT_SOCKET: this.server.path, PATH }
+  }
+
+  /**
+   * The local command for a remote pane (see remote.ts). `env` is what spawn
+   * returned; the remote machine gets its agent's own vars and, for Claude,
+   * the session token and the forwarded socket.
+   */
+  remoteCommand(
+    host: string,
+    dir: string,
+    launch: AgentLaunch,
+    env: Record<string, string>
+  ): string {
+    const token = env.COCKPIT_SESSION_ID ?? ''
+    // ssh -R splits its argument at ":", so a socket path holding one can't be forwarded.
+    const forward =
+      launch.agent === 'claude' && token && !this.server.path.includes(':')
+        ? { local: this.server.path, remote: remoteSocketPath(token) }
+        : null
+    return remoteCommand({
+      host,
+      dir,
+      command: launch.command,
+      env: {
+        ...agentEnv(launch.agent),
+        ...(forward ? { COCKPIT_SESSION_ID: token, COCKPIT_SOCKET: forward.remote } : {})
+      },
+      forward
+    })
   }
 
   status(paneId: string): PaneStatus | null {
@@ -130,7 +185,9 @@ export class AgentMonitor {
     this.tracker.output(paneId)
     const watched = this.watchers.get(paneId)
     if (!watched) return
-    for (const r of watched.watcher.feed(data)) {
+    const reports = watched.watcher.feed(data)
+    if (watched.hooked) return
+    for (const r of reports) {
       logReport(paneId, watched.agent, r.signal)
       this.tracker.reportPane(paneId, r)
       this.activity.terminal(paneId, r.signal)
@@ -147,12 +204,14 @@ export class AgentMonitor {
 
   exited(paneId: string): void {
     this.watchers.delete(paneId)
+    this.remote.delete(paneId)
     this.tracker.exit(paneId)
     this.activity.exited(paneId)
   }
 
   killed(paneId: string): void {
     this.watchers.delete(paneId)
+    this.remote.delete(paneId)
     this.transcripts.delete(paneId)
     this.notifier.dismiss(paneId)
     this.tracker.remove(paneId)
@@ -176,8 +235,11 @@ export class AgentMonitor {
     const paneId = this.tracker.paneFor(e.token)
     logReport(paneId, `claude:${e.event}`, report.signal)
     if (!paneId || !this.tracker.report(e.token, report)) return false
+    const watched = this.watchers.get(paneId)
+    if (watched) watched.hooked = true
     this.activity.claude(paneId, e.event, e.payload)
-    if (report.transcriptPath) {
+    // A remote pane's transcript is on the remote disk.
+    if (report.transcriptPath && !this.remote.has(paneId)) {
       const kind = report.signal.kind
       this.readTranscript(paneId, report.transcriptPath, kind === 'done' || kind === 'idle')
     }
