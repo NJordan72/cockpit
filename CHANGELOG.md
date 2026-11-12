@@ -1,5 +1,21 @@
 # cockpit
 
+## 0.5.0
+
+### Minor Changes
+
+- Antigravity CLI (`agy`) is the third agent next to Claude Code and Codex. Cockpit sets `AGY_CLI_OSC7501=on` in `agy` panes and reads the OSC 7501 status agy sends, so a pane shows working, needs input (with the command or question), and done, with notifications and Activity log entries. Resume continues the folder's latest conversation (`agy --continue`), a first prompt starts the session with `--prompt-interactive`, and the start screen counts folders agy last ran in. New configs get an Antigravity CLI preset; an existing `config.json` keeps its presets, so add `{ "id": "agy", "name": "Antigravity CLI", "command": "agy", "cwd": "~/dev" }` to `presets` to get one. ([#60](https://github.com/NJordan72/cockpit/pull/60))
+
+- Right-click menus in the Pull requests, Tasks, Runs, and Activity Files panels can send prompts you configure in `config.json`'s `itemActions`. A command fills in the item's fields, so `/propose-ship {number}` on pull request [#123](https://github.com/NJordan72/cockpit/issues/123) sends `/propose-ship 123`, and a `target` sends it to the focused pane's agent, a new agent tab, or the agent in a task's or run item's worktree in one click. `prActions` moves to `itemActions.pr`, and the config version goes from 6 to 7. ([#56](https://github.com/NJordan72/cockpit/pull/56))
+
+- Presets can run on another machine. Give one a `host` (an ssh destination, or a `Host` from `~/.ssh/config`) and its command runs there over `ssh -t`, in the preset's `cwd` on that machine, through the remote login shell. Claude Code panes answer Claude's OSC 7501 probe and follow its status from the terminal stream, and Cockpit forwards its event socket with `ssh -R` and passes the hooks inline, so the Activity panel and plans work too where the server allows socket forwarding. Codex and Antigravity CLI report through the terminal as they do locally. Remote panes don't show a branch, PRs, tasks, or Claude's transcript title and token count. ([#65](https://github.com/NJordan72/cockpit/pull/65))
+
+### Patch Changes
+
+- Selecting text in a terminal with the mouse copies it to the clipboard, as in iTerm2. In Claude Code, Codex and Antigravity CLI panes, hold Option while dragging to select. Set `terminal.copyOnSelect` to `false` in `config.json` to copy only with Cmd+C. ([#62](https://github.com/NJordan72/cockpit/pull/62))
+
+- Programs running in a terminal can use the microphone and camera. macOS asks for access for Cockpit the first time, and Cockpit then shows up under Privacy & Security → Microphone and Camera. Before, macOS refused without asking. ([#67](https://github.com/NJordan72/cockpit/pull/67))
+
 ## 0.4.0
 
 ### Minor Changes
