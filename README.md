@@ -208,9 +208,43 @@ needs input back.
 
 Agent awareness needs the preset's command to start with `claude`, `codex`,
 or `agy` (optionally after `VAR=value` settings). Running `claude` by hand in a Shell
-pane gets the output heuristic only. Interrupting a turn with Esc sends no
+pane gets the output heuristic only, and so does running it by hand after `ssh` (use a
+preset with a `host`; see [Remote machines](#remote-machines)). Interrupting a turn with Esc sends no
 hook, so an interrupted Claude turn turns idle once its spinner has been still
 for 10 seconds.
+
+### Remote machines
+
+A preset with a `host` runs its command on that machine over ssh, in the
+preset's `cwd` there:
+
+```jsonc
+{ "id": "box", "name": "Claude on box", "command": "claude", "cwd": "~/src", "host": "me@box" }
+```
+
+`host` is anything `ssh` takes as a destination, including a `Host` from
+`~/.ssh/config`, so keys, ports, and jump hosts are set there. Cockpit runs
+`ssh -t <host>`, which runs the command through the remote user's login shell
+(`$SHELL -lc`) so it sees the PATH their profile sets. Nothing is installed on
+the remote machine.
+
+- **Claude Code** reports in OSC 7501 sequences once its terminal answers its
+  probe (2.1.295 and later), and Cockpit answers in remote panes, so the status
+  works with nothing forwarded. For the Activity panel and plans, Cockpit also
+  forwards its event socket with `ssh -R` to `/tmp/cockpit-<session>.sock` on
+  the remote machine and passes the hooks inline to `--settings`, each calling
+  the remote `curl`. This needs the server's `AllowStreamLocalForwarding`
+  (on by default). If the server refuses, ssh prints a warning and the agent
+  runs anyway, with status but no Activity.
+- **Codex** and **Antigravity CLI** get the same flags and environment as a
+  local pane, and report through the terminal the same way.
+
+A remote pane has no branch, PR pane, tasks, commands list, or file links,
+since its directory is on the other machine, and no title or token count from
+Claude's transcript. When the connection drops, ssh exits and the pane shows
+that it ended, like any other process; Clear starts it again. A remote preset
+always starts in its own `cwd`: the directory the launcher picks is on this
+machine.
 
 Notifications need macOS to allow them for the app. The unsigned development
 build (`bun run dev`, `bun run start`) runs as "Electron", which macOS 27

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { AgyWatcher } from './agy'
+import { PROGRAM_STATUS_REPLY, ProgramStatusWatcher } from './programStatus'
 
 // Reports captured from agy 1.5.3 with AGY_CLI_OSC7501=on, unless made up for a case it didn't hit.
 const osc = (body: string): string => `\x1b]7501;${body}\x1b\\`
@@ -9,11 +9,12 @@ const TRUST = osc('state=blocked:kind=permission:app=antigravity:msg=VHJ1c3QgdGh
 const IDLE = osc('state=idle:app=antigravity')
 const WORKING = osc('state=working:app=antigravity')
 
-const signals = (w: AgyWatcher, chunk: string): unknown[] => w.feed(chunk).map((r) => r.signal)
+const signals = (w: ProgramStatusWatcher, chunk: string): unknown[] =>
+  w.feed(chunk).map((r) => r.signal)
 
-describe('AgyWatcher', () => {
+describe('ProgramStatusWatcher', () => {
   it('skips the sign-in agy reports for a moment at startup', () => {
-    const w = new AgyWatcher()
+    const w = new ProgramStatusWatcher('agy')
     expect(signals(w, `\x1b[c\x1b]7501;?\x1b\\${SIGN_IN}`)).toEqual([])
     expect(signals(w, TRUST)).toEqual([
       { kind: 'waiting', key: null, ask: 'permission', message: 'Trust this folder?' }
@@ -26,7 +27,7 @@ describe('AgyWatcher', () => {
   })
 
   it('follows turns through an approval and a question', () => {
-    const w = new AgyWatcher()
+    const w = new ProgramStatusWatcher('agy')
     w.feed(SIGN_IN + IDLE)
     expect(signals(w, WORKING)).toEqual([{ kind: 'working', clears: true }])
     expect(
@@ -62,13 +63,13 @@ describe('AgyWatcher', () => {
   })
 
   it('goes back to idle when a turn is interrupted', () => {
-    const w = new AgyWatcher()
+    const w = new ProgramStatusWatcher('agy')
     w.feed(IDLE + WORKING)
     expect(signals(w, IDLE)).toEqual([{ kind: 'idle', keepDone: true }])
   })
 
   it('reports a failed turn as done, with its error', () => {
-    const w = new AgyWatcher()
+    const w = new ProgramStatusWatcher('agy')
     w.feed(IDLE + WORKING)
     const error = 'Agent Platform API has not been used in project p before or it is disabled.'
     expect(signals(w, osc(`state=error:app=antigravity:msg=${b64(error)}`))).toEqual([
@@ -81,7 +82,7 @@ describe('AgyWatcher', () => {
   })
 
   it('says what a request is about when agy gives no message', () => {
-    const w = new AgyWatcher()
+    const w = new ProgramStatusWatcher('agy')
     w.feed(IDLE)
     expect(signals(w, osc('state=blocked:kind=question'))).toEqual([
       { kind: 'waiting', key: null, ask: 'question', message: 'Antigravity has a question' }
@@ -92,7 +93,7 @@ describe('AgyWatcher', () => {
   })
 
   it('reports a change once, not every repeat or progress update', () => {
-    const w = new AgyWatcher()
+    const w = new ProgramStatusWatcher('agy')
     expect(signals(w, IDLE + IDLE)).toHaveLength(1)
     expect(
       signals(w, osc('state=working:progress=10') + osc('state=working:progress=20'))
@@ -101,12 +102,38 @@ describe('AgyWatcher', () => {
   })
 
   it('ignores child records, other sequences, and reports it can’t read, even split across chunks', () => {
-    const w = new AgyWatcher()
+    const w = new ProgramStatusWatcher('agy')
     expect(
       signals(w, osc('state=working:id=subagent/1') + '\x1b]0;title\x07' + osc('state=nope'))
     ).toEqual([])
     expect(signals(w, '\x1b]75')).toEqual([])
     expect(signals(w, '01;state=working:app=antigravity\x1b')).toEqual([])
     expect(signals(w, '\\')).toEqual([{ kind: 'working', clears: true }])
+  })
+})
+
+describe('ProgramStatusWatcher for Claude Code', () => {
+  // Captured from Claude Code 2.1.322 through a PTY that answered its probe.
+  const CLAUDE = (state: string): string => osc(`state=${state}:app=claude-code`)
+
+  it('answers the probe, then follows a turn', () => {
+    const replies: string[] = []
+    const w = new ProgramStatusWatcher('claude', (d) => replies.push(d))
+    expect(signals(w, '\x1b]7501;?\x1b\\\x1b[c')).toEqual([])
+    expect(replies).toEqual([PROGRAM_STATUS_REPLY])
+    expect(PROGRAM_STATUS_REPLY).toBe('\x1b]7501;?\x1b\\')
+    expect(signals(w, CLAUDE('idle') + CLAUDE('working') + CLAUDE('done'))).toEqual([
+      { kind: 'idle', keepDone: true },
+      { kind: 'working', clears: true },
+      { kind: 'done', message: null }
+    ])
+  })
+
+  it('names Claude when a request carries no message', () => {
+    const w = new ProgramStatusWatcher('claude')
+    w.feed(CLAUDE('idle'))
+    expect(signals(w, osc('state=blocked:kind=permission:app=claude-code'))).toEqual([
+      { kind: 'waiting', key: null, ask: 'permission', message: 'Claude needs permission' }
+    ])
   })
 })

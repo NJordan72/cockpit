@@ -20,6 +20,19 @@ export interface Preset {
   command?: string
   /** Default working directory. `~` is expanded by the main process. */
   cwd: string
+  /**
+   * An ssh destination (`user@host`, or a Host from ~/.ssh/config). The
+   * command then runs on that machine, in `cwd` there.
+   */
+  host?: string
+}
+
+/**
+ * A host is passed to ssh as one word after `--`, so it can't add an option.
+ * Starting with "-" or holding a space or a quote would still be a mistake.
+ */
+export function validHost(host: string): boolean {
+  return /^[A-Za-z0-9_.@%[\]:-]{1,255}$/.test(host) && !host.startsWith('-')
 }
 
 export type Action =
@@ -397,6 +410,7 @@ function readPreset(v: unknown): Preset | null {
   if (!isObj(v) || !nonEmpty(v.id) || !nonEmpty(v.name)) return null
   const preset: Preset = { id: v.id, name: v.name, cwd: nonEmpty(v.cwd) ? v.cwd : '~' }
   if (nonEmpty(v.command)) preset.command = v.command
+  if (isStr(v.host) && validHost(v.host.trim())) preset.host = v.host.trim()
   return preset
 }
 
