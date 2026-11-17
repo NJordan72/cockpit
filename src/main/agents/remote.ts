@@ -52,6 +52,77 @@ export function remoteDir(dir: string): string {
   return shQuote(dir)
 }
 
+/**
+ * This machine's name in the path of its copies on a remote machine: the
+ * hostname up to its first dot, as one safe path segment.
+ */
+export function machineName(hostname: string): string {
+  const name = (hostname.split('.')[0] ?? '').replace(/[^A-Za-z0-9_-]/g, '-')
+  return name === '' ? 'local' : name
+}
+
+/**
+ * Where a remote pane starts, and the local directory to copy there first.
+ *
+ * - `host:dir`, the directory a remote pane reports, opens `dir` again
+ *   without copying, so restarting a pane never copies over the agent's
+ *   edits.
+ * - A local directory, as the launcher passes, is copied into
+ *   ~/.cockpit/remote/<this machine> on the host, away from the user's own
+ *   files there and from another machine's copies: `~/dev/app` goes to
+ *   `~/.cockpit/remote/mac/dev/app`, and `/srv/app`, outside home, to
+ *   `~/.cockpit/remote/mac/root/srv/app`. Home itself and / are too big to
+ *   copy, so they open the preset's directory instead.
+ * - Anything else opens the preset's directory.
+ */
+export function remoteTarget(
+  host: string,
+  cwd: string | undefined,
+  fallback: string,
+  here: { home: string; machine: string }
+): { dir: string; copyFrom: string | null } {
+  const none = { dir: fallback, copyFrom: null }
+  if (!cwd) return none
+  if (cwd.startsWith(`${host}:`)) {
+    const dir = cwd.slice(host.length + 1)
+    return dir ? { dir, copyFrom: null } : none
+  }
+  const { home } = here
+  const local = (cwd === '~' || cwd.startsWith('~/') ? home + cwd.slice(1) : cwd).replace(
+    /\/+$/,
+    ''
+  )
+  if (!local.startsWith('/') || local === home) return none
+  const copies = `~/.cockpit/remote/${machineName(here.machine)}`
+  if (local.startsWith(`${home}/`))
+    return { dir: `${copies}/${local.slice(home.length + 1)}`, copyFrom: local }
+  return { dir: `${copies}/root${local}`, copyFrom: local }
+}
+
+/**
+ * Copies a local directory to `dir` on the host with rsync, before ssh
+ * starts the agent there. Files a .gitignore ignores are left out, and so
+ * are files that are newer on the host (-u), so copying again doesn't undo
+ * the agent's edits. Nothing on the host is deleted. rsync creates only the
+ * last directory of the path, so the remote side runs `mkdir -p` first.
+ * Works with macOS's openrsync as well as rsync 3.
+ */
+export function copyCommand(host: string, local: string, dir: string): string {
+  // rsync's remote paths are relative to the home folder there.
+  const target = dir.startsWith('~/') ? dir.slice(2) : dir
+  const note = `Copying ${local} to ${host}:${dir}`
+  const rsync = [
+    'rsync',
+    '-a',
+    '-u',
+    '--filter=:- .gitignore',
+    `--rsync-path=mkdir -p ${shQuote(target)} && rsync`,
+    `${local}/`,
+    `${host}:${target}/`
+  ]
+  return `printf '%s\\n' ${shQuote(note)} && ${rsync.map(shQuote).join(' ')}`
+}
+
 export interface RemoteCommandOptions {
   /** Passed to ssh as is; validHost has checked it. */
   host: string

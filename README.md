@@ -242,9 +242,21 @@ the remote machine.
 A remote pane has no branch, PR pane, tasks, commands list, or file links,
 since its directory is on the other machine, and no title or token count from
 Claude's transcript. When the connection drops, ssh exits and the pane shows
-that it ended, like any other process; Clear starts it again. A remote preset
-always starts in its own `cwd`: the directory the launcher picks is on this
-machine.
+that it ended, like any other process; Clear starts it again.
+
+A directory picked in the launcher (Cmd+T) for a remote preset is copied into
+`~/.cockpit/remote/<this Mac's name>` on the remote machine, away from your
+files there and from other machines' copies, then the agent starts in the
+copy: on a Mac named `studio`, `~/dev/app` goes to
+`~/.cockpit/remote/studio/dev/app` there, and `/srv/app`, outside your home
+folder, to `~/.cockpit/remote/studio/root/srv/app`. The name is the hostname
+up to its first dot. The copy
+uses rsync over ssh and shows in the pane. It leaves out what each `.gitignore` ignores (so `node_modules` stays
+behind) and files that are newer on the remote machine, and it never deletes
+anything there. It only goes one way: changes the agent makes stay on the
+remote machine. Restarting the pane or restoring the layout reopens the same
+remote directory without copying again. Picking your home folder opens the
+preset's `cwd` instead, without copying. The remote machine needs rsync.
 
 Notifications need macOS to allow them for the app. The unsigned development
 build (`bun run dev`, `bun run start`) runs as "Electron", which macOS 27
