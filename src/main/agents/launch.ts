@@ -33,21 +33,6 @@ export function detectAgent(command: string | undefined): { agent: AgentKind; en
 }
 
 /**
- * Codex reports through its terminal: OSC 0 titles that name its run state
- * ("Working", "Ready", "[ ! ] Action Required") and OSC 9 notifications when
- * a turn completes or it asks for approval. These settings pin both, since
- * either default could be changed in the user's config. (Codex's hooks would
- * need a trust entry saved to config.toml, and `notify` would replace the
- * user's own notify program.)
- */
-export const CODEX_SETTINGS = [
-  'tui.terminal_title=["activity","run-state"]',
-  'tui.notifications=true',
-  'tui.notification_method="osc9"',
-  'tui.notification_condition="always"'
-]
-
-/**
  * agy reports over OSC 7501 only to a terminal that answers its probe, and
  * xterm.js doesn't. This tells it to report anyway. agy reads hooks only
  * from ~/.gemini/config/hooks.json, a trusted workspace's .agents/hooks.json,
@@ -63,6 +48,8 @@ export function agentEnv(agent: AgentKind | null): Record<string, string> {
 export interface AgentLaunch {
   command: string | undefined
   agent: AgentKind | null
+  /** The command gives the agent its first prompt. */
+  prompted?: true
 }
 
 export interface LaunchOptions {
@@ -74,9 +61,11 @@ export interface LaunchOptions {
 
 /**
  * The preset command with the flags its agent needs to report to Cockpit.
- * With `resume`, the agent opens its own picker of past sessions in the
- * directory: `claude --resume` (first, so its optional value can't take the
- * next word) or `codex resume`. agy has no flag for its picker, so it
+ * Codex needs none: it reports over OSC 7501 in any terminal (see codex.ts),
+ * and any `-c` would also keep it off its shared background server, so its
+ * sessions wouldn't show in `codex agents`. With `resume`, the agent opens
+ * its own picker of past sessions in the directory: `claude --resume`
+ * (first, so its optional value can't take the next word) or `codex resume`. agy has no flag for its picker, so it
  * continues the directory's latest conversation with `--continue`. A
  * `prompt` goes last, as the agent's first message (`--prompt-interactive`
  * for agy, whose `--prompt` runs headless). Other commands run as they are.
@@ -91,11 +80,9 @@ export function agentLaunch(
   const flags =
     found.agent === 'claude'
       ? [...(resume ? ['--resume'] : []), '--settings', files.claudeSettings]
-      : found.agent === 'codex'
-        ? [...CODEX_SETTINGS.flatMap((s) => ['-c', s]), ...(resume ? ['resume'] : [])]
-        : resume
-          ? ['--continue']
-          : []
+      : resume
+        ? [found.agent === 'codex' ? 'resume' : '--continue']
+        : []
   const inserted = flags.map((f) => ` ${shQuote(f)}`).join('')
   const text = prompt?.trim()
   // Joined to its flag with "=", a prompt that starts with "--" can't pass for another flag.
@@ -105,6 +92,7 @@ export function agentLaunch(
       : ''
   return {
     command: `${command.slice(0, found.end)}${inserted}${command.slice(found.end)}${first}`,
-    agent: found.agent
+    agent: found.agent,
+    ...(first ? { prompted: true as const } : {})
   }
 }

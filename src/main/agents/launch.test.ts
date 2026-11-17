@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { agentEnv, agentLaunch, CODEX_SETTINGS, detectAgent, shQuote } from './launch'
+import { agentEnv, agentLaunch, detectAgent, shQuote } from './launch'
 
 const files = { claudeSettings: '/Users/me/.cockpit/agents/claude-settings.json' }
 
@@ -36,13 +36,12 @@ describe('agentLaunch', () => {
     expect(r.command).toBe(`claude --settings '/Users/me/My Stuff/it'\\''s.json'`)
   })
 
-  it('passes Codex its terminal reporting settings', () => {
-    const r = agentLaunch('codex resume --last', files)
-    expect(r.agent).toBe('codex')
-    expect(r.command).toBe(
-      `codex ${CODEX_SETTINGS.map((s) => `-c ${shQuote(s)}`).join(' ')} resume --last`
-    )
-    expect(r.command).toContain(`-c 'tui.notification_method="osc9"'`)
+  it('runs Codex as it is, so it keeps its shared background server', () => {
+    expect(agentLaunch('codex resume --last', files)).toEqual({
+      command: 'codex resume --last',
+      agent: 'codex'
+    })
+    expect(agentEnv('codex')).toEqual({})
   })
 
   it('runs agy as it is; its reporting is switched on in the environment', () => {
@@ -72,7 +71,7 @@ describe('agentLaunch', () => {
       `claude --resume --settings ${files.claudeSettings} --model opus`
     )
     expect(agentLaunch('codex --search', files, { resume: true }).command).toBe(
-      `codex ${CODEX_SETTINGS.map((s) => `-c ${shQuote(s)}`).join(' ')} resume --search`
+      'codex resume --search'
     )
     expect(agentLaunch('htop', files, { resume: true })).toEqual({ command: 'htop', agent: null })
   })
@@ -81,6 +80,14 @@ describe('agentLaunch', () => {
     expect(agentLaunch('claude', files, { prompt: "/start-story sc-12 it's" }).command).toBe(
       `claude --settings ${files.claudeSettings} '/start-story sc-12 it'\\''s'`
     )
+    expect(agentLaunch('codex', files, { prompt: 'fix it' })).toEqual({
+      command: `codex 'fix it'`,
+      agent: 'codex',
+      prompted: true
+    })
+    // Resuming opens the picker, so there's no first prompt to give.
+    expect(agentLaunch('codex', files, { prompt: 'fix it', resume: true }).prompted).toBeUndefined()
+    expect(agentLaunch('codex', files, { prompt: '  ' }).prompted).toBeUndefined()
     expect(agentLaunch('htop', files, { prompt: 'hi' }).command).toBe('htop')
   })
 

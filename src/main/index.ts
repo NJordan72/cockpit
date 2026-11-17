@@ -1047,7 +1047,7 @@ function registerIpc(): void {
       { resume: opts.resume === true, prompt: opts.prompt },
       host !== undefined
     )
-    const env = agents.spawn(opts.id, launch.agent, host !== undefined)
+    const env = agents.spawn(opts.id, launch.agent, host !== undefined, launch.prompted)
     // A new task's worktree runs its repository's setup first, once.
     const setup = host ? null : tasks.takeSetup(cwd)
     const command = host

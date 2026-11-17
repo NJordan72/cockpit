@@ -1,52 +1,88 @@
-// Codex reports its state through the terminal (see CODEX_SETTINGS): OSC 0
-// titles carry its run state, and OSC 9 notifications say when a turn is
-// complete or it wants approval. This reads both out of the PTY stream.
+// Codex reports its state with OSC 7501 Program Status reports (see
+// programStatus.ts) in any terminal, without a probe or a flag. As of 0.163.0
+// it sends idle, working, blocked, and clear (on exit), and never done: a
+// finished turn goes from working straight back to idle, as does one the
+// user stops. Its blocked reports carry no kind and no message, so an
+// approval looks the same as a question.
+//
+// Codex also reports a few seconds of working right after it starts, while it
+// loads, before anything was asked. So a stretch of work is a turn only when
+// a prompt went in since Codex was last idle: typed and sent with Enter, or
+// given on the command line. Going idle after a turn means it ended.
 import type { AgentReport, AgentSignal } from './events'
-import { OscScanner } from './osc'
+import { programSignal, ProgramStatusReader } from './programStatus'
 
-export type CodexTitleState = 'working' | 'waiting' | 'ready'
+/** What Cockpit's terminal sends for Shift+Enter, which starts a new line in Codex's prompt. */
+const NEWLINE = '\x1b\r'
+// eslint-disable-next-line no-control-regex
+const PASTE = /\x1b\[200~[\s\S]*?(\x1b\[201~|$)/g
 
-/** The run state in a title built from ["activity", "run-state"]. */
-export function codexTitleState(title: string): CodexTitleState | null {
-  if (title.includes('Action Required')) return 'waiting'
-  if (/\b(Working|Thinking|Waiting)\b/.test(title)) return 'working'
-  if (/\b(Ready|Starting)\b/.test(title)) return 'ready'
-  return null
-}
-
-const WAITING_NOTIFICATION = /^(Approval requested|Codex wants to edit|Plan mode prompt:|Question:)/
-
-/** An OSC 9 notification: either a request for the user, or the end of a turn. */
-export function parseCodexNotification(text: string): AgentSignal {
-  if (WAITING_NOTIFICATION.test(text)) return { kind: 'waiting', key: null, message: text }
-  return { kind: 'done', message: text === 'Agent turn complete' ? null : text }
+/** Whether typing this sends Codex's prompt: an Enter, not Shift+Enter or a line break in a paste. */
+export function sendsPrompt(data: string): boolean {
+  return data.replace(PASTE, '').replaceAll(NEWLINE, '').includes('\r')
 }
 
 /** One Codex pane's terminal output, turned into reports. */
 export class CodexWatcher {
-  private scanner = new OscScanner()
-  private titleState: CodexTitleState | null = null
+  private reader: ProgramStatusReader
+  /** The user sent a prompt since Codex was last idle. */
+  private sent = false
+  /** The command line gave Codex its first prompt, and that turn hasn't started. */
+  private queued: boolean
+  /** Codex is on a turn: working on a prompt, or asking for something. */
+  private turn = false
+  /** Codex is working on something that isn't a turn, like loading at startup. */
+  private loading = false
+
+  /** `prompted`: the command line gives Codex its first prompt. */
+  constructor(prompted = false, reply?: (data: string) => void) {
+    this.queued = prompted
+    this.reader = new ProgramStatusReader(reply)
+  }
+
+  /** What the user typed into the pane. */
+  input(data: string): void {
+    if (sendsPrompt(data)) this.sent = true
+  }
 
   feed(chunk: string): AgentReport[] {
     const reports: AgentReport[] = []
     const add = (signal: AgentSignal): void => {
       reports.push({ signal, transcriptPath: null, title: null })
     }
-    for (const osc of this.scanner.feed(chunk)) {
-      if (osc.code === 9) {
-        // OSC 9 with a numeric first field is ConEmu's progress report, not a notification.
-        if (!/^\d+;/.test(osc.text)) add(parseCodexNotification(osc.text))
-      } else if (osc.code === 0 || osc.code === 2) {
-        // The title is redrawn with every spinner frame; only a change of state counts.
-        // A notification can arrive before the title catches up, so a stale
-        // frame of the old state mustn't undo it.
-        const state = codexTitleState(osc.text)
-        if (!state || state === this.titleState) continue
-        this.titleState = state
-        if (state === 'working') add({ kind: 'working', clears: true })
-        // The approval's own text comes in the OSC 9 notification.
-        else if (state === 'waiting') add({ kind: 'waiting', key: null, message: null })
-        else add({ kind: 'idle', keepDone: true })
+    for (const report of this.reader.feed(chunk)) {
+      const wasTurn = this.turn
+      switch (report.state) {
+        case 'working':
+          if (!wasTurn && !this.sent && !this.queued) {
+            this.loading = true
+            continue
+          }
+          this.turn = true
+          this.queued = false
+          // Carrying on after a request is part of the same turn.
+          add({ kind: 'working', clears: !wasTurn })
+          break
+        case 'blocked':
+          // A request reaches the user even outside a turn they started.
+          this.turn = true
+          add(programSignal('codex', report, null))
+          break
+        default: {
+          // Back at its prompt, or gone. Loading ends quietly, and a prompt
+          // sent during it runs next, as a turn of its own.
+          const loaded = this.loading && !wasTurn
+          this.turn = false
+          this.loading = false
+          if (!loaded) this.sent = false
+          if (report.state === 'done' || report.state === 'error') {
+            add(programSignal('codex', report, null))
+          } else if (wasTurn && report.state === 'idle') {
+            add({ kind: 'done', message: null })
+          } else if (!loaded) {
+            add({ kind: 'idle', keepDone: true })
+          }
+        }
       }
     }
     return reports

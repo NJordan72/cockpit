@@ -473,13 +473,13 @@ describe('ActivityLog', () => {
     log.started('p2', 'codex')
     log.terminal('p2', { kind: 'working', clears: true })
     log.terminal('p2', { kind: 'waiting', key: null, message: null })
-    log.terminal('p2', { kind: 'waiting', key: null, message: 'Approval requested: ls' })
+    log.terminal('p2', { kind: 'waiting', key: null, message: 'Codex is waiting for you' })
     log.terminal('p2', { kind: 'done', message: null })
     log.exited('p2')
     expect(log.snapshot('p2').entries.map((e) => [e.kind, e.label, e.text])).toEqual([
       ['session', 'Started', 'Codex'],
       ['prompt', '', 'Turn started'],
-      ['ask', 'Approval', 'Approval requested: ls'],
+      ['ask', 'Waiting', 'Codex is waiting for you'],
       ['stop', '', 'Turn complete'],
       ['session', 'Exited', '']
     ])

@@ -6,8 +6,8 @@ import type { PaneStatus } from './tracker'
 
 /**
  * A short wait before showing: the request's own text can arrive just after
- * the status changes (Codex's title, then its OSC 9), and a status that flips
- * straight back isn't worth a notification.
+ * the status changes, and a status that flips straight back isn't worth a
+ * notification.
  */
 const SETTLE_MS = 250
 const MAX_BODY = 200
