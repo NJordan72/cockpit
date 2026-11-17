@@ -72,6 +72,23 @@ describe('AgentMonitor', () => {
     expect(monitor.status('p1')?.status).toBe('done')
   })
 
+  it('ends a Codex turn the user sent when Codex goes back to its prompt', () => {
+    const osc = (state: string): string => `\x1b]7501;state=${state}:app=codex\x1b\\`
+    const launch = monitor.launch('codex', { prompt: 'fix it' })
+    expect(launch).toEqual({ command: `codex 'fix it'`, agent: 'codex', prompted: true })
+    monitor.spawn('cx', 'codex', false, launch.prompted)
+    monitor.output('cx', osc('idle') + osc('working'))
+    expect(monitor.status('cx')?.status).toBe('working')
+    monitor.output('cx', osc('idle'))
+    expect(monitor.status('cx')?.status).toBe('done')
+
+    monitor.input('cx', 'and the tests\r')
+    monitor.output('cx', osc('working'))
+    expect(monitor.status('cx')?.status).toBe('working')
+    monitor.output('cx', osc('idle'))
+    expect(monitor.status('cx')?.status).toBe('done')
+  })
+
   it('forwards nothing for a remote agent that reports through its terminal', () => {
     const launch = monitor.launch('codex', {}, true)
     const env = monitor.spawn('p2', 'codex', true)

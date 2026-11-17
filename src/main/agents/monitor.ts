@@ -54,6 +54,8 @@ export interface AgentMonitorOptions extends Omit<NotifierDeps, 'status'> {
 /** Reads an agent's reports out of its pane's output (Codex, agy, remote Claude). */
 interface TerminalWatcher {
   feed(chunk: string): AgentReport[]
+  /** What the user typed into the pane, for a watcher that needs it. */
+  input?(data: string): void
 }
 
 interface Watched {
@@ -124,9 +126,15 @@ export class AgentMonitor {
 
   /**
    * A pane's process is about to start. Returns the env vars that tie its
-   * events to it, and any its agent needs to report at all.
+   * events to it, and any its agent needs to report at all. `prompted`: the
+   * command gives the agent its first prompt (see AgentLaunch).
    */
-  spawn(paneId: string, agent: AgentKind | null, remote = false): Record<string, string> {
+  spawn(
+    paneId: string,
+    agent: AgentKind | null,
+    remote = false,
+    prompted = false
+  ): Record<string, string> {
     const token = randomUUID()
     this.transcripts.delete(paneId)
     if (remote) this.remote.add(paneId)
@@ -134,7 +142,7 @@ export class AgentMonitor {
     const reply = (data: string): void => this.reply(paneId, data)
     const watcher =
       agent === 'codex'
-        ? new CodexWatcher()
+        ? new CodexWatcher(prompted, reply)
         : agent === 'agy' || (agent === 'claude' && remote)
           ? new ProgramStatusWatcher(agent, reply)
           : null
@@ -195,6 +203,7 @@ export class AgentMonitor {
   }
 
   input(paneId: string, data: string): void {
+    this.watchers.get(paneId)?.watcher.input?.(data)
     this.tracker.input(paneId, data)
   }
 

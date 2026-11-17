@@ -87,8 +87,9 @@ describe('ProgramStatusWatcher', () => {
     expect(signals(w, osc('state=blocked:kind=question'))).toEqual([
       { kind: 'waiting', key: null, ask: 'question', message: 'Antigravity has a question' }
     ])
+    // The spec gives kind no default, so a bare request could be anything.
     expect(signals(w, osc('state=blocked'))).toEqual([
-      { kind: 'waiting', key: null, ask: 'permission', message: 'Antigravity needs permission' }
+      { kind: 'waiting', key: null, message: 'Antigravity is waiting for you' }
     ])
   })
 

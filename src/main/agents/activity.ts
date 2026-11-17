@@ -38,6 +38,9 @@ const MAX_TITLE = 120
 /** Updates are batched, so a burst of parallel tool calls goes out as one. */
 export const FLUSH_MS = 100
 
+/** How the log names a request, by the kind the agent gave it. */
+const ASK_LABELS = { permission: 'Approval', question: 'Question', auth: 'Sign-in' } as const
+
 type Obj = Record<string, unknown>
 const isObj = (v: unknown): v is Obj => typeof v === 'object' && v !== null && !Array.isArray(v)
 const str = (v: unknown): string | null => (typeof v === 'string' && v.trim() ? v.trim() : null)
@@ -470,8 +473,9 @@ export class ActivityLog {
   }
 
   /**
-   * What Codex or agy reported through its terminal (see CodexWatcher and
-   * ProgramStatusWatcher). Neither says what was asked, only that a turn started.
+   * What Codex, agy, or Claude in a remote pane reported through its terminal
+   * (see CodexWatcher and ProgramStatusWatcher). None says what was asked,
+   * only that a turn started.
    */
   terminal(paneId: string, signal: AgentSignal): void {
     const pane = this.panes.get(paneId)
@@ -479,8 +483,8 @@ export class ActivityLog {
     if (signal.kind === 'working' && signal.clears) {
       this.add(pane, { kind: 'prompt', label: '', text: 'Turn started' })
     } else if (signal.kind === 'waiting' && signal.message) {
-      const label =
-        signal.ask === 'question' ? 'Question' : signal.ask === 'auth' ? 'Sign-in' : 'Approval'
+      // Codex doesn't say whether it wants an approval or an answer.
+      const label = signal.ask ? ASK_LABELS[signal.ask] : 'Waiting'
       this.add(pane, { kind: 'ask', label, ...clip(signal.message) })
     } else if (signal.kind === 'done' && signal.failed) {
       this.add(pane, { kind: 'fail', label: 'Turn failed', ...clip(signal.message ?? '') })

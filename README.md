@@ -183,12 +183,16 @@ How each kind of pane is followed:
   `~/.cockpit/run/` and prints nothing, so Claude behaves exactly as before.
   These hooks add to your own; `~/.claude/settings.json` isn't touched.
   Claude holds hooks back in a folder you haven't trusted yet.
-- **Codex** (a command starting with `codex`): Cockpit adds `-c` overrides
-  that make Codex put its run state in the terminal title and send OSC 9
-  notifications when a turn ends or it wants approval, and reads both from the
-  pane's output. `~/.codex/config.toml` isn't touched. Any `-c` makes Codex
-  run without its shared background server (it says so in a startup warning),
-  so these sessions don't show up in `codex agents`.
+- **Codex** (a command starting with `codex`, 0.163.0 or later): Codex
+  reports in [OSC 7501](https://www.superlogical.com/rex/docs/build/program-status)
+  sequences in any terminal when it's working, waiting for you, or back at
+  its prompt, and Cockpit reads them from the pane's output. Cockpit passes
+  no `-c` settings, so Codex keeps its shared background server and its
+  sessions show up in `codex agents`. Codex doesn't say when a turn is done, or what it's
+  asking, so a turn counts as done when Codex goes back to its prompt after a
+  prompt you sent (or the first prompt of a new task), and its notifications
+  say only that it's waiting or done. The few seconds Codex spends loading
+  when it starts don't count as a turn.
 - **Antigravity CLI** (a command starting with `agy`, 1.4.0 or later): Cockpit
   sets `AGY_CLI_OSC7501=on` in the pane's environment, so agy reports in
   [OSC 7501](https://www.superlogical.com/rex/docs/build/program-status)
@@ -281,8 +285,9 @@ tabs, each with a count:
 
 Claude Code panes fill every tab, from the same hooks that drive their status
 plus SubagentStart and SubagentStop. Codex and Antigravity CLI panes log the
-start and end of each turn, its approval requests, and (for agy) its
-questions, which is all they report through the terminal, so their Files and
+start and end of each turn and each time it waits for you (agy says whether
+it wants an approval or an answer; Codex doesn't), which is all they report
+through the terminal, so their Files and
 Agents tabs stay empty. Shell panes only have
 Git. The log is kept in memory, never written to disk, and never shown to
 widgets. Each pane keeps its newest 1,000 entries until the pane closes or
