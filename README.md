@@ -677,6 +677,11 @@ to another one; when the display comes back, the window goes back to it.
 Closing a window with its red button ends its terminals and forgets it, except
 the last one, which the start screen offers to restore as before.
 
+While Cockpit is open, the Mac doesn't go to sleep on its own, so agents keep
+working when you step away. The display still turns off on its usual
+schedule, and closing the lid or choosing Apple menu > Sleep still sleeps.
+Quitting Cockpit lets the Mac sleep again.
+
 ## Kids mode
 
 Kids mode turns the window into a pretend terminal for a small child who wants
