@@ -10,6 +10,7 @@ import {
   Menu,
   nativeImage,
   Notification,
+  powerSaveBlocker,
   screen,
   session,
   shell,
@@ -135,6 +136,8 @@ let runs: RunStore | null = null
 const runNotices = new Set<Notification>()
 const branches = new BranchTracker(branchDir, () => sessionsChanged())
 let branchesTimer: NodeJS.Timeout | null = null
+/** Keeps the Mac awake while Cockpit is open; null until startup. */
+let awakeBlocker: number | null = null
 let lastSessions = ''
 let warnedNotifications = false
 /**
@@ -1663,6 +1666,10 @@ async function startup(): Promise<void> {
     console.error('agent event server failed to start:', err)
   }
 
+  // Agents run for a long time unattended, so the Mac stays awake while
+  // Cockpit is open. The display can still sleep.
+  awakeBlocker = powerSaveBlocker.start('prevent-app-suspension')
+
   applyMenu()
   registerIpc()
   for (const state of config.get().windows) createWindow(state)
@@ -1721,6 +1728,7 @@ app.on('before-quit', prepareToQuit)
 app.on('will-quit', () => {
   if (tasksTimer) clearInterval(tasksTimer)
   if (branchesTimer) clearInterval(branchesTimer)
+  if (awakeBlocker !== null) powerSaveBlocker.stop(awakeBlocker)
   // A startup that failed partway leaves some of these unset.
   const parts = [config, themes, images, system, widgets, agents, updates] as (
     { close: () => void } | undefined
