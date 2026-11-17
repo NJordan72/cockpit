@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { SystemSample } from '@shared/ipc'
-import { formatBytes, formatShare, formatUptime, meterLevel } from './format'
+import { formatBytes, formatDiskBytes, formatShare, formatUptime, meterLevel } from './format'
 
 function Meter({ share }: { share: number }): React.JSX.Element {
   return (
@@ -10,12 +10,13 @@ function Meter({ share }: { share: number }): React.JSX.Element {
   )
 }
 
-/** CPU, memory, load, and uptime. App turns sampling on while a System panel is visible. */
+/** CPU, memory, load, disk, and uptime. App turns sampling on while a System panel is visible. */
 export function Monitor(): React.JSX.Element {
   const [s, setS] = useState<SystemSample | null>(null)
   useEffect(() => window.cockpit.system.onSample(setS), [])
   if (!s) return <div className="monitor monitor-wait">Reading…</div>
   const mem = s.memTotal > 0 ? s.memUsed / s.memTotal : 0
+  const disk = s.disk ? (s.disk.total - s.disk.free) / s.disk.total : null
   return (
     <div className="monitor">
       <div className="monitor-row">
@@ -32,6 +33,18 @@ export function Monitor(): React.JSX.Element {
       <div className="monitor-sub">
         {formatBytes(s.memUsed)} of {formatBytes(s.memTotal)}
       </div>
+      {s.disk && disk !== null && (
+        <>
+          <div className="monitor-row">
+            <span className="monitor-label">Disk</span>
+            <span className="monitor-value">{formatShare(disk)}</span>
+          </div>
+          <Meter share={disk} />
+          <div className="monitor-sub">
+            {formatDiskBytes(s.disk.free)} free of {formatDiskBytes(s.disk.total)}
+          </div>
+        </>
+      )}
       <div className="monitor-row">
         <span className="monitor-label">Uptime</span>
         <span className="monitor-value">{formatUptime(s.uptime)}</span>

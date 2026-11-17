@@ -258,6 +258,8 @@ export interface SystemSample {
   memTotal: number
   /** Seconds since boot. */
   uptime: number
+  /** Bytes on the volume holding the home folder, or null if it couldn't be read. */
+  disk: { free: number; total: number } | null
 }
 
 export interface CockpitApi {
