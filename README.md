@@ -225,8 +225,10 @@ preset's `cwd` there:
 `host` is anything `ssh` takes as a destination, including a `Host` from
 `~/.ssh/config`, so keys, ports, and jump hosts are set there. Cockpit runs
 `ssh -t <host>`, which runs the command through the remote user's login shell
-(`$SHELL -lc`) so it sees the PATH their profile sets. Nothing is installed on
-the remote machine.
+(`$SHELL -lc`) so it sees the PATH their profile sets. zsh reads `~/.zprofile`
+in that shell but not `~/.zshrc`, so if `claude` is only on the PATH from
+`~/.zshrc`, the pane ends with `command not found`; add the PATH line to
+`~/.zprofile` too. Nothing is installed on the remote machine.
 
 - **Claude Code** reports in OSC 7501 sequences once its terminal answers its
   probe (2.1.295 and later), and Cockpit answers in remote panes, so the status
