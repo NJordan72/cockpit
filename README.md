@@ -639,7 +639,7 @@ title. Changes are saved as your own copy of that layout; View > Layout >
 Reset Layout goes back to the built-in one. Layouts can also be written in
 `config.json`, from these panels: the terminals, the tab bar, Sessions,
 Activity, any widget, a clock, an image or GIF from `~/.cockpit/images/`, and
-a System monitor (CPU, memory, load, uptime). Hand edits apply while Cockpit
+a System monitor (CPU, memory, load, disk, uptime). Hand edits apply while Cockpit
 runs, and terminals and widgets keep running when the layout changes.
 [docs/layouts.md](docs/layouts.md) has the format.
 

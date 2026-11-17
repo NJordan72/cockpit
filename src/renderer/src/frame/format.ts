@@ -5,6 +5,13 @@ export function formatBytes(n: number): string {
   return `${Math.round(n / 1024 ** 2).toString()} MB`
 }
 
+/** Disk sizes in decimal units, as Finder shows them: 994662584320 -> "994.7 GB". */
+export function formatDiskBytes(n: number): string {
+  if (n >= 1000 ** 4) return `${(n / 1000 ** 4).toFixed(2)} TB`
+  if (n >= 1000 ** 3) return `${(n / 1000 ** 3).toFixed(1)} GB`
+  return `${Math.round(n / 1000 ** 2).toString()} MB`
+}
+
 /** Seconds since boot -> "2d 8h", "5h 12m", "12m". */
 export function formatUptime(seconds: number): string {
   const m = Math.floor(seconds / 60)

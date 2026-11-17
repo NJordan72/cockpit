@@ -1,6 +1,7 @@
-// CPU, memory, load, and uptime for the System panel. Sampled only while a
+// CPU, memory, load, uptime, and disk space for the System panel. Sampled only while a
 // System panel is on screen.
 import { execFile } from 'node:child_process'
+import { statfs } from 'node:fs/promises'
 import os from 'node:os'
 import type { SystemSample } from '@shared/ipc'
 
@@ -59,6 +60,28 @@ export function cpuShare(a: CpuTimes, b: CpuTimes): number {
   return total > 0 ? Math.min(1, Math.max(0, (b.busy - a.busy) / total)) : 0
 }
 
+/**
+ * Free and total bytes from statfs. Free is what a normal user can write
+ * (bavail, not bfree, which counts blocks reserved for root). On APFS it
+ * leaves out purgeable space, so it can read lower than Finder's "available".
+ */
+export function diskSpace(s: {
+  bsize: number
+  blocks: number
+  bavail: number
+}): { free: number; total: number } | null {
+  if (!(s.bsize > 0 && s.blocks > 0)) return null
+  return { free: s.bavail * s.bsize, total: s.blocks * s.bsize }
+}
+
+async function disk(): Promise<{ free: number; total: number } | null> {
+  try {
+    return diskSpace(await statfs(os.homedir()))
+  } catch {
+    return null
+  }
+}
+
 function vmStat(): Promise<VmStat | null> {
   return new Promise((resolve) => {
     execFile('/usr/bin/vm_stat', { timeout: 1500 }, (err, stdout) => {
@@ -95,7 +118,7 @@ export class SystemMonitor {
     const now = cpuTimes()
     const cpu = cpuShare(this.last, now)
     this.last = now
-    const vm = await vmStat()
+    const [vm, space] = await Promise.all([vmStat(), disk()])
     const total = os.totalmem()
     const used = (vm && memoryUsed(vm)) ?? total - os.freemem()
     const [l1 = 0, l5 = 0, l15 = 0] = os.loadavg()
@@ -106,7 +129,8 @@ export class SystemMonitor {
       load: [l1, l5, l15],
       memUsed: Math.min(total, Math.max(0, used)),
       memTotal: total,
-      uptime: os.uptime()
+      uptime: os.uptime(),
+      disk: space
     })
   }
 }

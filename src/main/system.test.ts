@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { cpuShare, memoryUsed, parseVmStat } from './system'
+import { cpuShare, diskSpace, memoryUsed, parseVmStat } from './system'
 
 const VM_STAT = `Mach Virtual Memory Statistics: (page size of 16384 bytes)
 Pages free:                                   147276.
@@ -35,5 +35,19 @@ describe('cpuShare', () => {
   it('is the busy share of the time between two readings', () => {
     expect(cpuShare({ busy: 100, total: 1000 }, { busy: 350, total: 2000 })).toBe(0.25)
     expect(cpuShare({ busy: 1, total: 1 }, { busy: 1, total: 1 })).toBe(0)
+  })
+})
+
+describe('diskSpace', () => {
+  it('counts free space a user can write, not blocks kept for root', () => {
+    expect(diskSpace({ bsize: 4096, blocks: 1000, bavail: 250 })).toEqual({
+      free: 250 * 4096,
+      total: 1000 * 4096
+    })
+  })
+
+  it('gives up on an empty reading', () => {
+    expect(diskSpace({ bsize: 0, blocks: 1000, bavail: 250 })).toBeNull()
+    expect(diskSpace({ bsize: 4096, blocks: 0, bavail: 0 })).toBeNull()
   })
 })
