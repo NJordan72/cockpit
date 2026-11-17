@@ -4,7 +4,7 @@
 # Node it ships with.
 [tools]
 bun = "1.4.4"
-node = "24.22.2"
+node = "24.22.3"
 # Linters for the workflows and shell scripts, run by bun run verify.
 actionlint = "1.7.12"
 shellcheck = "0.11.0"
