@@ -1,5 +1,21 @@
 # cockpit
 
+## 0.6.0
+
+### Minor Changes
+
+- Codex panes follow Codex's OSC 7501 status reports instead of its terminal title and notifications, so Cockpit no longer passes Codex any `-c` settings. Codex keeps its shared background server, and its sessions show up in `codex agents`. Codex doesn't say what it's asking or what it finished with, so its notifications now say only that it's waiting or done. ([#73](https://github.com/NJordan72/cockpit/pull/73))
+
+- The Mac doesn't go to sleep on its own while Cockpit is open, so agents keep working when you step away. The display still turns off on its usual schedule, and closing the lid or choosing Sleep still sleeps. ([#75](https://github.com/NJordan72/cockpit/pull/75))
+
+- Picking a directory in the launcher for a remote preset copies it with rsync into `~/.cockpit/remote/<this Mac's name>` on that machine (`~/dev/app` goes to `~/.cockpit/remote/<name>/dev/app`), then starts the agent in the copy. The copy leaves out what `.gitignore` ignores and files that are newer on the remote machine, and never deletes anything. Restarting the pane or restoring the layout reopens the same remote directory without copying again. ([#74](https://github.com/NJordan72/cockpit/pull/74))
+
+- The System panel shows disk space: how full the volume holding your home folder is, and how much is free. It doesn't count purgeable space, so the free figure can be lower than what Finder shows as available. ([#70](https://github.com/NJordan72/cockpit/pull/70))
+
+### Patch Changes
+
+- The launcher's preset buttons stay on one line. Names no longer wrap, and when the presets don't fit, the row scrolls sideways and keeps the chosen one in view. ([#74](https://github.com/NJordan72/cockpit/pull/74))
+
 ## 0.5.0
 
 ### Minor Changes
