@@ -6,11 +6,14 @@ import path from 'node:path'
 import { CLAUDE_HOOK_EVENTS } from './events'
 import { agentLaunch, shQuote } from './launch'
 import {
+  copyCommand,
   inlineHookCommand,
+  machineName,
   remoteClaudeSettings,
   remoteCommand,
   remoteDir,
-  remoteSocketPath
+  remoteSocketPath,
+  remoteTarget
 } from './remote'
 
 /**
@@ -103,6 +106,87 @@ describe('remoteDir', () => {
     expect(remoteDir('/srv/app')).toBe('/srv/app')
     // Another user's home isn't expanded.
     expect(remoteDir('~bob')).toBe(`'~bob'`)
+  })
+})
+
+describe('remoteTarget', () => {
+  const here = { home: '/Users/me', machine: 'Mac.local' }
+  const at = (cwd: string | undefined) => remoteTarget('me@box', cwd, '~/src', here)
+
+  it("copies a local directory into this machine's folder in ~/.cockpit/remote on the host", () => {
+    const copy = { dir: '~/.cockpit/remote/Mac/dev/app', copyFrom: '/Users/me/dev/app' }
+    expect(at('~/dev/app')).toEqual(copy)
+    expect(at('/Users/me/dev/app/')).toEqual(copy)
+    // Outside home, apart from a home directory with the same path.
+    expect(at('/srv/app')).toEqual({
+      dir: '~/.cockpit/remote/Mac/root/srv/app',
+      copyFrom: '/srv/app'
+    })
+  })
+
+  it('names this machine with one safe path segment', () => {
+    expect(machineName('Nicks-MacBook-Pro.local')).toBe('Nicks-MacBook-Pro')
+    expect(machineName("it's mine")).toBe('it-s-mine')
+    expect(machineName('../up')).toBe('local')
+    expect(machineName('')).toBe('local')
+  })
+
+  it('reopens the directory a remote pane reported without copying', () => {
+    expect(at('me@box:~/.cockpit/remote/Mac/dev/app')).toEqual({
+      dir: '~/.cockpit/remote/Mac/dev/app',
+      copyFrom: null
+    })
+    expect(at('me@box:~')).toEqual({ dir: '~', copyFrom: null })
+  })
+
+  it("opens the preset's directory for home, /, and anything else", () => {
+    for (const cwd of [undefined, '', '~', '/Users/me', '/Users/me/', '/', 'dev/app', 'me@box:']) {
+      expect(at(cwd)).toEqual({ dir: '~/src', copyFrom: null })
+    }
+    // Another host's directory is not this one's.
+    expect(remoteTarget('box', 'other:~/x', '~', here)).toEqual({ dir: '~', copyFrom: null })
+  })
+})
+
+describe('copyCommand', () => {
+  it('hands rsync the paths intact, relative to home on the host', () => {
+    // A stand-in rsync that prints its arguments.
+    const fake = `rsync() { printf '%s\\n' "$@"; }\n`
+    const out = spawnSync(
+      '/bin/sh',
+      ['-c', fake + copyCommand('me@box', "/Users/me/it's here", "~/it's here")],
+      {
+        encoding: 'utf8'
+      }
+    )
+    expect(out.stdout.split('\n')).toEqual([
+      "Copying /Users/me/it's here to me@box:~/it's here",
+      '-a',
+      '-u',
+      '--filter=:- .gitignore',
+      `--rsync-path=mkdir -p 'it'\\''s here' && rsync`,
+      "/Users/me/it's here/",
+      "me@box:it's here/",
+      ''
+    ])
+  })
+
+  it('makes the remote directory and its parents before rsync runs there', () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'cockpit-copy-'))
+    const fake = `rsync() { printf '%s\\n' "$@"; }\n`
+    const args = spawnSync('/bin/sh', ['-c', fake + copyCommand('box', '/x', "~/a b/it's")], {
+      encoding: 'utf8'
+    }).stdout.split('\n')
+    const rsyncPath = args.find((a) => a.startsWith('--rsync-path='))?.slice('--rsync-path='.length)
+    expect(rsyncPath).toEndWith(' && rsync')
+    // The remote shell runs it from the home folder, with rsync after it.
+    const remote = spawnSync('/bin/sh', ['-c', `${rsyncPath ?? 'false'} --version`], {
+      cwd: home,
+      env: { PATH: `${home}:/usr/bin:/bin` }
+    })
+    expect(remote.status).toBe(0)
+    expect(fs.statSync(path.join(home, 'a b', "it's")).isDirectory()).toBe(true)
+    fs.rmSync(home, { recursive: true })
   })
 })
 

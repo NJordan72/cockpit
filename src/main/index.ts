@@ -1,5 +1,6 @@
 import { realpathSync } from 'node:fs'
 import { stat } from 'node:fs/promises'
+import { hostname } from 'node:os'
 import { basename, isAbsolute, join } from 'node:path'
 import {
   app,
@@ -85,6 +86,7 @@ import {
 import { resolveTheme, type ResolvedTheme } from '@shared/theme'
 import { canOpenExternally, isWebUrl, WEB_PARTITION } from '@shared/web'
 import { AgentMonitor } from './agents/monitor'
+import { copyCommand, remoteTarget } from './agents/remote'
 import { serveAssets } from './assets'
 import { BranchTracker } from './branches'
 import { ConfigStore } from './config'
@@ -330,6 +332,24 @@ function windowsChanged(): void {
     w.info = json
     send(w, IPC.windowChanged, info)
   }
+}
+
+/**
+ * The directory a remote pane opens on its host, and the local directory to
+ * copy there first (see remoteTarget). One that's gone opens the preset's.
+ */
+async function remoteStart(
+  host: string,
+  cwd: string | undefined,
+  presetCwd: string
+): Promise<{ dir: string; copyFrom: string | null }> {
+  const target = remoteTarget(host, cwd, presetCwd, { home: expandHome('~'), machine: hostname() })
+  if (!target.copyFrom) return target
+  const isDir = await stat(target.copyFrom).then(
+    (s) => s.isDirectory(),
+    () => false
+  )
+  return isDir ? target : { dir: presetCwd, copyFrom: null }
 }
 
 /** The ssh host a pane's preset runs on; null for this machine. */
@@ -1038,9 +1058,10 @@ function registerIpc(): void {
     const preset = config.get().presets.find((p) => p.id === opts.presetId)
     if (!preset) throw new Error(`unknown preset: ${opts.presetId}`)
     const { host } = preset
-    // A remote preset runs in its own directory on its host; ssh starts in the home folder here.
+    // A remote preset runs in a directory on its host; ssh starts in the home folder here.
     if (host && opts.strictCwd) throw new Error(`${preset.name} runs on ${host}, not here`)
     const cwd = host ? expandHome('~') : await resolveCwd(opts.cwd, preset.cwd)
+    const remote = host ? await remoteStart(host, opts.cwd, preset.cwd) : null
     // A command meant for that directory mustn't run anywhere else.
     if (opts.strictCwd && cwd !== expandHome(opts.cwd ?? '')) {
       throw new Error(`not a directory: ${opts.cwd ?? '(none)'}`)
@@ -1053,11 +1074,13 @@ function registerIpc(): void {
     const env = agents.spawn(opts.id, launch.agent, host !== undefined, launch.prompted)
     // A new task's worktree runs its repository's setup first, once.
     const setup = host ? null : tasks.takeSetup(cwd)
-    const command = host
-      ? agents.remoteCommand(host, preset.cwd, launch, env)
-      : setup
-        ? withSetup(setup, launch.command)
-        : launch.command
+    const command =
+      host && remote
+        ? (remote.copyFrom ? `${copyCommand(host, remote.copyFrom, remote.dir)} && ` : '') +
+          agents.remoteCommand(host, remote.dir, launch, env)
+        : setup
+          ? withSetup(setup, launch.command)
+          : launch.command
     let pid: number
     try {
       ;({ pid } = ptys.create(e.sender, {
@@ -1072,7 +1095,8 @@ function registerIpc(): void {
       agents.killed(opts.id)
       throw err
     }
-    const display = host ? `${host}:${preset.cwd}` : abbreviateHome(cwd)
+    // A remote pane keeps `host:dir`, so restarting it opens the same directory there.
+    const display = host && remote ? `${host}:${remote.dir}` : abbreviateHome(cwd)
     if (!host && display !== '~') config.addRecentDir(display, preset.id)
     sessionsChanged()
     void branches.refresh([opts.id])

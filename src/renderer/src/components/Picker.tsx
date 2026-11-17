@@ -39,6 +39,7 @@ export function Picker({
   )
   const inputRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLUListElement>(null)
+  const presetsRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     inputRef.current?.focus()
@@ -69,6 +70,13 @@ export function Picker({
   useEffect(() => {
     listRef.current?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest' })
   }, [selected])
+
+  // The preset row scrolls when it's too wide, so keep the chosen one in view.
+  useEffect(() => {
+    presetsRef.current
+      ?.querySelector('[aria-checked="true"]')
+      ?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+  }, [presetIdx])
 
   const preset = presets[presetIdx] ?? presets[0]
   const submit = (index: number): void => {
@@ -125,7 +133,7 @@ export function Picker({
       >
         <div className="picker-head">
           <span className="picker-title">{title}</span>
-          <div className="picker-presets" role="radiogroup" aria-label="Preset">
+          <div className="picker-presets" role="radiogroup" aria-label="Preset" ref={presetsRef}>
             {presets.map((p, i) => (
               <button
                 type="button"
