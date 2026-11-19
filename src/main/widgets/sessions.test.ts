@@ -69,7 +69,8 @@ describe('listSessions', () => {
         title: 'Fix it',
         tokens: 100,
         focused: true,
-        labels: [story]
+        labels: [story],
+        background: null
       },
       {
         id: 'pane-b',
@@ -85,7 +86,8 @@ describe('listSessions', () => {
         title: null,
         tokens: null,
         focused: false,
-        labels: []
+        labels: [],
+        background: null
       }
     ])
   })
@@ -96,6 +98,7 @@ describe('listSessions', () => {
     const shared = widgetSession(first)
     expect('message' in shared).toBe(false)
     expect('labels' in shared).toBe(false)
+    expect('background' in shared).toBe(false)
     expect(shared.status).toBe('needs-input')
     expect(shared.branch).toBe('nick/sc-1234/fix-login')
   })

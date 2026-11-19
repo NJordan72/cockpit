@@ -31,6 +31,7 @@ import {
   isTerminalPane,
   paneIds,
   type AppearanceSettings,
+  type BackgroundRun,
   type LauncherSettings,
   type Layout,
   type LayoutNode,
@@ -302,6 +303,11 @@ function findPaneNode(id: string): PaneNode | null {
     if (pane) return pane
   }
   return null
+}
+
+/** The background run a pane is part of, or null when its tab is in the tab bar. */
+function backgroundRun(paneId: string): BackgroundRun | null {
+  return allTabs().tabs.find((t) => paneIds(t.root).includes(paneId))?.background ?? null
 }
 
 /** The window a pane is in. */
@@ -1066,9 +1072,19 @@ function registerIpc(): void {
     if (opts.strictCwd && cwd !== expandHome(opts.cwd ?? '')) {
       throw new Error(`not a directory: ${opts.cwd ?? '(none)'}`)
     }
+    // A quick command's pane runs with its model and effort, as long as the command is in the config.
+    const quick =
+      typeof opts.quick === 'string'
+        ? config.get().quickCommands.find((q) => q.id === opts.quick && q.preset === preset.id)
+        : undefined
     const launch = agents.launch(
       preset.command,
-      { resume: opts.resume === true, prompt: opts.prompt },
+      {
+        resume: opts.resume === true,
+        prompt: opts.prompt,
+        model: quick?.model,
+        effort: quick?.effort
+      },
       host !== undefined
     )
     const env = agents.spawn(opts.id, launch.agent, host !== undefined, launch.prompted)
@@ -1664,12 +1680,17 @@ async function startup(): Promise<void> {
     runRequests: runRequests(runs),
     reply: (paneId, data) => ptys.reply(paneId, data),
     // No notifications over kids mode; the tab badges have them afterwards.
-    windowFocused: () => kidsActive || anyFocused(),
+    // A background run is out of sight even while Cockpit is focused.
+    inView: (paneId) => kidsActive || (anyFocused() && !backgroundRun(paneId)),
     describe: (paneId) => {
       const pane = findPaneNode(paneId)
       if (!pane) return null
       const preset = config.get().presets.find((p) => p.id === pane.presetId)
-      return { name: preset?.name ?? pane.presetId, place: basename(pane.cwd) || pane.cwd }
+      const run = backgroundRun(paneId)
+      return {
+        name: run?.label ?? preset?.name ?? pane.presetId,
+        place: run?.input ?? (basename(pane.cwd) || pane.cwd)
+      }
     },
     onClick: revealPane,
     onFailed: (error) => {

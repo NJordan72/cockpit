@@ -151,6 +151,41 @@ describe('migrateConfig', () => {
     expect(win(c).tabs[1]?.root).toEqual({ type: 'pane', id: 'p4', presetId: 'shell', cwd: '~' })
   })
 
+  it('keeps background runs and the quick command a pane runs, but never makes a run active', () => {
+    const p = (id: string, extra: Partial<PaneNode> = {}): PaneNode => ({
+      type: 'pane',
+      id,
+      presetId: 'claude',
+      cwd: '~',
+      ...extra
+    })
+    const c = migrateConfig({
+      windows: [
+        {
+          id: 'main',
+          activeTabId: 't1',
+          tabs: [
+            {
+              id: 't1',
+              root: p('p1', { quick: 'approve-ship' }),
+              background: { label: ' Approve ship ', input: 'https://x.slack.com/p1' }
+            },
+            { id: 't2', root: p('p2'), background: { label: '' } },
+            { id: 't3', root: p('p3'), background: true }
+          ]
+        }
+      ]
+    })
+    expect(win(c).tabs[0]?.background).toEqual({
+      label: 'Approve ship',
+      input: 'https://x.slack.com/p1'
+    })
+    expect(win(c).tabs[0]?.root).toEqual(p('p1', { quick: 'approve-ship' }))
+    expect(win(c).tabs[1]?.background).toBeUndefined()
+    expect(win(c).tabs[2]?.background).toBeUndefined()
+    expect(win(c).activeTabId).toBe('t2')
+  })
+
   it("keeps tabs' names, colors, and pins, with pinned tabs last", () => {
     const p = (id: string): PaneNode => ({ type: 'pane', id, presetId: 'shell', cwd: '~' })
     const c = migrateConfig({
@@ -350,6 +385,17 @@ describe('migrateConfig: recent dirs and launcher', () => {
     expect(c.itemActions.task).toEqual([])
     expect(c).not.toHaveProperty('prActions')
     expect(migrateConfig({}).itemActions.pr).toEqual([{ label: 'Review', command: '/code-review' }])
+  })
+
+  it('reads quick commands, defaulting to none', () => {
+    expect(migrateConfig({}).quickCommands).toEqual([])
+    const c = migrateConfig({
+      quickCommands: [{ id: 'standup', label: 'Standup', preset: 'claude', prompt: '/standup' }]
+    })
+    expect(c.quickCommands).toEqual([
+      { id: 'standup', label: 'Standup', preset: 'claude', prompt: '/standup', background: true }
+    ])
+    expect(c.keybindings.quickCommand).toBe('Cmd+Shift+J')
   })
 })
 

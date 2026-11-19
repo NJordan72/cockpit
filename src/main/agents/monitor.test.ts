@@ -38,7 +38,7 @@ beforeEach(async () => {
     home,
     onChange: (id) => changed.push(id),
     onActivity: () => undefined,
-    windowFocused: () => true,
+    inView: () => true,
     describe: () => ({ name: 'Claude Code', place: 'x' }),
     onClick: () => undefined,
     onFailed: () => undefined

@@ -45,6 +45,7 @@ const session = (id: string, cwd: string, extra: Partial<PaneSession> = {}): Pan
   focused: false,
   message: null,
   labels: [],
+  background: null,
   ...extra
 })
 

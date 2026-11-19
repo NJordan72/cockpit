@@ -4,6 +4,7 @@ import { ACTIVITY_TABS, type ActivityTab } from './activity'
 import { readFrame, withRunsPanel, withTasksPanel, type FrameNode } from './frame'
 import { builtInLayout, classicFromSidebar, DEFAULT_LAYOUT_ID } from './layouts'
 import { defaultItemActions, readItemActions, type ItemActions } from './itemActions'
+import { MAX_INPUT, readQuickCommands, type QuickCommand } from './quickCommands'
 import { isPrRef, type PrRef } from './prs'
 import { readTaskSettings, type TaskSettings } from './tasks'
 import { DEFAULT_THEME_ID, readTokens, type ThemeOverrides } from './theme'
@@ -65,6 +66,7 @@ export type Action =
   | 'goToTab9'
   | 'toggleSidebar'
   | 'kidsMode'
+  | 'quickCommand'
 
 export type Keybindings = Record<Action, string>
 
@@ -77,6 +79,8 @@ export interface PaneNode {
   resume?: boolean
   /** The agent's first prompt. Dropped once the pane has started. */
   prompt?: string
+  /** The quick command it was started by, whose model and effort it keeps on a restart. */
+  quick?: string
   /** A web page shown instead of a terminal (http, https, or file). */
   url?: string
   /** A pull request shown instead of a terminal. */
@@ -116,6 +120,16 @@ export interface Tab {
   color?: TabColor
   /** Kept at the right end of the tab bar. Pinned tabs come after the others in `tabs`. */
   pinned?: boolean
+  /** A quick command running out of sight: the tab bar leaves it out until it's opened. */
+  background?: BackgroundRun
+}
+
+/** What the Sessions panel says about a background run. */
+export interface BackgroundRun {
+  /** The quick command's label. */
+  label: string
+  /** The value typed in for it. */
+  input?: string
 }
 
 export interface Layout {
@@ -277,6 +291,8 @@ export interface CockpitConfig {
   editor: string | null
   /** What each panel's right-click menu can send to an agent about an item, by kind of item. */
   itemActions: ItemActions
+  /** Prompts the Quick command dialog runs, each with its agent, model, and effort. */
+  quickCommands: QuickCommand[]
   /** Setup for each repository's new task worktrees, by its main checkout ("~/dev/cockpit"). */
   tasks: TaskSettings
   /** The first one is the main window: it reopens when the Dock icon is clicked. */
@@ -319,7 +335,8 @@ export const DEFAULT_KEYBINDINGS: Keybindings = {
   goToTab8: 'Cmd+8',
   goToTab9: 'Cmd+9',
   toggleSidebar: 'Cmd+B',
-  kidsMode: 'Cmd+Shift+K'
+  kidsMode: 'Cmd+Shift+K',
+  quickCommand: 'Cmd+Shift+J'
 }
 
 export const DEFAULT_TERMINAL: TerminalSettings = {
@@ -393,6 +410,7 @@ export function defaultConfig(): CockpitConfig {
     kids: { ...DEFAULT_KIDS },
     editor: null,
     itemActions: defaultItemActions(),
+    quickCommands: [],
     tasks: {},
     windows: [defaultWindow()]
   }
@@ -433,7 +451,7 @@ function readNode(v: unknown, seen: Set<string>): LayoutNode | null {
     } else if (isPrRef(v.pr)) {
       pane.pr = { repo: v.pr.repo, number: v.pr.number }
       if (nonEmpty(v.title)) pane.title = v.title.slice(0, MAX_TITLE)
-    }
+    } else if (nonEmpty(v.quick)) pane.quick = v.quick
     return pane
   }
   if (v.type === 'split') {
@@ -478,6 +496,13 @@ export function paneIds(node: LayoutNode): string[] {
   return node.type === 'pane' ? [node.id] : node.children.flatMap(paneIds)
 }
 
+function readBackgroundRun(v: unknown): BackgroundRun | null {
+  if (!isObj(v) || !isStr(v.label) || !v.label.trim()) return null
+  const run: BackgroundRun = { label: v.label.trim().slice(0, MAX_TAB_NAME) }
+  if (isStr(v.input) && v.input.trim()) run.input = v.input.trim().slice(0, MAX_INPUT)
+  return run
+}
+
 /** `seen` holds the ids already taken; pane ids are PTY ids, so no two windows share one. */
 function readLayout(v: unknown, presetIds: Set<string>, seen = new Set<string>()): Layout {
   const empty: Layout = { tabs: [], activeTabId: null }
@@ -505,14 +530,17 @@ function readLayout(v: unknown, presetIds: Set<string>, seen = new Set<string>()
     const color = TAB_COLORS.find((c) => c === t.color)
     if (color) tab.color = color
     if (t.pinned === true) tab.pinned = true
+    const run = readBackgroundRun(t.background)
+    if (run) tab.background = run
     tabs.push(tab)
   }
   // Pinned tabs go last, in the order they were in.
   tabs.sort((a, b) => Number(a.pinned === true) - Number(b.pinned === true))
+  // A background run is never the active tab: opening it takes it out of the background.
   const activeTabId =
-    isStr(v.activeTabId) && tabs.some((t) => t.id === v.activeTabId)
+    isStr(v.activeTabId) && tabs.some((t) => t.id === v.activeTabId && !t.background)
       ? v.activeTabId
-      : (tabs[0]?.id ?? null)
+      : (tabs.find((t) => !t.background)?.id ?? null)
   return { tabs, activeTabId }
 }
 
@@ -816,6 +844,7 @@ export function migrateConfig(raw: unknown): CockpitConfig {
     kids: readKids(raw.kids),
     editor: isStr(raw.editor) && raw.editor.trim() ? raw.editor.trim() : null,
     itemActions: readItemActions(raw.itemActions, raw.prActions),
+    quickCommands: readQuickCommands(raw.quickCommands),
     tasks: readTaskSettings(raw.tasks),
     windows: readWindows(raw, appearance, new Set(presets.map((p) => p.id)))
   }

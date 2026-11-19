@@ -15,7 +15,13 @@ import { dragPointer } from '../drag'
 import type { KidsStatus } from '../kids/KidsMode'
 import { findPane } from '../layout/model'
 import type { LayoutAction } from '../layout/reducer'
-import { dropIndex, folderHidden, type RepoOf, type TabFolder } from '../layout/tabs'
+import {
+  dropIndex,
+  folderHidden,
+  foregroundTabs,
+  type RepoOf,
+  type TabFolder
+} from '../layout/tabs'
 import { mostUrgent, STATUS_LABEL } from '../sessions'
 
 /** Kids mode's pretend terminal, shown as the active tab while kids mode is on. */
@@ -136,7 +142,8 @@ export function TabBar({
 
   const others = shown.filter((t) => !t.pinned)
   const pinned = shown.filter((t) => t.pinned)
-  const hiddenCount = layout.tabs.length - shown.length
+  // Background runs aren't hidden by the filter; they're never in the bar.
+  const hiddenCount = foregroundTabs(layout.tabs).length - shown.length
 
   // Pressing a tab selects it; dragging it along its group moves it. The other
   // tabs slide aside to show where it will land, and the layout changes once,

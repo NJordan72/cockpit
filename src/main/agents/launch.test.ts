@@ -105,3 +105,38 @@ describe('shQuote', () => {
     expect(shQuote('$HOME')).toBe(`'$HOME'`)
   })
 })
+
+describe('agentLaunch with a model and effort', () => {
+  it('gives Claude Code both, after its hook settings and before the prompt', () => {
+    const r = agentLaunch('claude', files, {
+      model: 'claude-opus-5-5',
+      effort: 'medium',
+      prompt: '/approve-ship --quick https://x.slack.com/archives/C1/p2'
+    })
+    expect(r.command).toBe(
+      `claude --settings ${files.claudeSettings} --model claude-opus-5-5 --effort medium ` +
+        `'/approve-ship --quick https://x.slack.com/archives/C1/p2'`
+    )
+    expect(r.prompted).toBe(true)
+  })
+
+  it('quotes a model with brackets', () => {
+    expect(agentLaunch('claude', files, { model: 'opus[1m]' }).command).toBe(
+      `claude --settings ${files.claudeSettings} --model 'opus[1m]'`
+    )
+  })
+
+  it('gives Codex the model only', () => {
+    expect(agentLaunch('codex', files, { model: 'gpt-5.5', effort: 'high' }).command).toBe(
+      'codex --model gpt-5.5'
+    )
+  })
+
+  it('gives agy neither', () => {
+    expect(agentLaunch('agy', files, { model: 'x', effort: 'low' }).command).toBe('agy')
+  })
+
+  it('leaves other commands alone', () => {
+    expect(agentLaunch('bash', files, { model: 'x' }).command).toBe('bash')
+  })
+})

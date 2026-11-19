@@ -289,3 +289,60 @@ describe('layoutReducer', () => {
     })
   })
 })
+
+describe('background runs', () => {
+  const runTab = { label: 'Approve ship', input: 'https://x.slack.com/archives/C1/p2' }
+
+  it('opens one without selecting it, before the pinned tabs', () => {
+    let l = run([
+      { type: 'newTab', pane: pane('a') },
+      { type: 'newTab', pane: pane('p') }
+    ])
+    l = layoutReducer(l, { type: 'pinTab', tabId: l.tabs[1]?.id ?? '', pinned: true })
+    const active = l.activeTabId
+    l = layoutReducer(l, { type: 'newRun', pane: pane('r'), run: runTab })
+    expect(l.tabs.map((t) => t.activePaneId)).toEqual(['a', 'r', 'p'])
+    expect(l.activeTabId).toBe(active)
+    expect(l.tabs[1]).toMatchObject({ name: 'Approve ship', background: runTab })
+    // From the start screen too.
+    expect(run([{ type: 'newRun', pane: pane('r'), run: runTab }]).activeTabId).toBeNull()
+  })
+
+  it('opens it in the tab bar when its pane is shown or its tab selected', () => {
+    const l = run([
+      { type: 'newTab', pane: pane('a') },
+      { type: 'newRun', pane: pane('r'), run: runTab }
+    ])
+    const focused = layoutReducer(l, { type: 'focusPane', paneId: 'r' })
+    expect(focused.activeTabId).toBe(l.tabs[1]?.id ?? null)
+    expect(focused.tabs[1]?.background).toBeUndefined()
+    expect(focused.tabs[1]?.name).toBe('Approve ship')
+    const selected = layoutReducer(l, { type: 'selectTab', tabId: l.tabs[1]?.id ?? '' })
+    expect(selected.tabs[1]?.background).toBeUndefined()
+  })
+
+  it('never makes one the active tab when the active tab closes', () => {
+    let l = run([
+      { type: 'newTab', pane: pane('a') },
+      { type: 'newRun', pane: pane('r'), run: runTab }
+    ])
+    l = layoutReducer(l, { type: 'closePane', paneId: 'a' })
+    expect(l.tabs.map((t) => t.activePaneId)).toEqual(['r'])
+    expect(l.activeTabId).toBeNull()
+  })
+
+  it('keeps the runs going when a saved layout is restored, and drops saved runs', () => {
+    const now = run([{ type: 'newRun', pane: pane('r'), run: runTab }])
+    const saved: Layout = {
+      tabs: [
+        { id: 't1', root: pane('a'), activePaneId: 'a' },
+        { id: 't2', root: pane('old'), activePaneId: 'old', background: runTab },
+        { id: 't3', root: pane('p'), activePaneId: 'p', pinned: true }
+      ],
+      activeTabId: 't1'
+    }
+    const l = layoutReducer(now, { type: 'restore', layout: saved })
+    expect(l.tabs.map((t) => t.activePaneId)).toEqual(['a', 'r', 'p'])
+    expect(l.activeTabId).toBe('t1')
+  })
+})

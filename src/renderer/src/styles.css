@@ -769,6 +769,32 @@ button.label-row:hover .label-title {
   color: var(--muted);
 }
 
+.picker-list li.disabled {
+  opacity: 0.5;
+}
+
+/* ---- quick command dialog ---- */
+
+.quick-command-label {
+  margin: 4px 12px 0;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.quick-command .picker-input.invalid {
+  border-color: var(--danger);
+}
+
+/* The prompt that will be sent, so a wrong paste shows before it runs. */
+.quick-command-preview {
+  margin: 0 12px 12px;
+  min-height: 1.4em;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
 /* ---- toolbar along the bottom ---- */
 
 .toolbar {
@@ -1536,6 +1562,35 @@ button.label-row:hover .label-title {
 
 .session.focused {
   background: var(--bg-raised);
+}
+
+/* A background run: its row and a dismiss button side by side. */
+.session-run {
+  display: flex;
+  align-items: center;
+}
+
+.session-run .session {
+  flex: 1;
+  min-width: 0;
+}
+
+.session-dismiss {
+  flex: none;
+  margin-right: 4px;
+  opacity: 0.6;
+}
+
+.session-dismiss:hover {
+  opacity: 1;
+}
+
+.session-group {
+  padding: 6px 10px 2px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
 }
 
 .session-main {

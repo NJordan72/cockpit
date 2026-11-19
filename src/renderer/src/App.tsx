@@ -25,6 +25,7 @@ import { resolveTheme, themeVars, type ResolvedTheme, type ThemeDefinition } fro
 import type { BashCommand } from '@shared/activity'
 import type { AppearanceCommand, PaneSession, PrPaneRequest, WindowInfo } from '@shared/ipc'
 import { prRefFromUrl } from '@shared/prs'
+import { cleanInput, type QuickCommand } from '@shared/quickCommands'
 import type { RunDraft } from '@shared/runs'
 import { taskAt, type TaskDraft } from '@shared/tasks'
 import type { SecretPrompt, SessionStatus, WidgetInfo } from '@shared/widgets'
@@ -33,6 +34,7 @@ import { PlanDialog } from './activity/PlanDialog'
 import { newSessionTarget } from './agentSessions'
 import { Launcher } from './components/Launcher'
 import { Picker } from './components/Picker'
+import { QuickCommandDialog } from './components/QuickCommandDialog'
 import { SaveCommandDialog } from './components/SaveCommandDialog'
 import { SecretPromptDialog } from './components/SecretPromptDialog'
 import { SessionList } from './components/SessionList'
@@ -53,7 +55,7 @@ import { PrPanel } from './panels/PrPanel'
 import { PrPaneContext, type PrPaneEnv } from './prs/context'
 import type { HandOffTarget } from './prs/model'
 import { activeTab, layoutReducer } from './layout/reducer'
-import { shownTabs, tabDirs, tabFolders } from './layout/tabs'
+import { foregroundTabs, shownTabs, tabDirs, tabFolders } from './layout/tabs'
 import { terminals } from './terminal/registry'
 import { queueRun } from './terminal/run'
 import { applyTheme } from './theme'
@@ -139,6 +141,8 @@ export function App(): React.JSX.Element {
   const [commandsRevision, setCommandsRevision] = useState(0)
   /** The Open web page dialog is up. */
   const [openingUrl, setOpeningUrl] = useState(false)
+  /** The Quick command dialog is up. */
+  const [quickOpen, setQuickOpen] = useState(false)
   /** The New task dialog: what it starts with, and the repository it suggests. */
   const [taskDialog, setTaskDialog] = useState<{
     key: number
@@ -238,6 +242,8 @@ export function App(): React.JSX.Element {
     () => shownTabs(layout, hiddenDirs ?? [], projectsDir, repoOf),
     [layout, hiddenDirs, projectsDir, repoOf]
   )
+  /** A tab is on screen; with only background runs (or nothing) open, the start screen is. */
+  const onScreen = shown.length > 0
   const folders = useMemo(
     () => tabFolders(layout, projectsDir, repoOf),
     [layout, projectsDir, repoOf]
@@ -254,6 +260,7 @@ export function App(): React.JSX.Element {
   const openingUrlRef = useRef(openingUrl)
   const planShownRef = useRef(planShown)
   const taskDialogRef = useRef(taskDialog)
+  const quickOpenRef = useRef(quickOpen)
   const tasksRef = useRef(tasks)
   useEffect(() => {
     configRef.current = config
@@ -267,6 +274,7 @@ export function App(): React.JSX.Element {
     openingUrlRef.current = openingUrl
     planShownRef.current = planShown
     taskDialogRef.current = taskDialog
+    quickOpenRef.current = quickOpen
     tasksRef.current = tasks
   })
 
@@ -313,7 +321,8 @@ export function App(): React.JSX.Element {
       setConfig(c)
       takeView(c)
       const mine = c.windows.find((w) => w.id === info.id)
-      setRestorable(mine && mine.tabs.length > 0 ? mine : null)
+      // A background run's process is gone, and its prompt mustn't run twice.
+      setRestorable(mine && foregroundTabs(mine.tabs).length > 0 ? mine : null)
       loaded.current = true
     })
     // Only hand edits arrive here, the appearance among them. Saving that back
@@ -372,7 +381,7 @@ export function App(): React.JSX.Element {
   // start screen has no tabs, so the saved filter is kept until a restore.
   const tabsBefore = useRef(new Set<string>())
   useEffect(() => {
-    const added = layout.tabs.filter((t) => !tabsBefore.current.has(t.id))
+    const added = layout.tabs.filter((t) => !tabsBefore.current.has(t.id) && !t.background)
     tabsBefore.current = new Set(tabIds(layout.tabs))
     if (!hiddenDirs?.length || layout.tabs.length === 0) return
     const live = new Set(tabFolders(layout, projectsDir, repoOf).map((f) => f.dir))
@@ -721,6 +730,10 @@ export function App(): React.JSX.Element {
         case 'kidsMode':
           api.kids.set(true)
           return
+        case 'quickCommand':
+          setPicker(null)
+          setQuickOpen(true)
+          return
         default: {
           const n = /^goToTab(\d)$/.exec(action)?.[1]
           if (n)
@@ -749,7 +762,8 @@ export function App(): React.JSX.Element {
         savingRef.current ||
         openingUrlRef.current ||
         planShownRef.current ||
-        taskDialogRef.current
+        taskDialogRef.current ||
+        quickOpenRef.current
       )
         return
       const action = actionFor(keymap, e)
@@ -769,7 +783,8 @@ export function App(): React.JSX.Element {
         savingRef.current ||
         openingUrlRef.current ||
         planShownRef.current ||
-        taskDialogRef.current
+        taskDialogRef.current ||
+        quickOpenRef.current
       )
         return
       const action = actionFor(keymap, key)
@@ -814,7 +829,8 @@ export function App(): React.JSX.Element {
           savingRef.current ||
           openingUrlRef.current ||
           planShownRef.current ||
-          taskDialogRef.current
+          taskDialogRef.current ||
+          quickOpenRef.current
         )
           return
         const el = document.activeElement
@@ -842,6 +858,7 @@ export function App(): React.JSX.Element {
         setSaving(null)
         setPlanShown(null)
         setTaskDialog(null)
+        setQuickOpen(false)
       } else requestAnimationFrame(focusWorkspace)
     })
     void api.kids.active().then((active) => {
@@ -1076,9 +1093,42 @@ export function App(): React.JSX.Element {
   }, [])
 
   const restore = useCallback(() => {
-    if (restorable) dispatch({ type: 'replace', layout: restorable })
+    // Background runs started from the start screen carry on beside the restored tabs.
+    if (restorable) dispatch({ type: 'restore', layout: restorable })
     setRestorable(null)
   }, [restorable])
+
+  /** Start a quick command: out of sight in the background, or in a new tab. */
+  const runQuick = useCallback(
+    (cmd: QuickCommand, prompt: string, input: string) => {
+      setQuickOpen(false)
+      requestAnimationFrame(focusWorkspace)
+      const preset = configRef.current?.presets.find((p) => p.id === cmd.preset)
+      if (!preset) return
+      const pane: PaneNode = {
+        ...makePane(preset.id, cmd.cwd ?? preset.cwd),
+        prompt,
+        quick: cmd.id
+      }
+      const value = cleanInput(input)
+      if (cmd.background) {
+        dispatch({
+          type: 'newRun',
+          pane,
+          run: { label: cmd.label, ...(value ? { input: value } : {}) }
+        })
+        return
+      }
+      setRestorable(null)
+      dispatch({ type: 'newTab', pane })
+    },
+    [focusWorkspace]
+  )
+
+  const closeQuick = useCallback(() => {
+    setQuickOpen(false)
+    requestAnimationFrame(focusWorkspace)
+  }, [focusWorkspace])
 
   const answerPrompt = useCallback(
     (prompt: SecretPrompt, value: string | null) => {
@@ -1147,6 +1197,14 @@ export function App(): React.JSX.Element {
             collapsed={place.collapsed}
             onToggle={place.canCollapse ? place.toggleCollapsed : undefined}
             onSelect={revealPane}
+            onDismiss={
+              terminals
+                ? (paneId) => {
+                    if (layoutRef.current.tabs.some((t) => findPane(t.root, paneId)))
+                      dispatch({ type: 'closePane', paneId, shown: tabIds(shownRef.current) })
+                  }
+                : undefined
+            }
             onHidePanels={() => runAppearance({ type: 'togglePanels' })}
           />
         )
@@ -1289,23 +1347,27 @@ export function App(): React.JSX.Element {
                   display: workspaceShown ? undefined : 'none'
                 }}
               >
-                {layout.tabs.length > 0 ? (
-                  <PrPaneContext.Provider value={prEnv}>
-                    <Workspace
-                      layout={layout}
-                      presets={config.presets}
-                      settings={config.terminal}
-                      theme={terminalTheme}
-                      labels={labels}
-                      dispatch={dispatch}
-                    />
-                  </PrPaneContext.Provider>
-                ) : (
+                {/* Background runs keep the workspace mounted under the start screen. */}
+                {layout.tabs.length > 0 && (
+                  <div style={{ display: onScreen ? 'contents' : 'none' }}>
+                    <PrPaneContext.Provider value={prEnv}>
+                      <Workspace
+                        layout={layout}
+                        presets={config.presets}
+                        settings={config.terminal}
+                        theme={terminalTheme}
+                        labels={labels}
+                        dispatch={dispatch}
+                      />
+                    </PrPaneContext.Provider>
+                  </div>
+                )}
+                {!onScreen && (
                   <Launcher
                     presets={config.presets}
                     initialPresetId={config.launcher.presetId}
                     projectsDir={config.projectsDir}
-                    restoreTabs={restorable?.tabs.length ?? 0}
+                    restoreTabs={restorable ? foregroundTabs(restorable.tabs).length : 0}
                     inputRef={launcherInput}
                     onLaunch={launch}
                     onRestore={restore}
@@ -1367,9 +1429,17 @@ export function App(): React.JSX.Element {
             }
           />
         )}
+        {quickOpen && (
+          <QuickCommandDialog
+            commands={config.quickCommands}
+            presets={config.presets}
+            onRun={runQuick}
+            onCancel={closeQuick}
+          />
+        )}
         {openingUrl && (
           <OpenUrlDialog
-            canSplit={layout.tabs.length > 0}
+            canSplit={onScreen}
             onOpen={openUrl}
             onCancel={() => {
               setOpeningUrl(false)

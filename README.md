@@ -132,6 +132,7 @@ address.
 | Cmd+T               | New tab (picker)                           |
 | Cmd+Shift+T         | New shell tab, no agent, in the same dir   |
 | Cmd+Shift+N         | New task (see [Tasks](#tasks))             |
+| Cmd+Shift+J         | Run a [quick command](#quick-commands)     |
 | Cmd+L               | Open a web page (new tab, or ⇧⏎ to split)  |
 | Cmd+R               | Reload the focused web page                |
 | Cmd+D / Cmd+Shift+D | Split right / down (picker)                |
@@ -149,7 +150,7 @@ The toolbar along the bottom of the window shows the focused pane: its status,
 preset (or Claude Code's name for the conversation), directory, and git branch
 with commits ahead and behind and the number of changed files, and a Plan
 button once its agent has proposed a plan (see [Plans](#plans)). Its buttons open
-a new tab, a plain shell tab (no agent) in the focused pane's directory, a new [task](#tasks), split right or down, clear the pane, and hide or show the panels, and its menu
+a new tab, a plain shell tab (no agent) in the focused pane's directory, a new [task](#tasks), a [quick command](#quick-commands), split right or down, clear the pane, and hide or show the panels, and its menu
 switches layouts. Clear ends the pane's process and starts its preset again in
 the same directory, with a new terminal and an empty status, activity log, and
 file list; the old conversation stays in the agent's own history. Resume
@@ -798,6 +799,9 @@ to `config.json.broken-<time>` before being replaced.
   "kids": { "name": "", "exitWord": "grownup", "volume": 0.6, "sound": "songs", "speak": true },
   "editor": "zed",
   "itemActions": { "pr": [{ "label": "Review", "command": "/code-review" }], "task": [] },
+  "quickCommands": [
+    { "id": "standup", "label": "Standup", "preset": "claude", "prompt": "/standup" }
+  ],
   "tasks": { "~/dev/cockpit": { "setup": "bun install", "copy": [".env"] } }
 }
 ```
@@ -824,6 +828,8 @@ like a preset command, with the path added at the end. Leave it `null` (the
 default) to open files in their default app and projects in Finder.
 `itemActions` holds the prompts the panels' right-click menus can send to an
 agent; see [Right-click prompts](#right-click-prompts).
+`quickCommands` holds prompts to run from a shortcut, in the background or in
+a tab; see [Quick commands](#quick-commands).
 `tasks` sets up each repository's new task worktrees; see [Tasks](#tasks).
 Set `COCKPIT_HOME` to use a different directory than `~/.cockpit`.
 
@@ -890,6 +896,66 @@ nothing for the rest. Labels are cut to 40 characters, and each kind keeps
 its first 20 entries. Before version 7, the pull request entries were a
 top-level `prActions` list. Cockpit moves that list to `itemActions.pr` and
 keeps the file it read as `config.v6.json`.
+
+### Quick commands
+
+A quick command is a prompt you run often, with the agent, model, and effort
+level to run it with. Cmd+Shift+J (or **⚡ Quick** in the toolbar) lists them.
+Pick one with the arrow keys and `Enter`. If it takes input, type or paste it
+and press `Enter` again. The dialog shows the prompt it will send, so a wrong
+paste shows up before it runs.
+
+```json
+"quickCommands": [
+  {
+    "id": "approve-ship",
+    "label": "Approve ship",
+    "preset": "claude",
+    "model": "claude-opus-5-5",
+    "effort": "medium",
+    "prompt": "/approve-ship --quick {input}",
+    "input": { "label": "Slack link", "pattern": "^https://[^/]+\\.slack\\.com/" }
+  }
+]
+```
+
+- `id`: letters, digits, `-` and `_`. A pane remembers it, so restarting
+  the pane keeps the model and effort.
+- `label`: the name in the dialog, the Sessions panel, notifications, and the
+  tab once the run is opened. Cut to 40 characters.
+- `preset`: the preset that runs it, by id.
+- `prompt`: the agent's first prompt. `{input}` is replaced by the value
+  typed in. A command with an `input` but no `{input}` gets the value added
+  at the end.
+- `model`: passed as `--model` to Claude Code and Codex. agy gets none.
+- `effort`: `low`, `medium`, `high`, `xhigh`, or `max`, passed as `--effort`
+  to Claude Code. Codex takes effort only as a `-c` setting, which would keep
+  it off its shared background server, so Codex runs without it.
+- `input`: a field to fill in before the command runs, with a `label` and
+  an optional `pattern` (a JavaScript regular expression) the value must
+  match. When the clipboard matches the pattern, the field starts filled in,
+  so with a link copied a run takes Cmd+Shift+J, `Enter`, `Enter`. The value
+  is put on one line. `"input": true` is a field labeled Input with no
+  pattern.
+- `cwd`: where it runs. The preset's `cwd` when left out.
+- `background`: `true` (the default) runs it out of sight; `false` opens it
+  in a new tab like any other.
+
+A background run gets a tab that the tab bar leaves out. Its agent runs as it
+would in any tab, with its status, activity, and notifications. The
+**Sessions** panel lists background runs in a group of their own at the end,
+named for the command and showing the input. When a run needs input or
+finishes its turn, macOS notifies you even while Cockpit is the focused
+window, and the Dock badge counts it. Click its row or its notification to
+open the run as a tab in the tab bar. The × on its row closes it, and stops
+it if it's still working.
+
+A run that's still going keeps going on the start screen. Background runs
+aren't restored on relaunch: their processes are gone, and their prompts
+shouldn't run twice. **Restore last session** brings back the other tabs and
+keeps any runs going. An entry without an `id`, `label`, `preset`, or
+`prompt` is dropped, and so is a `model`, `effort`, or `pattern` Cockpit
+can't use. The first 20 entries are kept.
 
 ## Terminal keys
 
