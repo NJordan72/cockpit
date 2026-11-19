@@ -55,6 +55,12 @@ const BUTTONS: { action: Action; label: string; title: string; needsPane: boolea
     needsPane: false
   },
   { action: 'openUrl', label: '◍ Web', title: 'Open a web page', needsPane: false },
+  {
+    action: 'quickCommand',
+    label: '⚡ Quick',
+    title: 'Run a quick command from config.json',
+    needsPane: false
+  },
   { action: 'splitRight', label: '◫ Right', title: 'Split right', needsPane: true },
   { action: 'splitDown', label: '⊟ Down', title: 'Split down', needsPane: true },
   { action: 'clearPane', label: '⟲ Clear', title: 'Clear session', needsPane: true },

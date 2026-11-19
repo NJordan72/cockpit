@@ -1,5 +1,6 @@
 // Which tabs the tab bar shows. The bar can leave out the tabs of chosen
-// project folders; pinned tabs and the active tab always show.
+// project folders; pinned tabs and the active tab always show. Background
+// runs never show until they're opened.
 import type { Layout, Tab } from '@shared/config'
 import { allPanes } from './model'
 
@@ -40,6 +41,10 @@ export function folderHidden(
   return tabDirs(tab, projectsDir, repoOf).every((d) => hiddenDirs.includes(d))
 }
 
+/** The tabs that aren't background runs: the same list when there are none. */
+export const foregroundTabs = (tabs: Tab[]): Tab[] =>
+  tabs.some((t) => t.background) ? tabs.filter((t) => !t.background) : tabs
+
 /** The tabs the bar shows: the ones the filter doesn't hide, and the active one. */
 export function shownTabs(
   layout: Layout,
@@ -47,8 +52,9 @@ export function shownTabs(
   projectsDir: string,
   repoOf: RepoOf = noTasks
 ): Tab[] {
-  if (hiddenDirs.length === 0) return layout.tabs
-  return layout.tabs.filter(
+  const tabs = foregroundTabs(layout.tabs)
+  if (hiddenDirs.length === 0) return tabs
+  return tabs.filter(
     (t) => t.id === layout.activeTabId || !folderHidden(t, hiddenDirs, projectsDir, repoOf)
   )
 }
@@ -67,7 +73,7 @@ export function tabFolders(
 ): TabFolder[] {
   const counts = new Map<string, number>()
   for (const t of layout.tabs) {
-    if (t.pinned) continue
+    if (t.pinned || t.background) continue
     for (const d of tabDirs(t, projectsDir, repoOf)) counts.set(d, (counts.get(d) ?? 0) + 1)
   }
   return [...counts]

@@ -1,4 +1,11 @@
-import { MAX_TAB_NAME, type Layout, type PaneNode, type Tab, type TabColor } from '@shared/config'
+import {
+  MAX_TAB_NAME,
+  type BackgroundRun,
+  type Layout,
+  type PaneNode,
+  type Tab,
+  type TabColor
+} from '@shared/config'
 import {
   allPanes,
   arrange,
@@ -21,6 +28,8 @@ import {
 export type LayoutAction =
   | { type: 'replace'; layout: Layout }
   | { type: 'newTab'; pane: PaneNode; background?: boolean }
+  | { type: 'newRun'; pane: PaneNode; run: BackgroundRun }
+  | { type: 'restore'; layout: Layout }
   | { type: 'split'; paneId: string; direction: 'row' | 'column'; pane: PaneNode }
   | { type: 'closePane'; paneId: string; shown?: readonly string[] }
   | { type: 'clearPane'; paneId: string; resume?: boolean }
@@ -51,6 +60,14 @@ function mapTab(layout: Layout, tabId: string, fn: (t: Tab) => Tab): Layout {
   return { ...layout, tabs: layout.tabs.map((t) => (t.id === tabId ? fn(t) : t)) }
 }
 
+/** The tab in the tab bar: a background run that's opened keeps its label as its name. */
+function opened(tab: Tab): Tab {
+  if (!tab.background) return tab
+  const next: Tab = { ...tab }
+  delete next.background
+  return next
+}
+
 /** How many tabs come before the pinned ones. */
 const unpinnedCount = (tabs: readonly Tab[]): number => tabs.filter((t) => !t.pinned).length
 
@@ -72,6 +89,32 @@ export function layoutReducer(layout: Layout, action: LayoutAction): Layout {
       // A background tab is selected only when there's no tab to stay on.
       const keep = action.background && layout.tabs.some((t) => t.id === layout.activeTabId)
       return { ...layout, tabs, activeTabId: keep ? layout.activeTabId : tab.id }
+    }
+
+    case 'newRun': {
+      // Out of sight: never selected, and kept before the pinned tabs.
+      const tab: Tab = {
+        id: newId('tab'),
+        root: action.pane,
+        activePaneId: action.pane.id,
+        name: action.run.label.slice(0, MAX_TAB_NAME),
+        background: action.run
+      }
+      const tabs = [...layout.tabs]
+      tabs.splice(unpinnedCount(tabs), 0, tab)
+      return { ...layout, tabs }
+    }
+
+    case 'restore': {
+      // The saved tabs come back; background runs going now carry on.
+      const running = layout.tabs.filter((t) => t.background)
+      const saved = action.layout.tabs.filter((t) => !t.background)
+      return {
+        tabs: pinnedLast([...saved, ...running]),
+        activeTabId: saved.some((t) => t.id === action.layout.activeTabId)
+          ? action.layout.activeTabId
+          : (saved[0]?.id ?? null)
+      }
     }
 
     case 'split': {
@@ -125,19 +168,24 @@ export function layoutReducer(layout: Layout, action: LayoutAction): Layout {
       // The shown tab that takes its place, or the one before it at the end.
       const shown = action.shown ? new Set(action.shown) : null
       const isShown = (t: Tab): boolean => !shown || shown.has(t.id)
+      // A background run is never picked: with only those left, the start screen shows.
+      const fg = (t: Tab): boolean => !t.background
       const next =
-        tabs.slice(idx).find(isShown) ??
-        tabs.slice(0, idx).findLast(isShown) ??
-        tabs[Math.min(idx, tabs.length - 1)]
+        tabs.slice(idx).find((t) => fg(t) && isShown(t)) ??
+        tabs.slice(0, idx).findLast((t) => fg(t) && isShown(t)) ??
+        tabs.slice(idx).find(fg) ??
+        tabs.slice(0, idx).findLast(fg)
       return { ...layout, tabs, activeTabId: next?.id ?? null }
     }
 
     case 'focusPane': {
+      // Showing a background run's pane opens it in the tab bar.
       const tab = tabOfPane(layout, action.paneId)
       if (!tab) return layout
-      if (tab.activePaneId === action.paneId && layout.activeTabId === tab.id) return layout
+      if (tab.activePaneId === action.paneId && layout.activeTabId === tab.id && !tab.background)
+        return layout
       return {
-        ...mapTab(layout, tab.id, (t) => ({ ...t, activePaneId: action.paneId })),
+        ...mapTab(layout, tab.id, (t) => ({ ...opened(t), activePaneId: action.paneId })),
         activeTabId: tab.id
       }
     }
@@ -151,7 +199,7 @@ export function layoutReducer(layout: Layout, action: LayoutAction): Layout {
 
     case 'selectTab':
       return layout.tabs.some((t) => t.id === action.tabId)
-        ? { ...layout, activeTabId: action.tabId }
+        ? { ...mapTab(layout, action.tabId, opened), activeTabId: action.tabId }
         : layout
 
     case 'selectTabIndex': {

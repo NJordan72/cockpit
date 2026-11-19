@@ -17,6 +17,7 @@ function panes(node: LayoutNode): PaneNode[] {
 export function widgetSession({
   message: _message,
   labels: _labels,
+  background: _background,
   ...info
 }: PaneSession): SessionInfo {
   return info
@@ -65,7 +66,8 @@ export function listSessions(
           title: s?.title ?? null,
           tokens: s?.tokens ?? null,
           focused: p.id === focused,
-          labels: lookup.labels(p.id)
+          labels: lookup.labels(p.id),
+          background: tab.background ?? null
         }
       })
   )

@@ -1,6 +1,6 @@
 // macOS notifications for panes that need the user: when one goes to
-// needs-input or done while the window isn't focused. Clicking one focuses
-// that pane.
+// needs-input or done while the window isn't focused, or while the pane is a
+// background run nobody can see. Clicking one focuses that pane.
 import { Notification } from 'electron'
 import type { PaneStatus } from './tracker'
 
@@ -13,7 +13,8 @@ const SETTLE_MS = 250
 const MAX_BODY = 200
 
 export interface NotifierDeps {
-  windowFocused: () => boolean
+  /** The user can see the pane already, or mustn't be interrupted (kids mode). */
+  inView: (paneId: string) => boolean
   status: (paneId: string) => PaneStatus | null
   /** Preset name and directory, e.g. "Claude Code" and "cockpit". */
   describe: (paneId: string) => { name: string; place: string } | null
@@ -46,7 +47,7 @@ export class Notifier {
       setTimeout(() => {
         this.timers.delete(paneId)
         const now = this.deps.status(paneId)
-        if (now?.status === status && !this.deps.windowFocused()) this.show(paneId, now)
+        if (now?.status === status && !this.deps.inView(paneId)) this.show(paneId, now)
       }, SETTLE_MS)
     )
   }

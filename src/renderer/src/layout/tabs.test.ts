@@ -96,6 +96,17 @@ describe('shownTabs', () => {
   })
 })
 
+describe('background runs', () => {
+  const runTab = tab('run', pane('r', '~/dev/a'), { background: { label: 'Approve ship' } })
+  const layout: Layout = { tabs: [tab('a', pane('a', '~/dev/a')), runTab], activeTabId: 'a' }
+
+  it('leaves them out of the tab bar and the folder filter', () => {
+    expect(shownTabs(layout, [], '~/dev').map((t) => t.id)).toEqual(['a'])
+    expect(shownTabs(layout, ['~/dev/b'], '~/dev').map((t) => t.id)).toEqual(['a'])
+    expect(tabFolders(layout, '~/dev')).toEqual([{ dir: '~/dev/a', tabs: 1 }])
+  })
+})
+
 describe('tabFolders', () => {
   it('counts the tabs in each folder, sorted, leaving out pinned tabs', () => {
     const layout: Layout = {

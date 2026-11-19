@@ -4,6 +4,7 @@ import type { CommandList, CommandScope, SaveCommand, SaveResult } from './comma
 import type {
   Action,
   AppearanceSettings,
+  BackgroundRun,
   CockpitConfig,
   LauncherSettings,
   Layout,
@@ -120,6 +121,8 @@ export interface PaneSession extends SessionInfo {
   message: string | null
   /** What widgets show in a strip above the pane, ordered by widget id. */
   labels: PaneLabel[]
+  /** Set while the pane's tab is a quick command running out of sight. */
+  background: BackgroundRun | null
 }
 
 export interface PtyCreateOptions {
@@ -136,6 +139,8 @@ export interface PtyCreateOptions {
   resume?: boolean
   /** The agent's first prompt, for a new session. */
   prompt?: string
+  /** The quick command the pane runs, by id; main passes on its model and effort. */
+  quick?: string
 }
 
 /** A widget asks for a new agent session that starts with a prompt. */
