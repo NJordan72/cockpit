@@ -60,6 +60,8 @@ describe('parseLog', () => {
 })
 
 describe('gitStatus', () => {
+  // A dozen or more real git processes, which can take longer than bun's
+  // default 5 s when CI runs the test files in parallel on a small runner.
   it('reads a real repository, and returns null outside one', async () => {
     const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'ck-git-')))
     try {
@@ -96,5 +98,5 @@ describe('gitStatus', () => {
     } finally {
       fs.rmSync(dir, { recursive: true, force: true })
     }
-  })
+  }, 30_000)
 })
