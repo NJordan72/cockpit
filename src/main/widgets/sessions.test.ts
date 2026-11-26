@@ -32,6 +32,7 @@ const waiting: PaneStatus = {
   message: 'Claude needs permission to use Bash',
   title: 'Fix it',
   tokens: 100,
+  model: 'claude-opus-5-5',
   doneMessage: null,
   activeMs: 12_000,
   toolCalls: 4,
@@ -77,6 +78,7 @@ describe('listSessions', () => {
         background: null,
         activeMs: 12_000,
         toolCalls: 4,
+        model: 'claude-opus-5-5',
         ports: [{ url: 'http://localhost:5173', port: 5173 }]
       },
       {
@@ -97,6 +99,7 @@ describe('listSessions', () => {
         background: null,
         activeMs: 0,
         toolCalls: 0,
+        model: null,
         ports: []
       }
     ])
@@ -111,6 +114,7 @@ describe('listSessions', () => {
     expect('background' in shared).toBe(false)
     expect('activeMs' in shared).toBe(false)
     expect('toolCalls' in shared).toBe(false)
+    expect('model' in shared).toBe(false)
     expect('ports' in shared).toBe(false)
     expect(shared.status).toBe('needs-input')
     expect(shared.branch).toBe('nick/sc-1234/fix-login')

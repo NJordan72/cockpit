@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { MenuItem, PaneSession } from '@shared/ipc'
 import { taskAt, type TaskInfo } from '@shared/tasks'
 import {
+  contextLimit,
   contextPressure,
   formatDuration,
   formatTokens,
@@ -166,6 +167,7 @@ function contextTooltip(session: PaneSession, pressure: ContextPressure): string
   const lines = [
     `Context: ${formatTokens(pressure.tokens)} / ${formatTokens(pressure.limit)} (${String(pressure.percent)}%)`
   ]
+  if (session.model) lines.push(session.model)
   const activeMs = sessionActiveMs(session)
   const stats: string[] = []
   if (activeMs >= 1000) stats.push(`Active ${formatDuration(activeMs)}`)
@@ -224,7 +226,7 @@ function SessionRow({
   const run = s.background
   const detail = waiting ? s.message : (run?.input ?? s.title)
   const where = task ? `${task.branch ?? 'detached'} · task in ${task.repo}\n${s.cwd}` : s.cwd
-  const pressure = contextPressure(s.tokens)
+  const pressure = contextPressure(s.tokens, contextLimit(s.model, s.tokens))
   const canCompact = Boolean(onCompact && s.agent !== null && s.status !== 'exited')
   const elevated = pressure !== null && pressure.tone !== 'normal'
   const showCompactBtn = elevated && canCompact

@@ -23,6 +23,7 @@ const session = (over: Partial<PaneSession> = {}): PaneSession => ({
   background: null,
   activeMs: 0,
   toolCalls: 0,
+  model: null,
   ports: [],
   ...over
 })

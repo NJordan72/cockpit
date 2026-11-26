@@ -33,6 +33,7 @@ function makeSession(overrides: Partial<PaneSession> = {}): PaneSession {
     background: null,
     activeMs: 0,
     toolCalls: 0,
+    model: null,
     ports: [],
     ...overrides
   }

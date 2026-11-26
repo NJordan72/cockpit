@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test'
 import {
   attentionQueue,
+  contextLimit,
   contextPressure,
   DEFAULT_CONTEXT_LIMIT,
   formatAgo,
@@ -67,6 +68,54 @@ describe('contextPressure', () => {
     expect(contextPressure(168_000)?.tone).toBe('warn')
     expect(contextPressure(170_000)).toMatchObject({ percent: 85, barPercent: 85, tone: 'high' })
     expect(contextPressure(240_000)).toMatchObject({ percent: 120, barPercent: 100, tone: 'high' })
+  })
+})
+
+describe('contextLimit', () => {
+  it('gives current models their 1M window', () => {
+    for (const model of [
+      'claude-fable-5-2',
+      'claude-mythos-5-1',
+      'claude-opus-5-5',
+      'claude-opus-5',
+      'claude-opus-4-6',
+      'claude-sonnet-5-5',
+      'claude-sonnet-4-6',
+      'claude-haiku-5-5',
+      'us.anthropic.claude-opus-4-8-v1:0'
+    ]) {
+      expect(contextLimit(model)).toBe(1_000_000)
+    }
+  })
+
+  it('gives older models 200k, without reading a date as a version', () => {
+    for (const model of [
+      'claude-haiku-4-5-20251001',
+      'claude-sonnet-4-5-20250929',
+      'claude-opus-4-20250514',
+      'claude-opus-4-1-20250805',
+      'claude-3-7-sonnet-20250219'
+    ]) {
+      expect(contextLimit(model)).toBe(DEFAULT_CONTEXT_LIMIT)
+    }
+  })
+
+  it('falls back to 200k for an unknown model', () => {
+    expect(contextLimit(null)).toBe(DEFAULT_CONTEXT_LIMIT)
+    expect(contextLimit('gpt-5.5')).toBe(DEFAULT_CONTEXT_LIMIT)
+  })
+
+  it('takes a session past 200k as the 1M variant', () => {
+    expect(contextLimit('claude-sonnet-4-5-20250929', 350_000)).toBe(1_000_000)
+    expect(contextLimit(null, 200_001)).toBe(1_000_000)
+    expect(contextLimit(null, 200_000)).toBe(DEFAULT_CONTEXT_LIMIT)
+  })
+
+  it('puts a 545k Opus 5.5 session at 55%, not 273%', () => {
+    expect(contextPressure(545_000, contextLimit('claude-opus-5-5', 545_000))).toMatchObject({
+      percent: 55,
+      tone: 'normal'
+    })
   })
 })
 

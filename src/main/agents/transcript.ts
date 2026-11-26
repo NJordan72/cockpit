@@ -11,16 +11,26 @@ export interface TranscriptInfo {
   title: string | null
   /** Tokens the last main-thread request sent and received. */
   tokens: number | null
+  /** The model that answered that request, such as `claude-opus-5-5`. */
+  model: string | null
 }
 
 type Obj = Record<string, unknown>
 const isObj = (v: unknown): v is Obj => typeof v === 'object' && v !== null && !Array.isArray(v)
 const num = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) ? v : 0)
 
-/** The newest title and token count in JSONL text. Unknown or broken lines are skipped. */
+/**
+ * Claude Code writes an error or an interrupted turn as an assistant entry
+ * from this model, with every usage count at zero. It says nothing about the
+ * context.
+ */
+const SYNTHETIC_MODEL = '<synthetic>'
+
+/** The newest title, token count, and model in JSONL text. Unknown or broken lines are skipped. */
 export function parseTranscriptTail(text: string): TranscriptInfo {
   let title: string | null = null
   let tokens: number | null = null
+  let model: string | null = null
   const lines = text.split('\n')
   for (let i = lines.length - 1; i >= 0 && (title === null || tokens === null); i--) {
     const line = lines[i]
@@ -39,7 +49,8 @@ export function parseTranscriptTail(text: string): TranscriptInfo {
       entry.type === 'assistant' &&
       entry.isSidechain !== true &&
       isObj(entry.message) &&
-      isObj(entry.message.usage)
+      isObj(entry.message.usage) &&
+      entry.message.model !== SYNTHETIC_MODEL
     ) {
       const u = entry.message.usage
       tokens =
@@ -47,9 +58,10 @@ export function parseTranscriptTail(text: string): TranscriptInfo {
         num(u.cache_creation_input_tokens) +
         num(u.cache_read_input_tokens) +
         num(u.output_tokens)
+      model = typeof entry.message.model === 'string' ? entry.message.model || null : null
     }
   }
-  return { title, tokens }
+  return { title, tokens, model }
 }
 
 /** Only files under ~/.claude are read; the path comes from a hook payload. */

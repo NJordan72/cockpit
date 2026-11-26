@@ -135,6 +135,8 @@ export interface PaneSession extends SessionInfo {
   activeMs: number
   /** Cumulative tool calls started in this session (Claude Code hooks). */
   toolCalls: number
+  /** The model that last answered, which sets the context window (Claude Code only). */
+  model: string | null
   /** Local dev-server URLs detected in the pane's output. */
   ports: LocalServer[]
 }

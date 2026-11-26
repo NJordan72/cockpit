@@ -13,6 +13,8 @@ export interface PaneStatus {
   message: string | null
   title: string | null
   tokens: number | null
+  /** The model behind `tokens`, from the transcript (Claude Code only). */
+  model: string | null
   /** The last thing the agent said it finished with; not shared with widgets. */
   doneMessage: string | null
   /** Cumulative ms spent in working status before any current working stretch. */
@@ -114,6 +116,7 @@ export class StatusTracker {
         message: null,
         title: null,
         tokens: null,
+        model: null,
         doneMessage: null,
         activeMs: 0,
         toolCalls: 0,
@@ -224,6 +227,7 @@ export class StatusTracker {
         if (signal.fresh) {
           extra.title = report.title
           extra.tokens = null
+          extra.model = null
           extra.activeMs = 0
           extra.toolCalls = 0
           extra.sessionId = report.sessionId ?? null
@@ -291,12 +295,16 @@ export class StatusTracker {
   }
 
   /** Title and token counts read from the agent's transcript. */
-  annotate(paneId: string, info: { title?: string | null; tokens?: number | null }): void {
+  annotate(
+    paneId: string,
+    info: { title?: string | null; tokens?: number | null; model?: string | null }
+  ): void {
     const pane = this.panes.get(paneId)
     if (!pane) return
     const extra: Partial<PaneStatus> = {}
     if (info.title) extra.title = info.title
     if (info.tokens !== undefined && info.tokens !== null) extra.tokens = info.tokens
+    if (info.model) extra.model = info.model
     this.update(pane, extra)
   }
 

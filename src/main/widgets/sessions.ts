@@ -21,6 +21,7 @@ export function widgetSession({
   background: _background,
   activeMs: _activeMs,
   toolCalls: _toolCalls,
+  model: _model,
   ports: _ports,
   ...info
 }: PaneSession): SessionInfo {
@@ -75,6 +76,7 @@ export function listSessions(
           background: tab.background ?? null,
           activeMs: s?.activeMs ?? 0,
           toolCalls: s?.toolCalls ?? 0,
+          model: s?.model ?? null,
           ports: lookup.ports?.(p.id) ?? []
         }
       })
