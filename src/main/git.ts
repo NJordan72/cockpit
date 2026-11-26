@@ -8,6 +8,7 @@ import { GIT_MAX_FILES, type GitCommit, type GitFile, type GitStatus } from '@sh
 import { abbreviateHome } from './paths'
 
 const TIMEOUT_MS = 3000
+const KILL_GRACE_MS = 200
 const COMMITS = 5
 
 export interface GitRun {
@@ -26,14 +27,26 @@ export interface GitOptions {
 /**
  * Runs git in `cwd` without optional locks and with core.fsmonitor off. Never
  * rejects. Git can't ask for a password here: there's no terminal to ask in.
+ * Enforces its own timeout so an unkillable child or a grandchild holding
+ * stdout/stderr open can't hang the caller past `timeoutMs`.
  */
 export function runGit(cwd: string, args: string[], opts: GitOptions = {}): Promise<GitRun> {
+  const timeoutMs = opts.timeoutMs ?? TIMEOUT_MS
   return new Promise((resolve) => {
-    execFile(
+    let settled = false
+    let killTimer: ReturnType<typeof setTimeout> | null = null
+
+    const finish = (result: GitRun): void => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      resolve(result)
+    }
+
+    const child = execFile(
       'git',
       ['--no-optional-locks', '-c', 'core.fsmonitor=false', '-C', cwd, ...args],
       {
-        timeout: opts.timeoutMs ?? TIMEOUT_MS,
         maxBuffer: opts.maxBuffer ?? 8 * 1024 * 1024,
         env: {
           ...process.env,
@@ -45,9 +58,38 @@ export function runGit(cwd: string, args: string[], opts: GitOptions = {}): Prom
       },
       (err, stdout, stderr) => {
         const code = err ? (typeof err.code === 'number' ? err.code : -1) : 0
-        resolve({ code, stdout, stderr })
+        finish({ code, stdout, stderr })
       }
     )
+
+    child.stdin?.end()
+    child.once('exit', () => {
+      if (killTimer) {
+        clearTimeout(killTimer)
+        killTimer = null
+      }
+    })
+
+    const timer = setTimeout(() => {
+      finish({ code: -1, stdout: '', stderr: '' })
+      child.stdout?.destroy()
+      child.stderr?.destroy()
+      if (child.exitCode === null && child.signalCode === null) {
+        try {
+          child.kill('SIGTERM')
+        } catch {
+          // Process already exited.
+        }
+        killTimer = setTimeout(() => {
+          try {
+            child.kill('SIGKILL')
+          } catch {
+            // Process already exited.
+          }
+        }, KILL_GRACE_MS)
+        killTimer.unref()
+      }
+    }, timeoutMs)
   })
 }
 
