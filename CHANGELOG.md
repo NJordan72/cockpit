@@ -1,5 +1,11 @@
 # cockpit
 
+## 0.8.1
+
+### Patch Changes
+
+- Enforce `runGit` timeouts directly instead of waiting on `execFile`'s pipe close, so a hung git process or a grandchild holding stdout/stderr open cannot stall status refreshes. ([#104](https://github.com/NJordan72/cockpit/pull/104))
+
 ## 0.8.0
 
 ### Minor Changes
