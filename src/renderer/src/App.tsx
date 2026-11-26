@@ -26,13 +26,15 @@ import { resolveTheme, themeVars, type ResolvedTheme, type ThemeDefinition } fro
 import type { BashCommand } from '@shared/activity'
 import type { AppearanceCommand, PaneSession, PrPaneRequest, WindowInfo } from '@shared/ipc'
 import { prRefFromUrl } from '@shared/prs'
-import { cleanInput, type QuickCommand } from '@shared/quickCommands'
+import { cleanInput, quickPrompt, type QuickCommand } from '@shared/quickCommands'
 import type { RunDraft } from '@shared/runs'
 import { taskAt, type TaskDraft } from '@shared/tasks'
 import type { SecretPrompt, SessionStatus, WidgetInfo } from '@shared/widgets'
 import { ActivityPanel } from './activity/ActivityPanel'
 import { PlanDialog } from './activity/PlanDialog'
 import { newSessionTarget, presetAgent } from './agentSessions'
+import { CommandPalette } from './components/CommandPalette'
+import type { PaletteEffect } from './components/commandPaletteModel'
 import { Launcher } from './components/Launcher'
 import { CompareAgentsDialog } from './components/CompareAgentsDialog'
 import { Picker } from './components/Picker'
@@ -74,10 +76,11 @@ import { queueRun } from './terminal/run'
 import { applyTheme } from './theme'
 import { OpenUrlDialog, type OpenWhere } from './web/OpenUrlDialog'
 import { webPanes } from './web/registry'
+import { sessionsIn } from './runs/model'
 import { RunDialog } from './runs/RunDialog'
 import { RunsPanel } from './runs/RunsPanel'
 import { useRuns } from './runs/useRuns'
-import { sessionToShow } from './tasks/model'
+import { sessionsByTask, sessionToShow } from './tasks/model'
 import { TaskDialog, type CreatedTask } from './tasks/TaskDialog'
 import { TasksPanel } from './tasks/TasksPanel'
 import { useTasks } from './tasks/useTasks'
@@ -110,7 +113,13 @@ const SAVE_DELAY_MS = 150
 const tabIds = (tabs: readonly Tab[]): string[] => tabs.map((t) => t.id)
 
 /** Actions a window without terminals still runs itself; it forwards the rest. */
-const OWN_ACTIONS: readonly Action[] = ['toggleSidebar', 'kidsMode', 'showPlan', 'nextAttention']
+const OWN_ACTIONS: readonly Action[] = [
+  'toggleSidebar',
+  'kidsMode',
+  'showPlan',
+  'nextAttention',
+  'commandPalette'
+]
 
 /** Give a pane the keyboard, whether it's a terminal or a web page. */
 function focusPane(paneId: string): void {
@@ -156,6 +165,10 @@ export function App(): React.JSX.Element {
   const [openingUrl, setOpeningUrl] = useState(false)
   /** The Quick command dialog is up. */
   const [quickOpen, setQuickOpen] = useState(false)
+  /** A quick command picked from the command palette that needs an input. */
+  const [quickInitial, setQuickInitial] = useState<QuickCommand | null>(null)
+  /** The unified command palette is up. */
+  const [paletteOpen, setPaletteOpen] = useState(false)
   /** The Compare agents dialog is up. */
   const [compareOpen, setCompareOpen] = useState(false)
   /** The New task dialog: what it starts with, and the repository it suggests. */
@@ -276,6 +289,7 @@ export function App(): React.JSX.Element {
   const planShownRef = useRef(planShown)
   const taskDialogRef = useRef(taskDialog)
   const quickOpenRef = useRef(quickOpen)
+  const paletteOpenRef = useRef(paletteOpen)
   const compareOpenRef = useRef(compareOpen)
   const tasksRef = useRef(tasks)
   useEffect(() => {
@@ -291,6 +305,7 @@ export function App(): React.JSX.Element {
     planShownRef.current = planShown
     taskDialogRef.current = taskDialog
     quickOpenRef.current = quickOpen
+    paletteOpenRef.current = paletteOpen
     compareOpenRef.current = compareOpen
     tasksRef.current = tasks
   })
@@ -768,7 +783,16 @@ export function App(): React.JSX.Element {
           return
         case 'quickCommand':
           setPicker(null)
+          setPaletteOpen(false)
+          setQuickInitial(null)
           setQuickOpen(true)
+          return
+        case 'commandPalette':
+          setPicker(null)
+          setQuickOpen(false)
+          setQuickInitial(null)
+          setOpeningUrl(false)
+          setPaletteOpen(true)
           return
         case 'nextAttention': {
           const currentId =
@@ -812,6 +836,7 @@ export function App(): React.JSX.Element {
         planShownRef.current ||
         taskDialogRef.current ||
         quickOpenRef.current ||
+        paletteOpenRef.current ||
         compareOpenRef.current
       )
         return
@@ -834,6 +859,7 @@ export function App(): React.JSX.Element {
         planShownRef.current ||
         taskDialogRef.current ||
         quickOpenRef.current ||
+        paletteOpenRef.current ||
         compareOpenRef.current
       )
         return
@@ -862,6 +888,7 @@ export function App(): React.JSX.Element {
           planShownRef.current ||
           taskDialogRef.current ||
           quickOpenRef.current ||
+          paletteOpenRef.current ||
           compareOpenRef.current
         )
           return
@@ -891,6 +918,8 @@ export function App(): React.JSX.Element {
         setPlanShown(null)
         setTaskDialog(null)
         setQuickOpen(false)
+        setQuickInitial(null)
+        setPaletteOpen(false)
         setCompareOpen(false)
       } else requestAnimationFrame(focusWorkspace)
     })
@@ -1250,6 +1279,7 @@ export function App(): React.JSX.Element {
   const runQuick = useCallback(
     (cmd: QuickCommand, prompt: string, input: string) => {
       setQuickOpen(false)
+      setQuickInitial(null)
       requestAnimationFrame(focusWorkspace)
       const preset = configRef.current?.presets.find((p) => p.id === cmd.preset)
       if (!preset) return
@@ -1275,8 +1305,113 @@ export function App(): React.JSX.Element {
 
   const closeQuick = useCallback(() => {
     setQuickOpen(false)
+    setQuickInitial(null)
     requestAnimationFrame(focusWorkspace)
   }, [focusWorkspace])
+
+  const closePalette = useCallback(() => {
+    setPaletteOpen(false)
+    requestAnimationFrame(focusWorkspace)
+  }, [focusWorkspace])
+
+  const runPaletteEffect = useCallback(
+    (effect: PaletteEffect) => {
+      setPaletteOpen(false)
+      switch (effect.type) {
+        case 'session':
+          revealPane(effect.paneId)
+          return
+        case 'task': {
+          const open = sessionToShow(
+            sessionsByTask([effect.task], sessionsRef.current).get(effect.task.path) ?? []
+          )
+          if (open) revealPane(open.id)
+          else openInTask(effect.task.path)
+          return
+        }
+        case 'runItem': {
+          const { run, item } = effect
+          const s = item.state
+          const open = sessionToShow(sessionsIn(item, sessionsRef.current))
+          if (open) revealPane(open.id)
+          else if (s.pr && s.path && (s.phase === 'review' || s.phase === 'done')) {
+            const pr = prRefFromUrl(s.pr.url)
+            if (pr) openPr({ pr, cwd: s.path, title: s.pr.title, where: 'tab' })
+            else api.prs.open(s.pr.url)
+          } else if (s.path && !item.external) {
+            openInTask(s.path, item.presetId ?? run.presetId)
+          } else if (
+            !item.external &&
+            !run.cancelled &&
+            (s.phase === 'waiting' || s.phase === 'ready')
+          ) {
+            void api.runs.act(run.id, 'startNow', item.id)
+            requestAnimationFrame(focusWorkspace)
+          } else if (item.url) {
+            api.web.openExternal(item.url)
+            requestAnimationFrame(focusWorkspace)
+          } else {
+            requestAnimationFrame(focusWorkspace)
+          }
+          return
+        }
+        case 'runToggle':
+          void api.runs.act(effect.runId, effect.action)
+          requestAnimationFrame(focusWorkspace)
+          return
+        case 'quickCommand': {
+          if (effect.command.input) {
+            setQuickInitial(effect.command)
+            setQuickOpen(true)
+            return
+          }
+          const prompt = quickPrompt(effect.command, '')
+          if (prompt !== null) runQuick(effect.command, prompt, '')
+          else requestAnimationFrame(focusWorkspace)
+          return
+        }
+        case 'slashCommand': {
+          const hasAgent =
+            focused?.agent !== undefined && focused.agent !== null && focused.status !== 'exited'
+          runPrompt(`/${effect.command.name}`, hasAgent ? 'here' : 'new')
+          return
+        }
+        case 'action':
+          runAction(effect.action)
+          return
+        case 'cleanUpMerged':
+          void api.tasks.cleanUp()
+          requestAnimationFrame(focusWorkspace)
+          return
+        case 'windows':
+          api.window.setCount(effect.count)
+          requestAnimationFrame(focusWorkspace)
+          return
+        case 'layout':
+          runAppearance({ type: 'layout', id: effect.layoutId })
+          return
+        case 'resetLayout':
+          runAppearance({ type: 'resetLayout' })
+          return
+        case 'theme':
+          runAppearance({ type: 'theme', id: effect.themeId })
+          requestAnimationFrame(focusWorkspace)
+          return
+      }
+    },
+    [
+      api,
+      focused,
+      focusWorkspace,
+      openInTask,
+      openPr,
+      revealPane,
+      runAction,
+      runAppearance,
+      runPrompt,
+      runQuick
+    ]
+  )
 
   const answerPrompt = useCallback(
     (prompt: SecretPrompt, value: string | null) => {
@@ -1618,8 +1753,33 @@ export function App(): React.JSX.Element {
           <QuickCommandDialog
             commands={config.quickCommands}
             presets={config.presets}
+            initialCommand={quickInitial}
             onRun={runQuick}
             onCancel={closeQuick}
+          />
+        )}
+        {paletteOpen && (
+          <CommandPalette
+            focusedPaneId={focused?.id ?? null}
+            sessions={sessions}
+            tasks={tasks}
+            runs={runs}
+            quickCommands={config.quickCommands}
+            presets={config.presets}
+            themes={themes ?? []}
+            currentTheme={config.appearance.theme}
+            layouts={layoutChoices(config.appearance)}
+            currentLayout={view.layout}
+            canResetLayout={Boolean(
+              builtInLayout(view.layout) && config.appearance.layouts[view.layout]
+            )}
+            panelsHidden={view.panelsHidden}
+            windowCount={windowInfo.count}
+            displays={windowInfo.displays}
+            keybindings={config.keybindings}
+            hasFocusedPane={toolbarPane !== null}
+            onSelect={runPaletteEffect}
+            onCancel={closePalette}
           />
         )}
         {openingUrl && (

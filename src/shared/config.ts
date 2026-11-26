@@ -80,6 +80,7 @@ export type Action =
   | 'quickCommand'
   | 'nextAttention'
   | 'findInPane'
+  | 'commandPalette'
 
 export type Keybindings = Record<Action, string>
 
@@ -356,7 +357,8 @@ export const DEFAULT_KEYBINDINGS: Keybindings = {
   kidsMode: 'Cmd+Shift+K',
   quickCommand: 'Cmd+Shift+J',
   nextAttention: 'Cmd+Shift+U',
-  findInPane: 'Cmd+F'
+  findInPane: 'Cmd+F',
+  commandPalette: 'Cmd+P'
 }
 
 export const DEFAULT_TERMINAL: TerminalSettings = {

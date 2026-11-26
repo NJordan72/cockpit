@@ -153,6 +153,7 @@ the pane exits or is cleared.
 | Cmd+Shift+T         | New shell tab, no agent, in the same dir   |
 | Cmd+Shift+N         | New task (see [Tasks](#tasks))             |
 | Cmd+Shift+J         | Run a [quick command](#quick-commands)     |
+| Cmd+P               | Open the command palette                   |
 | Cmd+Shift+U         | Jump to next waiting or done agent         |
 | Cmd+L               | Open a web page (new tab, or ⇧⏎ to split)  |
 | Cmd+R               | Reload the focused web page                |
@@ -172,7 +173,7 @@ The toolbar along the bottom of the window shows the focused pane: its status,
 preset (or Claude Code's name for the conversation), directory, and git branch
 with commits ahead and behind and the number of changed files, and a Plan
 button once its agent has proposed a plan (see [Plans](#plans)). Its buttons open
-a new tab, a plain shell tab (no agent) in the focused pane's directory, a new [task](#tasks), a [quick command](#quick-commands), split right or down, clear the pane, and hide or show the panels, and its menu
+a new tab, a plain shell tab (no agent) in the focused pane's directory, a new [task](#tasks), a [quick command](#quick-commands), the command palette (`Cmd+P`, which fuzzy-searches open sessions, tasks, runs, quick commands, slash commands, layouts, themes, and app actions, with optional `>` commands and `@` sessions prefixes), split right or down, clear the pane, and hide or show the panels, and its menu
 switches layouts. Clear ends the pane's process and starts its preset again in
 the same directory, with a new terminal and an empty status, activity log, and
 file list; the old conversation stays in the agent's own history. Resume

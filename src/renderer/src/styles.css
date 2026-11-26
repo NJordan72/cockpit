@@ -899,6 +899,31 @@ button.label-row:hover .label-title {
   overflow-wrap: anywhere;
 }
 
+/* ---- command palette ---- */
+
+.command-palette .picker-list li {
+  align-items: center;
+}
+
+.palette-cat {
+  flex: none;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  min-width: 44px;
+}
+
+.palette-key {
+  flex: none;
+  font-family: inherit;
+  font-size: 11px;
+  color: var(--muted);
+  padding: 1px 5px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
 /* ---- toolbar along the bottom ---- */
 
 .toolbar {

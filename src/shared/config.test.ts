@@ -483,6 +483,7 @@ describe('migrateConfig: recent dirs and launcher', () => {
       { id: 'standup', label: 'Standup', preset: 'claude', prompt: '/standup', background: true }
     ])
     expect(c.keybindings.quickCommand).toBe('Cmd+Shift+J')
+    expect(c.keybindings.commandPalette).toBe('Cmd+P')
   })
 })
 

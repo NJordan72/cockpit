@@ -69,6 +69,12 @@ const BUTTONS: { action: Action; label: string; title: string; needsPane: boolea
     title: 'Run a quick command from config.json',
     needsPane: false
   },
+  {
+    action: 'commandPalette',
+    label: '⌕ Palette',
+    title: 'Open command palette',
+    needsPane: false
+  },
   { action: 'splitRight', label: '◫ Right', title: 'Split right', needsPane: true },
   { action: 'splitDown', label: '⊟ Down', title: 'Split down', needsPane: true },
   { action: 'clearPane', label: '⟲ Clear', title: 'Clear session', needsPane: true },
