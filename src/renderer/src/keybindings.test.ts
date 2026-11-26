@@ -55,6 +55,10 @@ describe('actionFor', () => {
     expect(actionFor(keymap, ev('KeyR', { meta: true, shift: true }))).toBe('resumePane')
   })
 
+  it('matches nextAttention on Cmd+Shift+U', () => {
+    expect(actionFor(keymap, ev('KeyU', { meta: true, shift: true }))).toBe('nextAttention')
+  })
+
   it('requires an exact modifier match', () => {
     expect(actionFor(keymap, ev('KeyT', { meta: true, alt: true }))).toBeNull()
     expect(actionFor(keymap, ev('KeyT'))).toBeNull()

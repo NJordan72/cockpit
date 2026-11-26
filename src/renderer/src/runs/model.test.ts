@@ -58,7 +58,7 @@ describe('the Runs panel model', () => {
     expect(itemMeta(item({ phase: 'ready' }), { ...merge, paused: true })).toBe(
       'Starts when the run resumes'
     )
-    expect(itemMeta(item({ phase: 'working' }), merge)).toBe('No agent running. Click to open one')
+    expect(itemMeta(item({ phase: 'working' }), merge)).toBe('No agent running. Click to resume')
     expect(itemMeta(item({ phase: 'review', pr: pr({ base: 'me/sc-101' }) }), stack)).toBe(
       '#12 open · into me/sc-101'
     )

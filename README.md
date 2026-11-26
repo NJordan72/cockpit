@@ -91,8 +91,13 @@ or `/`. The switch lists every preset with a command (Claude Code, Codex, and
 Antigravity CLI by default).
 
 If the last session left tabs open, **Restore last session** brings them back
-instead. Launching a project starts fresh, and the old layout is gone. Closing
-the last tab returns to the start screen.
+fresh, and when any of those tabs ran an agent, **Restore & resume** brings
+them back with their previous conversations resumed (`claude --resume <id>` for
+Claude Code panes whose session id was captured, `codex resume --last` for
+Codex, and `agy --continue` for Antigravity CLI, falling back cleanly to a
+fresh session if a conversation no longer exists). Launching a project starts
+fresh, and the old layout is gone. Closing the last tab returns to the start
+screen.
 
 ## Tabs, splits, presets
 
@@ -117,10 +122,11 @@ folder is hidden. The tab shortcuts skip hidden tabs, the button counts them,
 and opening a new tab in a hidden folder shows that folder again. Each window
 keeps its own filter.
 
-The layout (tabs, splits, sizes, each pane's preset and directory) is saved to
-`~/.cockpit/config.json` for each window, and the start screen offers to restore it on
+The layout (tabs, splits, sizes, each pane's preset, directory, and last Claude
+Code session id) is saved to `~/.cockpit/config.json` for each window, and the
+start screen offers to restore it fresh or with **Restore & resume** on
 relaunch. Processes and scrollback are not restored; each pane starts its
-preset fresh in the directory it was last in. When a pane's process exits, the
+preset in the directory it was last in. When a pane's process exits, the
 pane shows the exit status; press `Enter` to restart it.
 
 A pane can also show a web page: Cmd+L (or Web in the toolbar) takes a URL, a
@@ -139,6 +145,7 @@ address.
 | Cmd+Shift+T         | New shell tab, no agent, in the same dir   |
 | Cmd+Shift+N         | New task (see [Tasks](#tasks))             |
 | Cmd+Shift+J         | Run a [quick command](#quick-commands)     |
+| Cmd+Shift+U         | Jump to next waiting or done agent         |
 | Cmd+L               | Open a web page (new tab, or ⇧⏎ to split)  |
 | Cmd+R               | Reload the focused web page                |
 | Cmd+D / Cmd+Shift+D | Split right / down (picker)                |
@@ -177,7 +184,13 @@ Every pane has a status: **idle**, **working**, **needs input**, **done**
 the most urgent status among its panes (idle gets none), and the **Sessions**
 panel shows every pane with its status, Claude Code's
 title for the conversation, and how many tokens its context holds. Click a
-session to jump to it. When a pane goes to needs input or done while
+session to jump to it. Press `Cmd+Shift+U` (or click the **N waiting** badge
+that appears in the toolbar when any pane needs input) to jump to the oldest
+pane waiting for input across windows and background runs, or the oldest done
+pane when none are waiting; pressing it again cycles through the queue. In the
+Sessions panel, a waiting pane also offers inline **Approve** (Enter), **Deny**
+(Esc), **Reply**, and **Focus** actions (and the same on right-click) so simple
+prompts can be answered without leaving your current tab. When a pane goes to needs input or done while
 Cockpit's window isn't focused, macOS shows a notification; clicking it
 focuses that pane. The Dock icon's badge counts the panes that need you.
 
@@ -595,7 +608,9 @@ place, and **Remove** once it's finished or cancelled.
 Cockpit saves each run to `~/.cockpit/runs/<id>.json`, so a run survives a
 restart. Agents don't, because each pane starts a new process when Cockpit
 relaunches. An item whose agent was working shows **No agent running**, and
-clicking it opens one in its worktree. While a run has items working or in
+clicking it resumes its last session in that worktree (falling back to a fresh
+session if none exists; right-click for **Resume last session** or **Open fresh
+session**). While a run has items working or in
 review, Cockpit keeps reading their pull requests with no window on screen, so
 a run left going overnight still sees its merges. Nothing starts while kids
 mode is on.

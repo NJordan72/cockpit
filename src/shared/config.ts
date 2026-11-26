@@ -36,6 +36,17 @@ export function validHost(host: string): boolean {
   return /^[A-Za-z0-9_.@%[\]:-]{1,255}$/.test(host) && !host.startsWith('-')
 }
 
+/**
+ * An agent session id is passed as a CLI argument and matched against a
+ * transcript filename, so it can't start with "-", hold path separators, or
+ * contain "..".
+ */
+const SESSION_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/
+
+export function validSessionId(id: unknown): id is string {
+  return typeof id === 'string' && SESSION_ID.test(id) && !id.includes('..')
+}
+
 export type Action =
   | 'newTab'
   | 'newShell'
@@ -67,6 +78,7 @@ export type Action =
   | 'toggleSidebar'
   | 'kidsMode'
   | 'quickCommand'
+  | 'nextAttention'
   | 'findInPane'
 
 export type Keybindings = Record<Action, string>
@@ -76,8 +88,13 @@ export interface PaneNode {
   id: string
   presetId: string
   cwd: string
-  /** Start the agent at its own session picker. Dropped once the pane has started. */
-  resume?: boolean
+  /**
+   * Resume a past conversation instead of starting fresh. Dropped once the pane has started.
+   * `true` opens the agent's session picker; `'last'` resumes `sessionId` or the directory's latest.
+   */
+  resume?: boolean | 'last'
+  /** The agent's conversation id from its last run, persisted so Restore & resume can pick it up. */
+  sessionId?: string
   /** The agent's first prompt. Dropped once the pane has started. */
   prompt?: string
   /** The quick command it was started by, whose model and effort it keeps on a restart. */
@@ -338,6 +355,7 @@ export const DEFAULT_KEYBINDINGS: Keybindings = {
   toggleSidebar: 'Cmd+B',
   kidsMode: 'Cmd+Shift+K',
   quickCommand: 'Cmd+Shift+J',
+  nextAttention: 'Cmd+Shift+U',
   findInPane: 'Cmd+F'
 }
 
@@ -453,7 +471,10 @@ function readNode(v: unknown, seen: Set<string>): LayoutNode | null {
     } else if (isPrRef(v.pr)) {
       pane.pr = { repo: v.pr.repo, number: v.pr.number }
       if (nonEmpty(v.title)) pane.title = v.title.slice(0, MAX_TITLE)
-    } else if (nonEmpty(v.quick)) pane.quick = v.quick
+    } else {
+      if (nonEmpty(v.quick)) pane.quick = v.quick
+      if (validSessionId(v.sessionId)) pane.sessionId = v.sessionId
+    }
     return pane
   }
   if (v.type === 'split') {
@@ -516,12 +537,13 @@ function readLayout(v: unknown, presetIds: Set<string>, seen = new Set<string>()
     const root = readNode(t.root, seen)
     if (!root) continue
     // Panes whose preset was deleted fall back to a shell.
-    const fixPresets = (n: LayoutNode): LayoutNode =>
-      n.type === 'pane'
-        ? presetIds.has(n.presetId)
-          ? n
-          : { ...n, presetId: 'shell' }
-        : { ...n, children: n.children.map(fixPresets) }
+    const fixPresets = (n: LayoutNode): LayoutNode => {
+      if (n.type !== 'pane') return { ...n, children: n.children.map(fixPresets) }
+      if (presetIds.has(n.presetId)) return n
+      const fallback: PaneNode = { ...n, presetId: 'shell' }
+      delete fallback.sessionId
+      return fallback
+    }
     const fixed = fixPresets(root)
     const ids = paneIds(fixed)
     const active =

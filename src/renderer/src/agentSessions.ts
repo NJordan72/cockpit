@@ -7,7 +7,7 @@ import type { AgentKind } from '@shared/widgets'
 const FALLBACK: readonly AgentKind[] = ['claude', 'codex', 'agy']
 
 /** The agent a preset's command starts, read the way main reads it: the first word after any VAR=value. */
-function presetAgent(command: string | undefined): AgentKind | null {
+export function presetAgent(command: string | undefined): AgentKind | null {
   for (const word of command?.trim().split(/\s+/) ?? []) {
     if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(word)) continue
     const name = word.slice(word.lastIndexOf('/') + 1)
