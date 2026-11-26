@@ -7,6 +7,7 @@ import {
   claudeLastUsed,
   claudeProjectDir,
   codexLastUsed,
+  hasAgentSession,
   parseAgyLatest,
   parseCodexCwd
 } from './history'
@@ -127,5 +128,35 @@ describe('usage history', () => {
     expect((await claudeLastUsed(['/dev/a'], path.join(root, 'none'))).size).toBe(0)
     expect((await codexLastUsed(path.join(root, 'none'))).size).toBe(0)
     expect((await agyLastUsed(path.join(root, 'none'))).size).toBe(0)
+  })
+
+  it('checks whether each agent has a resumable session on disk', async () => {
+    const homes = {
+      claude: path.join(root, 'claude'),
+      codex: path.join(root, 'codex'),
+      agy: path.join(root, 'agy')
+    }
+    put(path.join(homes.claude, 'projects', '-dev-a', 'sess-1.jsonl'), '{}', T)
+    put(
+      path.join(homes.codex, 'sessions', '2026', '10', '17', 'rollout-2026-10-17T09-00-00-a.jsonl'),
+      meta('/dev/a'),
+      T
+    )
+    put(
+      path.join(homes.agy, 'cache', 'last_conversations.json'),
+      JSON.stringify({ '/dev/a': 'conv-a' }),
+      T
+    )
+    put(path.join(homes.agy, 'conversations', 'conv-a.db'), '', T)
+
+    expect(await hasAgentSession('claude', '/dev/a', homes, 'sess-1')).toBe(true)
+    expect(await hasAgentSession('claude', '/dev/a', homes, 'missing')).toBe(false)
+    expect(await hasAgentSession('claude', '/dev/a', homes, '../escape')).toBe(false)
+    expect(await hasAgentSession('claude', '/dev/a', homes)).toBe(true)
+    expect(await hasAgentSession('claude', '/dev/b', homes)).toBe(false)
+    expect(await hasAgentSession('codex', '/dev/a', homes)).toBe(true)
+    expect(await hasAgentSession('codex', '/dev/b', homes)).toBe(false)
+    expect(await hasAgentSession('agy', '/dev/a', homes)).toBe(true)
+    expect(await hasAgentSession('agy', '/dev/b', homes)).toBe(false)
   })
 })

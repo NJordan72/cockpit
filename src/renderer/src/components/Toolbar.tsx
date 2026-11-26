@@ -4,6 +4,7 @@ import { planStatus } from '../activity/PlanDialog'
 import { useGit, usePanePlans } from '../activity/useActivity'
 import { chordLabel } from '../keybindings'
 import { STATUS_LABEL } from '../sessions'
+import { PortPills } from './PortPills'
 
 interface Props {
   /**
@@ -11,6 +12,7 @@ interface Props {
    * without terminals, the one the user last worked in.
    */
   focused: PaneSession | null
+  sessions: readonly PaneSession[]
   keybindings: Keybindings
   layouts: { id: string; name: string }[]
   layout: string
@@ -26,6 +28,12 @@ interface Props {
   onWindows: (count: number) => void
   /** Open the plan dialog on the focused pane's newest plan. */
   onShowPlan: () => void
+  /** Open the Compare agents dialog to launch two presets side by side. */
+  onCompare?: () => void
+  /** Open (or focus) a split web pane beside a pane at a detected local server URL. */
+  onOpenPort: (paneId: string, url: string) => void
+  /** Panes waiting for user input across all windows and background runs. */
+  waitingCount: number
 }
 
 const COUNTS = Array.from({ length: MAX_WINDOWS }, (_, i) => i + 1)
@@ -61,6 +69,12 @@ const BUTTONS: { action: Action; label: string; title: string; needsPane: boolea
     title: 'Run a quick command from config.json',
     needsPane: false
   },
+  {
+    action: 'commandPalette',
+    label: '⌕ Palette',
+    title: 'Open command palette',
+    needsPane: false
+  },
   { action: 'splitRight', label: '◫ Right', title: 'Split right', needsPane: true },
   { action: 'splitDown', label: '⊟ Down', title: 'Split down', needsPane: true },
   { action: 'clearPane', label: '⟲ Clear', title: 'Clear session', needsPane: true },
@@ -76,6 +90,7 @@ const BUTTONS: { action: Action; label: string; title: string; needsPane: boolea
 /** The bar along the bottom of the window: the focused pane, and the actions most used on it. */
 export function Toolbar({
   focused,
+  sessions,
   keybindings,
   layouts,
   layout,
@@ -86,7 +101,10 @@ export function Toolbar({
   windows,
   displays,
   onWindows,
-  onShowPlan
+  onShowPlan,
+  onCompare,
+  onOpenPort,
+  waitingCount
 }: Props): React.JSX.Element {
   const tip = (title: string, action: Action): string => {
     const keys = chordLabel(keybindings[action])
@@ -103,15 +121,35 @@ export function Toolbar({
         {focused ? (
           <FocusedPane
             session={focused}
+            sessions={sessions}
             active={active}
             planTip={tip('Click to read it', 'showPlan')}
             onShowPlan={onShowPlan}
+            onOpenPort={onOpenPort}
           />
         ) : (
           <span>No pane</span>
         )}
       </div>
       <div className="toolbar-actions">
+        {waitingCount > 0 && (
+          <button
+            type="button"
+            tabIndex={-1}
+            className="toolbar-attention"
+            title={tip(
+              waitingCount === 1
+                ? 'Jump to waiting pane'
+                : `Jump to next waiting pane (${String(waitingCount)} waiting)`,
+              'nextAttention'
+            )}
+            onMouseDown={keepFocus}
+            onClick={() => onAction('nextAttention')}
+          >
+            <span className="status-dot needs-input" aria-hidden />
+            {waitingCount} waiting
+          </button>
+        )}
         {BUTTONS.map((b) => (
           <button
             key={b.action}
@@ -125,6 +163,17 @@ export function Toolbar({
             {b.label}
           </button>
         ))}
+        {onCompare && (
+          <button
+            type="button"
+            tabIndex={-1}
+            title="Compare two agents side by side with the same prompt"
+            onMouseDown={keepFocus}
+            onClick={onCompare}
+          >
+            ⇄ Compare
+          </button>
+        )}
         <button
           type="button"
           tabIndex={-1}
@@ -173,15 +222,19 @@ export function Toolbar({
 
 function FocusedPane({
   session,
+  sessions,
   active,
   planTip,
-  onShowPlan
+  onShowPlan,
+  onOpenPort
 }: {
   session: PaneSession
+  sessions: readonly PaneSession[]
   active: boolean
   /** The last line of the Plan button's tooltip, with its shortcut. */
   planTip: string
   onShowPlan: () => void
+  onOpenPort: (paneId: string, url: string) => void
 }): React.JSX.Element {
   // Read git again when the agent finishes something; it may have committed.
   const git = useGit(session.id, active, `${session.status}:${String(session.since)}`)
@@ -204,6 +257,12 @@ function FocusedPane({
           {git.changed > 0 && <span className="toolbar-changed"> ±{git.changed}</span>}
         </span>
       )}
+      <PortPills
+        items={session.ports.map((server) => ({ paneId: session.id, server }))}
+        sessions={sessions}
+        className="toolbar-ports"
+        onOpenPort={onOpenPort}
+      />
       <PlanButton paneId={session.id} tip={planTip} onShow={onShowPlan} />
     </>
   )

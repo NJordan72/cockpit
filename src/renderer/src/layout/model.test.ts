@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'bun:test'
 import type { LayoutNode, PaneNode, SplitNode } from '@shared/config'
-import { allPanes, arrange, dragSizes, neighbor, removePane, splitPane } from './model'
+import {
+  allPanes,
+  arrange,
+  dragSizes,
+  findWebPane,
+  makeWebPane,
+  neighbor,
+  removePane,
+  splitPane
+} from './model'
 
 const pane = (id: string): PaneNode => ({ type: 'pane', id, presetId: 'shell', cwd: '~' })
 const ids = (n: LayoutNode): string[] => allPanes(n).map((p) => p.id)
@@ -98,5 +107,15 @@ describe('dragSizes', () => {
   it('works inside a nested split rect', () => {
     const [a] = dragSizes(split, { x: 0.5, y: 0, w: 0.5, h: 1 }, 0, 0.6)
     expect(a).toBeCloseTo(0.2)
+  })
+})
+
+describe('findWebPane', () => {
+  it('matches an open web pane by exact URL or same origin', () => {
+    const web = makeWebPane('http://localhost:5173/settings', '~')
+    const root = splitPane(pane('a'), 'a', 'row', web)
+    expect(findWebPane(root, 'http://localhost:5173')).toEqual(web)
+    expect(findWebPane(root, 'http://localhost:5173/settings')).toEqual(web)
+    expect(findWebPane(root, 'http://localhost:3000')).toBeNull()
   })
 })

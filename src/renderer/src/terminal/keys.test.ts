@@ -26,10 +26,12 @@ describe('classifyKey', () => {
     expect(classifyKey(key('Enter', { altKey: true }))).toEqual({ kind: 'pass' })
   })
 
-  it('maps Cmd+C, Cmd+V, Cmd+K', () => {
+  it('maps Cmd+C, Cmd+V, Cmd+K, Cmd+G, Cmd+Shift+G', () => {
     expect(classifyKey(key('c', { metaKey: true }))).toEqual({ kind: 'copy' })
     expect(classifyKey(key('v', { metaKey: true }))).toEqual({ kind: 'paste' })
     expect(classifyKey(key('k', { metaKey: true }))).toEqual({ kind: 'clear' })
+    expect(classifyKey(key('g', { metaKey: true }))).toEqual({ kind: 'findNext' })
+    expect(classifyKey(key('G', { metaKey: true, shiftKey: true }))).toEqual({ kind: 'findPrev' })
   })
 
   it('keeps Ctrl+C going to the PTY', () => {

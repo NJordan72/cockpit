@@ -38,6 +38,19 @@ describe('layoutReducer', () => {
     expect(allPanes(l.tabs[0]?.root ?? pane('x')).map((p) => p.id)).toEqual(['a', 'b'])
   })
 
+  it('opens a split tab with two panes side by side and selects the left pane', () => {
+    const l = run([
+      { type: 'newTab', pane: pane('a') },
+      { type: 'newSplitTab', left: pane('left'), right: pane('right') }
+    ])
+    expect(l.tabs).toHaveLength(2)
+    const tab = l.tabs[1]
+    expect(l.activeTabId).toBe(tab?.id ?? null)
+    expect(tab?.activePaneId).toBe('left')
+    expect(tab?.root.type).toBe('split')
+    expect(allPanes(tab?.root ?? pane('x')).map((p) => p.id)).toEqual(['left', 'right'])
+  })
+
   it('closing the focused pane focuses its neighbour', () => {
     const l = run([
       { type: 'newTab', pane: pane('a') },
@@ -344,5 +357,40 @@ describe('background runs', () => {
     const l = layoutReducer(now, { type: 'restore', layout: saved })
     expect(l.tabs.map((t) => t.activePaneId)).toEqual(['a', 'r', 'p'])
     expect(l.activeTabId).toBe('t1')
+  })
+
+  it('marks terminal panes for auto-resume on restore with resume enabled, leaving web panes alone', () => {
+    const saved: Layout = {
+      tabs: [
+        {
+          id: 't1',
+          root: {
+            type: 'split',
+            id: 's1',
+            direction: 'row',
+            sizes: [0.5, 0.5],
+            children: [
+              { type: 'pane', id: 'a', presetId: 'claude', cwd: '~/dev/x', sessionId: 'sess-1' },
+              { type: 'pane', id: 'w', presetId: 'shell', cwd: '~', url: 'https://example.com/' }
+            ]
+          },
+          activePaneId: 'a'
+        }
+      ],
+      activeTabId: 't1'
+    }
+    let l = layoutReducer(
+      { tabs: [], activeTabId: null },
+      { type: 'restore', layout: saved, resume: true }
+    )
+    const a = findPane(l.tabs[0]?.root ?? pane('x'), 'a')
+    const w = findPane(l.tabs[0]?.root ?? pane('x'), 'w')
+    expect(a?.resume).toBe('last')
+    expect(a?.sessionId).toBe('sess-1')
+    expect(w?.resume).toBeUndefined()
+    // Once started, transient resume and sessionId are cleared on the renderer node.
+    l = layoutReducer(l, { type: 'setCwd', paneId: 'a', cwd: '~/dev/x' })
+    expect(findPane(l.tabs[0]?.root ?? pane('x'), 'a')?.resume).toBeUndefined()
+    expect(findPane(l.tabs[0]?.root ?? pane('x'), 'a')?.sessionId).toBeUndefined()
   })
 })

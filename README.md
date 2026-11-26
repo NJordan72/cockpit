@@ -91,8 +91,13 @@ or `/`. The switch lists every preset with a command (Claude Code, Codex, and
 Antigravity CLI by default).
 
 If the last session left tabs open, **Restore last session** brings them back
-instead. Launching a project starts fresh, and the old layout is gone. Closing
-the last tab returns to the start screen.
+fresh, and when any of those tabs ran an agent, **Restore & resume** brings
+them back with their previous conversations resumed (`claude --resume <id>` for
+Claude Code panes whose session id was captured, `codex resume --last` for
+Codex, and `agy --continue` for Antigravity CLI, falling back cleanly to a
+fresh session if a conversation no longer exists). Launching a project starts
+fresh, and the old layout is gone. Closing the last tab returns to the start
+screen.
 
 ## Tabs, splits, presets
 
@@ -117,10 +122,11 @@ folder is hidden. The tab shortcuts skip hidden tabs, the button counts them,
 and opening a new tab in a hidden folder shows that folder again. Each window
 keeps its own filter.
 
-The layout (tabs, splits, sizes, each pane's preset and directory) is saved to
-`~/.cockpit/config.json` for each window, and the start screen offers to restore it on
+The layout (tabs, splits, sizes, each pane's preset, directory, and last Claude
+Code session id) is saved to `~/.cockpit/config.json` for each window, and the
+start screen offers to restore it fresh or with **Restore & resume** on
 relaunch. Processes and scrollback are not restored; each pane starts its
-preset fresh in the directory it was last in. When a pane's process exits, the
+preset in the directory it was last in. When a pane's process exits, the
 pane shows the exit status; press `Enter` to restart it.
 
 A pane can also show a web page: Cmd+L (or Web in the toolbar) takes a URL, a
@@ -133,12 +139,22 @@ on. Cmd+R reloads the focused page. The Cmd+T picker's Web option lists the 20
 pages most recently loaded in web panes; type to filter them, or type a new
 address.
 
+When a terminal pane prints a local dev-server URL (`http(s)://localhost:<port>`,
+`127.0.0.1:<port>`, or `[::1]:<port>`), Cockpit shows a clickable `:port` pill in
+the toolbar and on the matching row in Sessions and Tasks. Clicking the pill opens
+a split web pane beside that terminal (or focuses one already showing that origin).
+When two different panes or worktrees advertise the same port, the pill highlights
+in yellow with a warning tooltip naming the other pane. Detected ports clear when
+the pane exits or is cleared.
+
 | Key (default)       | Action                                     |
 | ------------------- | ------------------------------------------ |
 | Cmd+T               | New tab (picker)                           |
 | Cmd+Shift+T         | New shell tab, no agent, in the same dir   |
 | Cmd+Shift+N         | New task (see [Tasks](#tasks))             |
 | Cmd+Shift+J         | Run a [quick command](#quick-commands)     |
+| Cmd+P               | Open the command palette                   |
+| Cmd+Shift+U         | Jump to next waiting or done agent         |
 | Cmd+L               | Open a web page (new tab, or ⇧⏎ to split)  |
 | Cmd+R               | Reload the focused web page                |
 | Cmd+D / Cmd+Shift+D | Split right / down (picker)                |
@@ -147,6 +163,7 @@ address.
 | Cmd+Shift+R         | Resume: pick an old session for the pane   |
 | Cmd+Shift+E         | Open the pane's project in your editor     |
 | Cmd+Shift+P         | Read the pane's plan (see [Plans](#plans)) |
+| Cmd+F               | Find in the focused terminal pane          |
 | Cmd+Alt+Arrow       | Move focus between panes                   |
 | Cmd+Shift+] / [     | Next / previous tab                        |
 | Cmd+1 … Cmd+9       | Go to tab                                  |
@@ -157,7 +174,7 @@ The toolbar along the bottom of the window shows the focused pane: its status,
 preset (or Claude Code's name for the conversation), directory, and git branch
 with commits ahead and behind and the number of changed files, and a Plan
 button once its agent has proposed a plan (see [Plans](#plans)). Its buttons open
-a new tab, a plain shell tab (no agent) in the focused pane's directory, a new [task](#tasks), a [quick command](#quick-commands), split right or down, clear the pane, and hide or show the panels, and its menu
+a new tab, a plain shell tab (no agent) in the focused pane's directory, a new [task](#tasks), a [quick command](#quick-commands), the command palette (`Cmd+P`, which fuzzy-searches open sessions, tasks, runs, quick commands, slash commands, layouts, themes, and app actions, with optional `>` commands and `@` sessions prefixes), split right or down, clear the pane, and hide or show the panels, and its menu
 switches layouts. Clear ends the pane's process and starts its preset again in
 the same directory, with a new terminal and an empty status, activity log, and
 file list; the old conversation stays in the agent's own history. Resume
@@ -177,7 +194,13 @@ Every pane has a status: **idle**, **working**, **needs input**, **done**
 the most urgent status among its panes (idle gets none), and the **Sessions**
 panel shows every pane with its status, Claude Code's
 title for the conversation, and how many tokens its context holds. Click a
-session to jump to it. When a pane goes to needs input or done while
+session to jump to it. Press `Cmd+Shift+U` (or click the **N waiting** badge
+that appears in the toolbar when any pane needs input) to jump to the oldest
+pane waiting for input across windows and background runs, or the oldest done
+pane when none are waiting; pressing it again cycles through the queue. In the
+Sessions panel, a waiting pane also offers inline **Approve** (Enter), **Deny**
+(Esc), **Reply**, and **Focus** actions (and the same on right-click) so simple
+prompts can be answered without leaving your current tab. When a pane goes to needs input or done while
 Cockpit's window isn't focused, macOS shows a notification; clicking it
 focuses that pane. The Dock icon's badge counts the panes that need you.
 
@@ -295,7 +318,8 @@ tabs, each with a count:
   permission requests, failures, subagents starting and finishing,
   notifications, and finished turns. Calls made inside a subagent are marked
   ↳. Click a line to read all of it, such as a multi-line command or Claude's
-  whole reply. **Events** and **Tools** filter the list.
+  whole reply. **Events** and **Tools** filter the list, and the filter box
+  narrows entries by tool name, command, file path, or text.
 - **Files**: the files Claude read or changed, most recent first, with lines
   added and removed. `A` marks a new file, `M` an edited one, and `R` one that
   was only read.
@@ -345,11 +369,25 @@ and green once you approve it. Click it, or press Cmd+Shift+P, to read the plan
 over the window as formatted Markdown. Esc or a click outside closes it.
 
 The plan view shows when Claude proposed the plan, whether you approved it,
-and how many rounds it took if you asked for changes. **Open** opens the plan
-file (`~/.claude/plans/<name>.md`) in your editor, and **Copy** copies the
-Markdown; right-click for the same and to copy a selection. A session that
+and how many rounds it took if you asked for changes. **Ask another agent…**
+sends the plan Markdown with a review prompt to another open agent pane or to a
+new split in the same directory running a chosen agent preset. **Open** opens
+the plan file (`~/.claude/plans/<name>.md`) in your editor, and **Copy** copies
+the Markdown; right-click for the same and to copy a selection. A session that
 made more than one plan shows a count on the button and **1 of 2 ▾** to pick
 another.
+
+### Cross-agent handoff and comparison
+
+- **Second opinion on a plan**: click **Ask another agent…** in the plan dialog
+  (or right-click the plan) to send the plan Markdown with a concise review
+  prompt to another running agent pane or a new split running a chosen preset.
+- **Send terminal selection to an agent**: select text in any terminal pane and
+  right-click to **Copy** or **Send selection to agent…** (targeting another
+  running agent pane or a new split in the same directory).
+- **Compare agents side by side**: click **⇄ Compare** in the toolbar to pick
+  two agent presets, a directory, and a prompt, opening both agents side by side
+  in a new split tab with the same initial prompt.
 
 Plans stay through `/clear`, so a plan is still there while Claude carries it
 out in a fresh conversation. Toolbar Clear and closing the pane drop them, as
@@ -552,9 +590,11 @@ other in a loop.
 
 Nothing starts until you confirm the run. Cockpit shows a dialog with every
 item in the order it can start, what it waits on, its repository, agent, and
-branch, and its full prompt. There you pick the agent, how many items work at
-once (3 unless the run says otherwise), the repository when the run doesn't
-name one, and the mode:
+branch, and its full prompt, plus a **List** / **Graph** toggle to inspect the
+dependency DAG across topological tiers. There you pick the agent, how many
+items work at once (3 unless the run says otherwise), whether to **Auto-fix
+failing CI** (off by default, or set `"autoFixCi": true` in the run JSON), the
+repository when the run doesn't name one, and the mode:
 
 - **Wait for merges** starts an item once every item it waits on is done, on
   a branch from the default branch, which then has the merged work.
@@ -587,18 +627,29 @@ and each item's state:
 
 A finished turn doesn't make an item done, because agents also end turns to
 ask questions. An item stays done after **Clean up merged** removes its
-worktree. Click an item to show its pane or its pull request. Right-click it
-for **Start now**, which starts it even while it waits, **Mark done**,
-**Retry** for a stuck item, **Open** for its link, and the prompts in
-`itemActions.runItem` (see [Right-click prompts](#right-click-prompts)). The
-run's own menu has **Pause**, which stops new items from starting and leaves
-running agents alone, **Cancel**, which ends the run and leaves its tasks in
-place, and **Remove** once it's finished or cancelled.
+worktree. Each run in the **Runs** panel has a **Graph** / **List** toggle to
+view its dependency DAG with live phase colors. Click an item (in either view)
+to show its pane or its pull request. Right-click it for **Start now**, which
+starts it even while it waits, **Mark done**, **Retry** for a stuck item,
+**Open** for its link, and the prompts in `itemActions.runItem` (see
+[Right-click prompts](#right-click-prompts)). The run's own menu has **Pause**,
+which stops new items from starting and leaves running agents alone, **Auto-fix
+failing CI**, **Cancel**, which ends the run and leaves its tasks in place, and
+**Remove** once it's finished or cancelled.
+
+When **Auto-fix failing CI** is enabled on a run and an **In review** item has
+a failing check, Cockpit fetches the failed GitHub Actions log tail and sends
+it to the item's worktree agent (opening one if needed). Attempts are capped at
+2 per PR head commit SHA with a cooldown between retries, so a persistent
+failure never loops infinitely, and reset automatically when a new commit is
+pushed.
 
 Cockpit saves each run to `~/.cockpit/runs/<id>.json`, so a run survives a
 restart. Agents don't, because each pane starts a new process when Cockpit
 relaunches. An item whose agent was working shows **No agent running**, and
-clicking it opens one in its worktree. While a run has items working or in
+clicking it resumes its last session in that worktree (falling back to a fresh
+session if none exists; right-click for **Resume last session** or **Open fresh
+session**). While a run has items working or in
 review, Cockpit keeps reading their pull requests with no window on screen, so
 a run left going overnight still sees its merges. Nothing starts while kids
 mode is on.
@@ -985,6 +1036,7 @@ can't use. The first 20 entries are kept.
 | Option        | Acts as Meta (Alt+b, Alt+f, ...)                          |
 | Cmd+C / Cmd+V | Copy selection / paste (bracketed paste when enabled)     |
 | Cmd+K         | Clear the screen and scrollback                           |
+| Cmd+F         | Find in terminal (Enter/Cmd+G next, Shift+Enter/⇧⌘G prev) |
 
 Selecting text with the mouse copies it, as in iTerm2. Set
 `terminal.copyOnSelect` to `false` to copy only with Cmd+C. Claude Code,

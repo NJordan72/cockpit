@@ -82,6 +82,9 @@ const ACTION_LABELS: Record<Action, string> = {
   toggleSidebar: 'Toggle panels',
   kidsMode: 'Kids mode',
   quickCommand: 'Quick command',
+  nextAttention: 'Next waiting or done agent',
+  findInPane: 'Find in terminal',
+  commandPalette: 'Command palette',
   openSettings: 'Open Settings'
 }
 
