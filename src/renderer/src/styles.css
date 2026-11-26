@@ -558,6 +558,7 @@ button.label-row:hover .label-title {
 
 .launcher-controls {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 10px;
   margin-bottom: 10px;
@@ -593,6 +594,12 @@ button.label-row:hover .label-title {
   flex: 1;
 }
 
+.launcher-restore-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .launcher-restore {
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -604,6 +611,16 @@ button.label-row:hover .label-title {
 .launcher-restore:hover {
   color: var(--fg);
   background: var(--bg-hover);
+}
+
+.launcher-restore-resume {
+  color: var(--fg);
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+.launcher-restore-resume:hover {
+  background: color-mix(in srgb, var(--accent) 28%, var(--bg-hover));
 }
 
 .launcher .picker-input {
@@ -916,6 +933,21 @@ button.label-row:hover .label-title {
 
 .toolbar-actions button:disabled {
   opacity: 0.4;
+}
+
+.toolbar-actions button.toolbar-attention {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-right: 4px;
+  color: var(--yellow);
+  background: color-mix(in srgb, var(--yellow) 12%, transparent);
+  font-variant-numeric: tabular-nums;
+}
+
+.toolbar-actions button.toolbar-attention:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--yellow) 22%, transparent);
+  color: var(--yellow);
 }
 
 /* 1, 2, or 3 windows. */
@@ -1640,6 +1672,85 @@ button.label-row:hover .label-title {
 .session-tokens {
   font-variant-numeric: tabular-nums;
   opacity: 0.8;
+}
+
+.session-item.waiting {
+  background: color-mix(in srgb, var(--yellow) 5%, transparent);
+}
+
+.session-triage {
+  padding: 0 8px 6px 24px;
+}
+
+.session-triage-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.session-triage-actions button,
+.session-reply button {
+  height: 20px;
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.session-triage-actions button:hover:not(:disabled),
+.session-reply button:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--fg);
+}
+
+.session-triage-actions button.approve {
+  color: var(--green);
+  border-color: color-mix(in srgb, var(--green) 40%, var(--border));
+}
+
+.session-triage-actions button.approve:hover {
+  background: color-mix(in srgb, var(--green) 14%, transparent);
+  color: var(--green);
+}
+
+.session-triage-actions button.deny {
+  color: var(--red);
+  border-color: color-mix(in srgb, var(--red) 40%, var(--border));
+}
+
+.session-triage-actions button.deny:hover {
+  background: color-mix(in srgb, var(--red) 14%, transparent);
+  color: var(--red);
+}
+
+.session-reply {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.session-reply input {
+  flex: 1;
+  min-width: 0;
+  height: 20px;
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--fg);
+  font-family: inherit;
+  font-size: 11px;
+}
+
+.session-reply input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.session-reply button:disabled {
+  opacity: 0.4;
 }
 
 .sidebar-head {

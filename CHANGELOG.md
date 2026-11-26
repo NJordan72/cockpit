@@ -1,5 +1,15 @@
 # cockpit
 
+## 0.7.0
+
+### Minor Changes
+
+- Quick commands: list prompts you run often in `quickCommands` in `config.json`, each with the preset, model, and effort to run it with, and an optional input such as a Slack link. Cmd+Shift+J (or **⚡ Quick** in the toolbar) runs one. By default it runs in the background, in a tab the tab bar leaves out: the Sessions panel lists it under Background, and macOS notifies you when it needs input or finishes, even while Cockpit is focused. Click it to open it as a tab, or dismiss it with ×. ([#78](https://github.com/NJordan72/cockpit/pull/78))
+
+### Patch Changes
+
+- Claude Code no longer flickers while it redraws: every pane, remote panes included, sets `CLAUDE_CODE_FORCE_SYNC_OUTPUT=1`, so Claude uses synchronized output, which Cockpit's terminal supports but Claude doesn't detect on its own. ([#82](https://github.com/NJordan72/cockpit/pull/82))
+
 ## 0.6.0
 
 ### Minor Changes
