@@ -1,7 +1,7 @@
 import * as pty from 'node-pty'
 import type { WebContents } from 'electron'
 import { IPC } from '@shared/ipc'
-import { paneEnv } from './ptyEnv'
+import { spawnEnv } from './ptyEnv'
 import { PtyOutput } from './ptyOutput'
 
 export interface SpawnOptions {
@@ -47,12 +47,7 @@ export class PtyManager {
     // -l gives the user's full login environment (PATH from mise, etc.).
     // A preset command runs through the same login shell so it sees that PATH.
     const args = opts.command ? ['-l', '-c', opts.command] : ['-l']
-    const env = paneEnv(process.env)
-    env.TERM = 'xterm-256color'
-    env.COLORTERM = 'truecolor'
-    env.TERM_PROGRAM = 'Cockpit'
-    env.LANG = process.env.LANG ?? 'en_US.UTF-8'
-    Object.assign(env, opts.env)
+    const env = spawnEnv(process.env, opts.env)
 
     const proc = pty.spawn(shell, args, {
       name: 'xterm-256color',

@@ -6,6 +6,7 @@ import fs from 'node:fs'
 import type { ActivityUpdate } from '@shared/activity'
 import type { AgentKind } from '@shared/widgets'
 import { claudeHome } from '../paths'
+import { SYNC_OUTPUT_ENV } from '../ptyEnv'
 import { ActivityLog } from './activity'
 import { CodexWatcher } from './codex'
 import { parseClaudeHook, type AgentReport, type AgentSignal } from './events'
@@ -158,8 +159,9 @@ export class AgentMonitor {
 
   /**
    * The local command for a remote pane (see remote.ts). `env` is what spawn
-   * returned; the remote machine gets its agent's own vars and, for Claude,
-   * the session token and the forwarded socket.
+   * returned; the remote machine gets SYNC_OUTPUT_ENV, which ssh doesn't
+   * carry, its agent's own vars and, for Claude, the session token and the
+   * forwarded socket.
    */
   remoteCommand(
     host: string,
@@ -178,6 +180,7 @@ export class AgentMonitor {
       dir,
       command: launch.command,
       env: {
+        ...SYNC_OUTPUT_ENV,
         ...agentEnv(launch.agent),
         ...(forward ? { COCKPIT_SESSION_ID: token, COCKPIT_SOCKET: forward.remote } : {})
       },

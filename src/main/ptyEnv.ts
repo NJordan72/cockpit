@@ -53,3 +53,28 @@ export function paneEnv(parent: NodeJS.ProcessEnv): Record<string, string> {
   }
   return env
 }
+
+/**
+ * Tells Claude Code to wrap each redraw in synchronized output (DEC mode
+ * 2026), so the terminal shows it in one frame instead of flickering. The
+ * xterm.js in a pane supports it, but Claude Code turns it on only for
+ * terminals it recognizes, and TERM_PROGRAM=Cockpit isn't one. Only Claude
+ * Code reads it, so every pane gets it, shell panes and remote panes too.
+ */
+export const SYNC_OUTPUT_ENV = { CLAUDE_CODE_FORCE_SYNC_OUTPUT: '1' }
+
+/** A local pane's whole environment. `extra`, from the agent monitor, wins over the rest. */
+export function spawnEnv(
+  parent: NodeJS.ProcessEnv,
+  extra: Record<string, string> = {}
+): Record<string, string> {
+  return {
+    ...paneEnv(parent),
+    TERM: 'xterm-256color',
+    COLORTERM: 'truecolor',
+    TERM_PROGRAM: 'Cockpit',
+    ...SYNC_OUTPUT_ENV,
+    LANG: parent.LANG ?? 'en_US.UTF-8',
+    ...extra
+  }
+}
