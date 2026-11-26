@@ -19,6 +19,8 @@ export interface PaneStatus {
   activeMs: number
   /** Cumulative tool calls started in this session. */
   toolCalls: number
+  /** The agent's conversation id, for resuming on restore; not shared with widgets. */
+  sessionId: string | null
 }
 
 export interface TrackerTimings {
@@ -114,7 +116,8 @@ export class StatusTracker {
         tokens: null,
         doneMessage: null,
         activeMs: 0,
-        toolCalls: 0
+        toolCalls: 0,
+        sessionId: null
       },
       hooked: false,
       pending: new Map(),
@@ -208,6 +211,7 @@ export class StatusTracker {
     pane.hooked = true
     const extra: Partial<PaneStatus> = {}
     if (report.title) extra.title = report.title
+    if (report.sessionId) extra.sessionId = report.sessionId
     const { signal } = report
     const isToolCall =
       report.toolCall === true ||
@@ -222,6 +226,7 @@ export class StatusTracker {
           extra.tokens = null
           extra.activeMs = 0
           extra.toolCalls = 0
+          extra.sessionId = report.sessionId ?? null
         }
         if (signal.keepDone && pane.state.status === 'done') this.update(pane, extra)
         else this.set(pane, 'idle', extra)

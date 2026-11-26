@@ -21,6 +21,7 @@ const session = (extra: Partial<PaneSession> = {}): PaneSession => ({
   background: null,
   activeMs: 0,
   toolCalls: 0,
+  ports: [],
   ...extra
 })
 

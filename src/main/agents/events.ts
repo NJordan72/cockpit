@@ -46,6 +46,8 @@ export interface AgentReport {
   title: string | null
   /** True when this event is a new tool call starting (PreToolUse). */
   toolCall?: boolean
+  /** The agent's own conversation id, when reported (Claude Code hooks). */
+  sessionId?: string | null
 }
 
 type Obj = Record<string, unknown>
@@ -116,7 +118,8 @@ export function parseClaudeHook(event: string, payload: unknown): AgentReport {
     signal,
     transcriptPath: str(p.transcript_path),
     title: str(p.session_title),
-    ...(toolCall ? { toolCall: true } : {})
+    ...(toolCall ? { toolCall: true } : {}),
+    sessionId: str(p.session_id)
   })
   const tool = str(p.tool_name)
   const key = toolKey(p.tool_name, p.tool_input)

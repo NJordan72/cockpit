@@ -34,7 +34,8 @@ const waiting: PaneStatus = {
   tokens: 100,
   doneMessage: null,
   activeMs: 12_000,
-  toolCalls: 4
+  toolCalls: 4,
+  sessionId: null
 }
 
 const story: PaneLabel = {
@@ -50,7 +51,8 @@ const story: PaneLabel = {
 const lookup: PaneLookup = {
   status: (id) => (id === 'pane-a' ? waiting : null),
   branch: (id) => (id === 'pane-a' ? 'nick/sc-1234/fix-login' : null),
-  labels: (id) => (id === 'pane-a' ? [story] : [])
+  labels: (id) => (id === 'pane-a' ? [story] : []),
+  ports: (id) => (id === 'pane-a' ? [{ url: 'http://localhost:5173', port: 5173 }] : [])
 }
 
 describe('listSessions', () => {
@@ -74,7 +76,8 @@ describe('listSessions', () => {
         labels: [story],
         background: null,
         activeMs: 12_000,
-        toolCalls: 4
+        toolCalls: 4,
+        ports: [{ url: 'http://localhost:5173', port: 5173 }]
       },
       {
         id: 'pane-b',
@@ -93,7 +96,8 @@ describe('listSessions', () => {
         labels: [],
         background: null,
         activeMs: 0,
-        toolCalls: 0
+        toolCalls: 0,
+        ports: []
       }
     ])
   })
@@ -107,6 +111,7 @@ describe('listSessions', () => {
     expect('background' in shared).toBe(false)
     expect('activeMs' in shared).toBe(false)
     expect('toolCalls' in shared).toBe(false)
+    expect('ports' in shared).toBe(false)
     expect(shared.status).toBe('needs-input')
     expect(shared.branch).toBe('nick/sc-1234/fix-login')
   })

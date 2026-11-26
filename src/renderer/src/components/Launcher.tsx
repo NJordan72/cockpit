@@ -11,9 +11,11 @@ interface Props {
   projectsDir: string
   /** Tabs in the saved layout, offered for restoring; 0 for none. */
   restoreTabs: number
+  /** Whether the saved layout has at least one agent pane that can be resumed. */
+  canResume: boolean
   inputRef: React.RefObject<HTMLInputElement | null>
   onLaunch: (presetId: string, cwd: string) => void
-  onRestore: () => void
+  onRestore: (resume: boolean) => void
 }
 
 /**
@@ -25,6 +27,7 @@ export function Launcher({
   initialPresetId,
   projectsDir,
   restoreTabs,
+  canResume,
   inputRef,
   onLaunch,
   onRestore
@@ -127,9 +130,28 @@ export function Launcher({
           )}
           <span className="launcher-spacer" />
           {restoreTabs > 0 && (
-            <button type="button" tabIndex={-1} className="launcher-restore" onClick={onRestore}>
-              Restore last session ({restoreTabs} {restoreTabs === 1 ? 'tab' : 'tabs'})
-            </button>
+            <div className="launcher-restore-group">
+              {canResume && (
+                <button
+                  type="button"
+                  tabIndex={-1}
+                  className="launcher-restore launcher-restore-resume"
+                  title="Restore tabs and resume each agent's last conversation"
+                  onClick={() => onRestore(true)}
+                >
+                  Restore &amp; resume
+                </button>
+              )}
+              <button
+                type="button"
+                tabIndex={-1}
+                className="launcher-restore"
+                title="Restore tabs with fresh sessions"
+                onClick={() => onRestore(false)}
+              >
+                Restore last session ({restoreTabs} {restoreTabs === 1 ? 'tab' : 'tabs'})
+              </button>
+            </div>
           )}
         </div>
         <input

@@ -1,6 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Preset } from '@shared/config'
-import { validBranch, type TaskDraft } from '@shared/tasks'
+import {
+  validBranch,
+  type RepoSetupSuggestion,
+  type RepoTaskSettings,
+  type TaskDraft,
+  type TaskSettings
+} from '@shared/tasks'
 import { RepoField } from './RepoField'
 
 export interface CreatedTask {
@@ -18,6 +24,8 @@ interface Props {
   draft: TaskDraft
   /** The repository to suggest: the focused pane's. */
   repo: string
+  /** Existing per-repo task settings from config.json. */
+  taskSettings: TaskSettings
   onCreated: (task: CreatedTask) => void
   onCancel: () => void
 }
@@ -31,6 +39,7 @@ export function TaskDialog({
   initialPresetId,
   draft,
   repo: suggested,
+  taskSettings,
   onCreated,
   onCancel
 }: Props): React.JSX.Element {
@@ -47,6 +56,10 @@ export function TaskDialog({
   )
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [suggestion, setSuggestion] = useState<RepoSetupSuggestion | null>(null)
+  const [dismissedRepo, setDismissedRepo] = useState<string | null>(null)
+  const [savingSetup, setSavingSetup] = useState(false)
+  const [savedSetupRepo, setSavedSetupRepo] = useState<string | null>(null)
   const branchRef = useRef<HTMLInputElement>(null)
   const promptRef = useRef<HTMLTextAreaElement>(null)
 
@@ -55,6 +68,46 @@ export function TaskDialog({
     if (draft.branch && !draft.prompt) promptRef.current?.focus()
     else branchRef.current?.focus()
   }, [draft])
+
+  useEffect(() => {
+    const trimmed = repo.trim()
+    if (!trimmed) return
+    let cancelled = false
+    const t = setTimeout(() => {
+      void window.cockpit.tasks.detectSetup(trimmed).then((res) => {
+        if (!cancelled) setSuggestion(res)
+      })
+    }, 200)
+    return () => {
+      cancelled = true
+      clearTimeout(t)
+    }
+  }, [repo])
+
+  const activeSuggestion = repo.trim() ? suggestion : null
+  const hasTaskConfig = activeSuggestion !== null && activeSuggestion.repo in taskSettings
+  const showSuggestion =
+    activeSuggestion !== null && !hasTaskConfig && dismissedRepo !== activeSuggestion.repo
+
+  const saveSuggestion = (): void => {
+    if (!activeSuggestion || savingSetup) return
+    setSavingSetup(true)
+    const entry: RepoTaskSettings = {
+      copy: activeSuggestion.copy,
+      ...(activeSuggestion.setup ? { setup: activeSuggestion.setup } : {})
+    }
+    void window.cockpit.config
+      .save({ tasks: { ...taskSettings, [activeSuggestion.repo]: entry } })
+      .then(() => {
+        setSavedSetupRepo(activeSuggestion.repo)
+      })
+      .catch((err: unknown) => {
+        setError(String(err))
+      })
+      .finally(() => {
+        setSavingSetup(false)
+      })
+  }
 
   const name = branch.trim()
   const branchOk = validBranch(name)
@@ -152,6 +205,51 @@ export function TaskDialog({
             setError(null)
           }}
         />
+
+        {showSuggestion && (
+          <div className="task-setup-banner">
+            <div className="task-setup-info">
+              <div className="task-setup-title">
+                Detected worktree setup for <code>{activeSuggestion.repo}</code>
+              </div>
+              <div className="task-setup-detail">
+                {activeSuggestion.copy.length > 0 && (
+                  <span>
+                    Copy: <code>{activeSuggestion.copy.join(', ')}</code>
+                  </span>
+                )}
+                {activeSuggestion.setup && (
+                  <span>
+                    Setup: <code>{activeSuggestion.setup}</code>
+                  </span>
+                )}
+              </div>
+            </div>
+            <div className="task-setup-actions">
+              <button
+                type="button"
+                className="primary"
+                disabled={busy || savingSetup}
+                onClick={saveSuggestion}
+              >
+                {savingSetup ? 'Saving…' : 'Save setup'}
+              </button>
+              <button
+                type="button"
+                aria-label="Dismiss suggestion"
+                disabled={busy || savingSetup}
+                onClick={() => setDismissedRepo(activeSuggestion.repo)}
+              >
+                ×
+              </button>
+            </div>
+          </div>
+        )}
+        {!showSuggestion && savedSetupRepo && activeSuggestion?.repo === savedSetupRepo && (
+          <p className="task-setup-saved">
+            Saved worktree setup for <code>{savedSetupRepo}</code> to <code>config.json</code>.
+          </p>
+        )}
 
         <label className="secret-label" htmlFor="task-prompt">
           First prompt <span className="task-optional">(optional)</span>

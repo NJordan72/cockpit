@@ -2,6 +2,7 @@
 // split whose children are laid out in a row or a column.
 import { normalizeSizes, type LayoutNode, type PaneNode, type SplitNode } from '@shared/config'
 import type { PrRef } from '@shared/prs'
+import type { ReviewRef } from '@shared/review'
 
 export type Direction = 'left' | 'right' | 'up' | 'down'
 
@@ -39,6 +40,11 @@ export function makePrPane(pr: PrRef, cwd: string, title?: string): PaneNode {
   return { ...makePane('shell', cwd), pr, ...(title ? { title } : {}) }
 }
 
+/** A pane reviewing a branch's diff. `cwd` is the worktree or checkout being reviewed. */
+export function makeReviewPane(review: ReviewRef, title?: string): PaneNode {
+  return { ...makePane('shell', review.dir), review, ...(title ? { title } : {}) }
+}
+
 /** The tab already showing this pull request, and the pane that does. */
 export function findPrPane(
   tabs: readonly { id: string; root: LayoutNode }[],
@@ -49,6 +55,32 @@ export function findPrPane(
     if (pane) return { tabId: tab.id, paneId: pane.id }
   }
   return null
+}
+
+/** The tab already reviewing this directory, and the pane that does. */
+export function findReviewPane(
+  tabs: readonly { id: string; root: LayoutNode }[],
+  dir: string
+): { tabId: string; paneId: string } | null {
+  for (const tab of tabs) {
+    const pane = allPanes(tab.root).find((p) => p.review?.dir === dir)
+    if (pane) return { tabId: tab.id, paneId: pane.id }
+  }
+  return null
+}
+
+function sameWebOrigin(a: string, b: string): boolean {
+  if (a === b) return true
+  try {
+    return new URL(a).origin === new URL(b).origin
+  } catch {
+    return false
+  }
+}
+
+/** A web pane already open in `root` for `url` (exact match or same origin). */
+export function findWebPane(root: LayoutNode, url: string): PaneNode | null {
+  return allPanes(root).find((p) => p.url !== undefined && sameWebOrigin(p.url, url)) ?? null
 }
 
 export function findPane(node: LayoutNode, id: string): PaneNode | null {

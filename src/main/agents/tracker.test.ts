@@ -2,10 +2,15 @@ import { afterEach, beforeEach, describe, expect, it, vi, setSystemTime } from '
 import type { AgentReport, AgentSignal } from './events'
 import { DEFAULT_TIMINGS, StatusTracker, type PaneStatus } from './tracker'
 
-const report = (signal: AgentSignal, title: string | null = null): AgentReport => ({
+const report = (
+  signal: AgentSignal,
+  title: string | null = null,
+  sessionId: string | null = null
+): AgentReport => ({
   signal,
   transcriptPath: null,
-  title
+  title,
+  sessionId
 })
 
 let changes: [string, string | null, string][]
@@ -264,19 +269,26 @@ describe('with hooks', () => {
     expect(status()).toBe('idle')
   })
 
-  it('keeps the title and tokens through status changes', () => {
-    tracker.report('t1', report({ kind: 'idle' }, 'Fix login'))
+  it('keeps the title, tokens, and session id through status changes', () => {
+    tracker.report('t1', report({ kind: 'idle' }, 'Fix login', 'sess-1'))
     tracker.annotate('p1', { tokens: 1234 })
     tracker.report('t1', report({ kind: 'working', clears: true }))
-    expect(state()).toMatchObject({ title: 'Fix login', tokens: 1234 })
+    expect(state()).toMatchObject({ title: 'Fix login', tokens: 1234, sessionId: 'sess-1' })
   })
 
-  it('drops the title and tokens when the session is cleared', () => {
-    tracker.report('t1', report({ kind: 'idle' }, 'Fix login'))
+  it('drops the title and tokens and replaces the session id when the session is cleared', () => {
+    tracker.report('t1', report({ kind: 'idle' }, 'Fix login', 'sess-1'))
     tracker.annotate('p1', { tokens: 1234 })
     tracker.report('t1', report({ kind: 'done', message: 'Fixed' }))
+    tracker.report('t1', report({ kind: 'idle', fresh: true }, null, 'sess-2'))
+    expect(state()).toMatchObject({
+      status: 'idle',
+      title: null,
+      tokens: null,
+      sessionId: 'sess-2'
+    })
     tracker.report('t1', report({ kind: 'idle', fresh: true }))
-    expect(state()).toMatchObject({ status: 'idle', title: null, tokens: null })
+    expect(state().sessionId).toBeNull()
     tracker.annotate('p1', { title: null, tokens: null })
     expect(state()).toMatchObject({ title: null, tokens: null })
     tracker.annotate('p1', { title: 'Next thing', tokens: 900 })

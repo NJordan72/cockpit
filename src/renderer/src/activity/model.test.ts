@@ -6,6 +6,7 @@ import {
   formatDuration,
   gitCode,
   loggedCount,
+  matchesLogQuery,
   splitPath,
   toggleFilter
 } from './model'
@@ -108,6 +109,46 @@ describe('log filter', () => {
       events: false,
       tools: true
     })
+  })
+
+  it('filters by tool name, command, file path, text, detail, and subagent', () => {
+    const bash: ActivityEntry = {
+      ...entry(1, 'tool'),
+      label: 'Bash',
+      text: 'bun test',
+      command: { text: 'bun test --bail src/app.test.ts', cwd: '/repo' }
+    }
+    const edit: ActivityEntry = {
+      ...entry(2, 'tool'),
+      label: 'Edit',
+      text: 'src/TerminalPane.tsx',
+      file: '/Users/me/dev/cockpit/src/renderer/src/terminal/TerminalPane.tsx',
+      agent: 'Explore'
+    }
+    const prompt: ActivityEntry = {
+      ...entry(3, 'prompt'),
+      label: 'Prompt',
+      text: 'Fix the search bar',
+      detail: 'Fix the search bar\nwith regex support'
+    }
+    const log = [bash, edit, prompt]
+
+    expect(filterLog(log, { events: true, tools: true }, '')).toBe(log)
+    expect(filterLog(log, { events: true, tools: true }, '   ')).toBe(log)
+    expect(filterLog(log, { events: true, tools: true }, 'bash').map((e) => e.seq)).toEqual([1])
+    expect(filterLog(log, { events: true, tools: true }, '--BAIL').map((e) => e.seq)).toEqual([1])
+    expect(
+      filterLog(log, { events: true, tools: true }, 'terminal/TerminalPane').map((e) => e.seq)
+    ).toEqual([2])
+    expect(filterLog(log, { events: true, tools: true }, 'explore').map((e) => e.seq)).toEqual([2])
+    expect(
+      filterLog(log, { events: true, tools: true }, 'regex support').map((e) => e.seq)
+    ).toEqual([3])
+    // Combines text filter with Events / Tools chips.
+    expect(filterLog(log, { events: false, tools: true }, 'regex support')).toEqual([])
+    expect(filterLog(log, { events: true, tools: false }, 'bash')).toEqual([])
+    expect(matchesLogQuery(edit, 'EDIT')).toBe(true)
+    expect(matchesLogQuery(edit, 'nonexistent')).toBe(false)
   })
 })
 

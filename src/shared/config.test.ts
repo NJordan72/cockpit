@@ -2,12 +2,14 @@ import { describe, expect, it } from 'bun:test'
 import {
   ACTIVITY_MIN_HEIGHT,
   activeLayout,
+  applySettingsPatch,
   DEFAULT_KEYBINDINGS,
   DEFAULT_KIDS,
   defaultAppearance,
   defaultConfig,
   defaultSidebar,
   defaultWindow,
+  isTerminalPane,
   migrateConfig,
   normalizeSizes,
   pushRecentDir,
@@ -15,6 +17,7 @@ import {
   readSidebar,
   SIDEBAR_MAX_WIDTH,
   terminalFontStack,
+  validSessionId,
   type ActivitySettings,
   type CockpitConfig,
   type PaneNode,
@@ -83,10 +86,14 @@ describe('migrateConfig', () => {
   })
 
   it('overrides individual keybindings and ignores unknown actions', () => {
-    const c = migrateConfig({ keybindings: { newTab: 'Cmd+N', bogus: 'Cmd+B', splitRight: 7 } })
+    const c = migrateConfig({
+      keybindings: { newTab: 'Cmd+N', nextAttention: 'Cmd+Shift+A', bogus: 'Cmd+B', splitRight: 7 }
+    })
     expect(c.keybindings.newTab).toBe('Cmd+N')
+    expect(c.keybindings.nextAttention).toBe('Cmd+Shift+A')
     expect(c.keybindings.splitRight).toBe(DEFAULT_KEYBINDINGS.splitRight)
     expect(c.keybindings).not.toHaveProperty('bogus')
+    expect(migrateConfig({}).keybindings.nextAttention).toBe('Cmd+Shift+U')
   })
 
   it('clamps terminal settings', () => {
@@ -285,6 +292,88 @@ describe('migrateConfig', () => {
       { type: 'pane', id: 'p-c', presetId: 'shell', cwd: '~/dev/r' }
     ])
   })
+
+  it('keeps valid sessionId on terminal panes and drops invalid or misplaced ones', () => {
+    const c = migrateConfig({
+      windows: [
+        {
+          id: 'main',
+          tabs: [
+            {
+              id: 't1',
+              root: {
+                type: 'pane',
+                id: 'p1',
+                presetId: 'claude',
+                cwd: '~/dev/a',
+                sessionId: '550e8400-e29b-41d4-a716-446655440000'
+              }
+            },
+            {
+              id: 't2',
+              root: {
+                type: 'pane',
+                id: 'p2',
+                presetId: 'claude',
+                cwd: '~/dev/a',
+                sessionId: '--flag'
+              }
+            },
+            {
+              id: 't3',
+              root: {
+                type: 'pane',
+                id: 'p3',
+                presetId: 'claude',
+                cwd: '~/dev/a',
+                sessionId: 'a..b'
+              }
+            },
+            {
+              id: 't4',
+              root: {
+                type: 'pane',
+                id: 'p4',
+                presetId: 'deleted-preset',
+                cwd: '~/dev/a',
+                sessionId: 'sess-ok'
+              }
+            },
+            {
+              id: 't5',
+              root: {
+                type: 'pane',
+                id: 'p5',
+                presetId: 'shell',
+                cwd: '~',
+                url: 'https://example.com/',
+                sessionId: 'sess-web'
+              }
+            }
+          ]
+        }
+      ]
+    })
+    expect(win(c).tabs.map((t) => t.root)).toEqual([
+      {
+        type: 'pane',
+        id: 'p1',
+        presetId: 'claude',
+        cwd: '~/dev/a',
+        sessionId: '550e8400-e29b-41d4-a716-446655440000'
+      },
+      { type: 'pane', id: 'p2', presetId: 'claude', cwd: '~/dev/a' },
+      { type: 'pane', id: 'p3', presetId: 'claude', cwd: '~/dev/a' },
+      { type: 'pane', id: 'p4', presetId: 'shell', cwd: '~/dev/a' },
+      { type: 'pane', id: 'p5', presetId: 'shell', cwd: '~', url: 'https://example.com/' }
+    ])
+    expect(validSessionId('abc_123.def')).toBe(true)
+    expect(validSessionId('')).toBe(false)
+    expect(validSessionId('-x')).toBe(false)
+    expect(validSessionId('a/b')).toBe(false)
+    expect(validSessionId('a..b')).toBe(false)
+    expect(validSessionId('a'.repeat(129))).toBe(false)
+  })
 })
 
 describe('normalizeSizes', () => {
@@ -396,6 +485,7 @@ describe('migrateConfig: recent dirs and launcher', () => {
       { id: 'standup', label: 'Standup', preset: 'claude', prompt: '/standup', background: true }
     ])
     expect(c.keybindings.quickCommand).toBe('Cmd+Shift+J')
+    expect(c.keybindings.commandPalette).toBe('Cmd+P')
   })
 })
 
@@ -703,5 +793,106 @@ describe('migrateConfig: windows', () => {
 
   it('always has a main window', () => {
     expect(migrateConfig({ windows: [] }).windows).toEqual([defaultWindow()])
+  })
+
+  it('keeps valid review panes, drops malformed review refs, and marks them non-terminal', () => {
+    const c = migrateConfig({
+      windows: [
+        {
+          id: 'main',
+          tabs: [
+            {
+              id: 't1',
+              root: {
+                type: 'pane',
+                id: 'p1',
+                presetId: 'shell',
+                cwd: '~/dev/cockpit',
+                review: { dir: '~/dev/cockpit', branch: 'feat/diff' },
+                title: 'feat/diff'
+              },
+              activePaneId: 'p1'
+            },
+            {
+              id: 't2',
+              root: {
+                type: 'pane',
+                id: 'p2',
+                presetId: 'shell',
+                cwd: '~/dev/cockpit',
+                review: { dir: '' }
+              },
+              activePaneId: 'p2'
+            }
+          ],
+          activeTabId: 't1'
+        }
+      ]
+    })
+    const p1 = win(c).tabs[0]?.root as PaneNode
+    const p2 = win(c).tabs[1]?.root as PaneNode
+    expect(p1.review).toEqual({ dir: '~/dev/cockpit', branch: 'feat/diff' })
+    expect(p1.title).toBe('feat/diff')
+    expect(isTerminalPane(p1)).toBe(false)
+    expect(p2.review).toBeUndefined()
+    expect(isTerminalPane(p2)).toBe(true)
+  })
+
+  it('includes openSettings defaulting to Cmd+,', () => {
+    expect(DEFAULT_KEYBINDINGS.openSettings).toBe('Cmd+,')
+    expect(defaultConfig().keybindings.openSettings).toBe('Cmd+,')
+  })
+})
+
+describe('applySettingsPatch', () => {
+  it('applies valid edits across editable sections and preserves untouched ones', () => {
+    const base = defaultConfig()
+    base.recentDirs = [{ path: '~/dev/a', at: 10 }]
+    base.appearance.theme = 'amber'
+    const next = applySettingsPatch(base, {
+      editor: '  zed  ',
+      projectsDir: '~/code',
+      terminal: { fontSize: 15, copyOnSelect: false },
+      keybindings: { openSettings: 'Cmd+.' },
+      tasks: { '~/code/app': { setup: 'bun install', copy: ['.env', '.env.local'] } },
+      quickCommands: [
+        { id: 'standup', label: 'Standup', preset: 'claude', prompt: '/standup', background: true }
+      ]
+    })
+    expect(next.editor).toBe('zed')
+    expect(next.projectsDir).toBe('~/code')
+    expect(next.terminal.fontSize).toBe(15)
+    expect(next.terminal.copyOnSelect).toBe(false)
+    expect(next.terminal.scrollback).toBe(base.terminal.scrollback)
+    expect(next.keybindings.openSettings).toBe('Cmd+.')
+    expect(next.keybindings.newTab).toBe(DEFAULT_KEYBINDINGS.newTab)
+    expect(next.tasks).toEqual({
+      '~/code/app': { setup: 'bun install', copy: ['.env', '.env.local'] }
+    })
+    expect(next.quickCommands).toHaveLength(1)
+    expect(next.recentDirs).toEqual(base.recentDirs)
+    expect(next.appearance.theme).toBe('amber')
+  })
+
+  it('ignores non-object patches and non-editable sections, and sanitizes invalid values', () => {
+    const base = defaultConfig()
+    expect(applySettingsPatch(base, null)).toEqual(base)
+    expect(applySettingsPatch(base, 'nope')).toEqual(base)
+    const next = applySettingsPatch(base, {
+      editor: '   ',
+      terminal: { fontSize: 999, scrollback: -5 },
+      presets: [{ id: 'custom', name: 'Custom', command: 'claude', cwd: '~/dev', host: '-bad' }],
+      tasks: { '~/dev/app': { copy: ['.env', '../secret', '/abs'] } },
+      windows: [],
+      appearance: { theme: 'hacked' }
+    })
+    expect(next.editor).toBeNull()
+    expect(next.terminal.fontSize).toBe(base.terminal.fontSize)
+    expect(next.terminal.scrollback).toBe(base.terminal.scrollback)
+    expect(next.presets.map((p) => p.id)).toEqual(['shell', 'custom'])
+    expect(next.presets[1]?.host).toBeUndefined()
+    expect(next.tasks).toEqual({ '~/dev/app': { copy: ['.env'] } })
+    expect(next.windows).toEqual(base.windows)
+    expect(next.appearance).toEqual(base.appearance)
   })
 })
