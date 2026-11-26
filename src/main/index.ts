@@ -64,6 +64,7 @@ import {
   type PrLogResult,
   type PrRef
 } from '@shared/prs'
+import { isReviewRef, type ReviewDiffResult } from '@shared/review'
 import {
   deletesBranch,
   MAX_BRANCH,
@@ -101,6 +102,7 @@ import { listCharacters } from './kids'
 import { buildKidsMenu, buildMenu, menuTemplate } from './menu'
 import { abbreviateHome, agyHome, claudeHome, cockpitHome, codexHome, expandHome } from './paths'
 import { actOnPr, checkLog, listPrs, readPr, readPrAct } from './prs'
+import { readReviewDiff } from './review'
 import { PtyManager } from './pty'
 import { runRequests, RunStore } from './runs'
 import { registerSchemes } from './schemes'
@@ -1273,6 +1275,29 @@ function registerIpc(): void {
       pr: { repo: pr.repo, number: pr.number },
       cwd: typeof cwd === 'string' && cwd.length < 4096 ? cwd : '~',
       ...(typeof title === 'string' ? { title: title.slice(0, 200) } : {}),
+      where: where === 'row' ? 'row' : 'tab'
+    })
+  })
+  ipcMain.handle(
+    IPC.reviewDiff,
+    (e, dir: unknown): Promise<ReviewDiffResult> | ReviewDiffResult => {
+      if (!trusted(e) || typeof dir !== 'string' || !dir.trim() || dir.length > 4096) {
+        return { ok: false, error: 'Invalid directory' }
+      }
+      return readReviewDiff(dir)
+    }
+  )
+  // A window of panels opens diff review panes in the window with terminals.
+  ipcMain.on(IPC.reviewPane, (e, req: unknown) => {
+    const target = terminalWindow()
+    if (!trusted(e) || !target || typeof req !== 'object' || req === null) return
+    const { review, title, focusFile, where } = req as Record<string, unknown>
+    if (!isReviewRef(review)) return
+    raise(target)
+    send(target, IPC.reviewPane, {
+      review: review.branch ? { dir: review.dir, branch: review.branch } : { dir: review.dir },
+      ...(typeof title === 'string' ? { title: title.slice(0, 200) } : {}),
+      ...(typeof focusFile === 'string' && focusFile.length < 1024 ? { focusFile } : {}),
       where: where === 'row' ? 'row' : 'tab'
     })
   })

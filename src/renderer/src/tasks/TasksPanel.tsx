@@ -18,6 +18,8 @@ interface Props {
   onOpen: (task: TaskInfo, presetId?: string) => void
   /** Show a pane that's open in a task. */
   onReveal: (paneId: string) => void
+  /** Open the diff review pane for a task's worktree. */
+  onReview: (task: TaskInfo, where: 'tab' | 'row') => void
   onPrompt: (req: PromptRequest) => void
 }
 
@@ -31,6 +33,7 @@ export function TasksPanel({
   onNew,
   onOpen,
   onReveal,
+  onReview,
   onPrompt
 }: Props): React.JSX.Element {
   const api = window.cockpit
@@ -61,6 +64,8 @@ export function TasksPanel({
         label: 'Open in a new tab',
         submenu: presets.map((p) => ({ id: `open:${p.id}`, label: p.name }))
       },
+      { id: 'review', label: 'Review diff' },
+      { id: 'review-split', label: 'Review diff in split' },
       ...(task.pr ? [{ id: 'pr', label: `Open pull request #${String(task.pr.number)}` }] : []),
       { id: 'editor', label: 'Open in editor' },
       ...prompts.items,
@@ -74,6 +79,8 @@ export function TasksPanel({
     const req = prompts.pick(chosen)
     if (req) onPrompt(req)
     else if (chosen?.startsWith('open:')) onOpen(task, chosen.slice('open:'.length))
+    else if (chosen === 'review') onReview(task, 'tab')
+    else if (chosen === 'review-split') onReview(task, 'row')
     else if (chosen === 'pr' && task.pr) api.prs.open(task.pr.url)
     else if (chosen === 'editor') api.editor.openFile(task.path)
     else if (chosen === 'copy-path') api.clipboard.writeText(task.path)

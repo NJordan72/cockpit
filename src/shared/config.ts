@@ -6,6 +6,7 @@ import { builtInLayout, classicFromSidebar, DEFAULT_LAYOUT_ID } from './layouts'
 import { defaultItemActions, readItemActions, type ItemActions } from './itemActions'
 import { MAX_INPUT, readQuickCommands, type QuickCommand } from './quickCommands'
 import { isPrRef, type PrRef } from './prs'
+import { isReviewRef, type ReviewRef } from './review'
 import { readTaskSettings, type TaskSettings } from './tasks'
 import { DEFAULT_THEME_ID, readTokens, type ThemeOverrides } from './theme'
 import { isWebUrl } from './web'
@@ -67,6 +68,7 @@ export type Action =
   | 'toggleSidebar'
   | 'kidsMode'
   | 'quickCommand'
+  | 'reviewDiff'
 
 export type Keybindings = Record<Action, string>
 
@@ -85,12 +87,14 @@ export interface PaneNode {
   url?: string
   /** A pull request shown instead of a terminal. */
   pr?: PrRef
-  /** The web page's or pull request's title, for the tab. */
+  /** A diff review shown instead of a terminal. */
+  review?: ReviewRef
+  /** The web page's, pull request's, or review's title, for the tab. */
   title?: string
 }
 
-/** A pane that runs a process, as opposed to one showing a web page or a pull request. */
-export const isTerminalPane = (p: PaneNode): boolean => !p.url && !p.pr
+/** A pane that runs a process, as opposed to one showing a web page, pull request, or diff review. */
+export const isTerminalPane = (p: PaneNode): boolean => !p.url && !p.pr && !p.review
 
 export interface SplitNode {
   type: 'split'
@@ -336,7 +340,8 @@ export const DEFAULT_KEYBINDINGS: Keybindings = {
   goToTab9: 'Cmd+9',
   toggleSidebar: 'Cmd+B',
   kidsMode: 'Cmd+Shift+K',
-  quickCommand: 'Cmd+Shift+J'
+  quickCommand: 'Cmd+Shift+J',
+  reviewDiff: 'Cmd+Shift+G'
 }
 
 export const DEFAULT_TERMINAL: TerminalSettings = {
@@ -450,6 +455,11 @@ function readNode(v: unknown, seen: Set<string>): LayoutNode | null {
       if (nonEmpty(v.title)) pane.title = v.title.slice(0, MAX_TITLE)
     } else if (isPrRef(v.pr)) {
       pane.pr = { repo: v.pr.repo, number: v.pr.number }
+      if (nonEmpty(v.title)) pane.title = v.title.slice(0, MAX_TITLE)
+    } else if (isReviewRef(v.review)) {
+      pane.review = v.review.branch
+        ? { dir: v.review.dir, branch: v.review.branch }
+        : { dir: v.review.dir }
       if (nonEmpty(v.title)) pane.title = v.title.slice(0, MAX_TITLE)
     } else if (nonEmpty(v.quick)) pane.quick = v.quick
     return pane

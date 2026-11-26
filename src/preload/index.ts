@@ -7,6 +7,7 @@ import {
   type AppKey,
   type OpenSessionRequest,
   type PrPaneRequest,
+  type ReviewPaneRequest,
   type CockpitApi,
   type TaskOpenRequest,
   type PaneSession,
@@ -78,6 +79,7 @@ const onTaskDraft: Subscribe<[TaskDraft]> = channel(IPC.tasksDraft)
 const onRunsChanged: Subscribe<[RunView[]]> = channel(IPC.runsChanged)
 const onRunDraft: Subscribe<[RunDraft]> = channel(IPC.runsDraft)
 const onPrPane: Subscribe<[PrPaneRequest]> = channel(IPC.prsPane)
+const onReviewPane: Subscribe<[ReviewPaneRequest]> = channel(IPC.reviewPane)
 
 function subscribe<T>(map: Map<string, Set<T>>, id: string, cb: T): () => void {
   let set = map.get(id)
@@ -186,6 +188,11 @@ const api: CockpitApi = {
     log: (pr, jobId) => ipcRenderer.invoke(IPC.prsLog, pr, jobId),
     openPane: (req) => ipcRenderer.send(IPC.prsPane, req),
     onOpenPane: onPrPane
+  },
+  review: {
+    diff: (dir) => ipcRenderer.invoke(IPC.reviewDiff, dir),
+    openPane: (req) => ipcRenderer.send(IPC.reviewPane, req),
+    onOpenPane: onReviewPane
   },
   files: {
     existing: (paneId, paths) => ipcRenderer.invoke(IPC.filesExisting, paneId, paths),

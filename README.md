@@ -133,6 +133,18 @@ on. Cmd+R reloads the focused page. The Cmd+T picker's Web option lists the 20
 pages most recently loaded in web panes; type to filter them, or type a new
 address.
 
+A pane can also review a branch's diff: `Cmd+Shift+G` (or **± Diff** in the
+toolbar), the **Tasks** panel's right-click menu (**Review diff** / **Review
+diff in split**), or the **Activity** panel's **Git** and **Files** tabs open a
+`review` pane. It shows changes since the branch's merge-base with the remote's
+default branch plus uncommitted and untracked files, collapses large or binary
+files, and refreshes as files change (`Cmd+R` refreshes on demand). Click any
+line (or `Shift+click` a range) to add a draft comment, then click **Send to
+agent** (or **▾** to choose another agent pane) to format all draft comments
+with their file, line range, and code excerpt into one prompt. If the target
+agent is working, the prompt queues and sends automatically once it becomes
+idle.
+
 | Key (default)       | Action                                     |
 | ------------------- | ------------------------------------------ |
 | Cmd+T               | New tab (picker)                           |
@@ -146,6 +158,7 @@ address.
 | Cmd+Shift+Backspace | Clear pane: restart its preset fresh       |
 | Cmd+Shift+R         | Resume: pick an old session for the pane   |
 | Cmd+Shift+E         | Open the pane's project in your editor     |
+| Cmd+Shift+G         | Open a diff review pane for the branch     |
 | Cmd+Shift+P         | Read the pane's plan (see [Plans](#plans)) |
 | Cmd+Alt+Arrow       | Move focus between panes                   |
 | Cmd+Shift+] / [     | Next / previous tab                        |

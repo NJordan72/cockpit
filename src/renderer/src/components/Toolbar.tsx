@@ -70,6 +70,12 @@ const BUTTONS: { action: Action; label: string; title: string; needsPane: boolea
     label: '✎ Editor',
     title: "Open the pane's project in your editor",
     needsPane: true
+  },
+  {
+    action: 'reviewDiff',
+    label: '± Diff',
+    title: 'Review branch diff',
+    needsPane: true
   }
 ]
 
