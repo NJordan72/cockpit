@@ -153,8 +153,10 @@ address.
 | Cmd+B               | Hide or show every panel but the terminals |
 
 The toolbar along the bottom of the window shows the focused pane: its status,
-preset (or Claude Code's name for the conversation), directory, and git branch
-with commits ahead and behind and the number of changed files, and a Plan
+preset (or Claude Code's name for the conversation), directory, git branch
+with commits ahead and behind and the number of changed files, context-window
+pressure bar (with token count and percentage, shifting amber at 70% and red at
+85%, plus one-click **Compact** and **Fresh** actions when elevated), and a Plan
 button once its agent has proposed a plan (see [Plans](#plans)). Its buttons open
 a new tab, a plain shell tab (no agent) in the focused pane's directory, a new [task](#tasks), a [quick command](#quick-commands), split right or down, clear the pane, and hide or show the panels, and its menu
 switches layouts. Clear ends the pane's process and starts its preset again in
@@ -175,8 +177,10 @@ Every pane has a status: **idle**, **working**, **needs input**, **done**
 (finished a turn you haven't looked at), or **exited**. A tab shows a dot for
 the most urgent status among its panes (idle gets none), and the **Sessions**
 panel shows every pane with its status, Claude Code's
-title for the conversation, and how many tokens its context holds. Click a
-session to jump to it. When a pane goes to needs input or done while
+title for the conversation, and a context-window pressure bar next to its token
+count (amber at 70%, red at 85%). Click a session to jump to it, or right-click
+(or click **Compact** when pressure is elevated) to send `/compact` or open a
+fresh pane in the same directory. When a pane goes to needs input or done while
 Cockpit's window isn't focused, macOS shows a notification; clicking it
 focuses that pane. The Dock icon's badge counts the panes that need you.
 
@@ -466,7 +470,8 @@ the new folder the first time an agent starts in it.
 The **Tasks** panel, in the tab group with Pull requests, lists every task,
 newest first. Each row shows the branch, the repository, how many terminals
 are open in the worktree, how many files have uncommitted changes, how many
-commits are on no remote, and the pull request. Cockpit reads pull requests
+commits are on no remote, rolled-up active time, tool calls, and tokens from
+its open sessions, and the pull request. Cockpit reads pull requests
 with `gh pr list --head <branch>` about once a minute while a window is on
 screen, and stops asking about a pull request once it has merged. Click a task to show
 its pane, or to open its agent when no pane is open there. Right-click a task

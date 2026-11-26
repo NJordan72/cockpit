@@ -1,6 +1,7 @@
 // What the Runs panel shows about each run and each of its items. Pure.
 import type { PaneSession } from '@shared/ipc'
 import type { ItemState, RunItemView, RunMode, RunView } from '@shared/runs'
+import { formatTelemetry, rollupTelemetry } from '../sessions'
 import { prChip } from '../tasks/model'
 
 /** The status dot's class: the agent's status while the item works, else its phase. */
@@ -43,8 +44,19 @@ const AGENT_NOTE: Record<string, string> = {
   idle: 'Agent idle'
 }
 
-/** The line under an item's title. */
-export function itemMeta(item: RunItemView, run: Pick<RunView, 'mode' | 'paused'>): string {
+/** The line under an item's title, with rolled-up telemetry from its open sessions when present. */
+export function itemMeta(
+  item: RunItemView,
+  run: Pick<RunView, 'mode' | 'paused'>,
+  sessions: readonly PaneSession[] = [],
+  now = Date.now()
+): string {
+  const base = itemPhaseMeta(item, run)
+  const telemetry = sessions.length > 0 ? formatTelemetry(rollupTelemetry(sessions, now)) : null
+  return telemetry ? `${base} · ${telemetry}` : base
+}
+
+function itemPhaseMeta(item: RunItemView, run: Pick<RunView, 'mode' | 'paused'>): string {
   const s = item.state
   if (item.external) {
     if (s.phase === 'done') return 'Done'
@@ -83,13 +95,20 @@ const MODE_LABEL: Record<RunMode, string> = {
   stack: 'stacks pull requests'
 }
 
-/** The line under a run's title. */
-export function runMeta(v: RunView): string {
+/** The line under a run's title, with rolled-up telemetry across all of its items' sessions. */
+export function runMeta(
+  v: RunView,
+  sessions: readonly PaneSession[] = [],
+  now = Date.now()
+): string {
   const parts = [`${String(v.done)}/${String(v.total)} done`, MODE_LABEL[v.mode]]
   if (v.cancelled) parts.push('cancelled')
   else if (v.finished) parts.push('finished')
   else if (v.paused) parts.push('paused')
   else parts.push(`${String(v.maxParallel)} at a time`)
+  const open = sessions.length > 0 ? sessionsInRun(v, sessions) : []
+  const telemetry = open.length > 0 ? formatTelemetry(rollupTelemetry(open, now)) : null
+  if (telemetry) parts.push(telemetry)
   return parts.join(' · ')
 }
 
@@ -98,4 +117,18 @@ export function sessionsIn(item: RunItemView, sessions: readonly PaneSession[]):
   const dir = item.state.path
   if (!dir) return []
   return sessions.filter((s) => s.cwd === dir || s.cwd.startsWith(`${dir}/`))
+}
+
+/** Every unique pane open across any of a run's items. */
+export function sessionsInRun(run: RunView, sessions: readonly PaneSession[]): PaneSession[] {
+  const seen = new Set<string>()
+  const out: PaneSession[] = []
+  for (const item of run.items) {
+    for (const s of sessionsIn(item, sessions)) {
+      if (seen.has(s.id)) continue
+      seen.add(s.id)
+      out.push(s)
+    }
+  }
+  return out
 }

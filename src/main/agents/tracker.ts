@@ -15,6 +15,10 @@ export interface PaneStatus {
   tokens: number | null
   /** The last thing the agent said it finished with; not shared with widgets. */
   doneMessage: string | null
+  /** Cumulative ms spent in working status before any current working stretch. */
+  activeMs: number
+  /** Cumulative tool calls started in this session. */
+  toolCalls: number
 }
 
 export interface TrackerTimings {
@@ -108,7 +112,9 @@ export class StatusTracker {
         message: null,
         title: null,
         tokens: null,
-        doneMessage: null
+        doneMessage: null,
+        activeMs: 0,
+        toolCalls: 0
       },
       hooked: false,
       pending: new Map(),
@@ -203,6 +209,10 @@ export class StatusTracker {
     const extra: Partial<PaneStatus> = {}
     if (report.title) extra.title = report.title
     const { signal } = report
+    const isToolCall =
+      report.toolCall === true ||
+      ((signal.kind === 'working' || signal.kind === 'waiting') && signal.starts !== undefined)
+    if (isToolCall) extra.toolCalls = pane.state.toolCalls + 1
     switch (signal.kind) {
       case 'idle':
         this.endTurn(pane)
@@ -210,6 +220,8 @@ export class StatusTracker {
         if (signal.fresh) {
           extra.title = report.title
           extra.tokens = null
+          extra.activeMs = 0
+          extra.toolCalls = 0
         }
         if (signal.keepDone && pane.state.status === 'done') this.update(pane, extra)
         else this.set(pane, 'idle', extra)
@@ -308,12 +320,19 @@ export class StatusTracker {
         if (pane.state.status === 'working') this.set(pane, 'idle')
       }, ms)
     }
+    const now = Date.now()
     const prev = pane.state
+    const activeMs =
+      extra.activeMs ??
+      (prev.status === 'working' && status !== 'working'
+        ? prev.activeMs + Math.max(0, now - prev.since)
+        : prev.activeMs)
     const next: PaneStatus = {
       ...prev,
       ...extra,
+      activeMs,
       status,
-      since: status === prev.status ? prev.since : Date.now(),
+      since: status === prev.status ? prev.since : now,
       message: status === 'needs-input' ? (extra.message ?? prev.message) : null
     }
     if (status !== 'done') next.doneMessage = status === prev.status ? prev.doneMessage : null

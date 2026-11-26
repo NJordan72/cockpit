@@ -123,6 +123,10 @@ export interface PaneSession extends SessionInfo {
   labels: PaneLabel[]
   /** Set while the pane's tab is a quick command running out of sight. */
   background: BackgroundRun | null
+  /** Cumulative ms spent in working status before any current working stretch. */
+  activeMs: number
+  /** Cumulative tool calls started in this session (Claude Code hooks). */
+  toolCalls: number
 }
 
 export interface PtyCreateOptions {

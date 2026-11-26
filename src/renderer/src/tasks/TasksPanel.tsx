@@ -138,7 +138,7 @@ export function TasksPanel({
                   ) : (
                     <span className="task-pr muted">no PR</span>
                   )}
-                  <span className="prs-meta">{taskMeta(t, here.length)}</span>
+                  <span className="prs-meta">{taskMeta(t, here.length, here)}</span>
                 </button>
               </li>
             )

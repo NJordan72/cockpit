@@ -46,6 +46,8 @@ const session = (id: string, cwd: string, extra: Partial<PaneSession> = {}): Pan
   message: null,
   labels: [],
   background: null,
+  activeMs: 0,
+  toolCalls: 0,
   ...extra
 })
 
@@ -87,5 +89,26 @@ describe('sessions in tasks', () => {
       'app · 1 terminal · 2 changed · 1 unpushed'
     )
     expect(taskMeta(task('p', { unpushed: 3, pr: pr({ state: 'merged' }) }), 0)).toBe('app')
+  })
+
+  it('rolls up active time, tool calls, and tokens from sessions in the task', () => {
+    const here = [
+      session('1', '~/.cockpit/worktrees/app/a', {
+        status: 'working',
+        since: 10_000,
+        activeMs: 50_000,
+        toolCalls: 4,
+        tokens: 30_000
+      }),
+      session('2', '~/.cockpit/worktrees/app/a/src', {
+        status: 'idle',
+        activeMs: 60_000,
+        toolCalls: 3,
+        tokens: 20_000
+      })
+    ]
+    expect(
+      taskMeta(task('~/.cockpit/worktrees/app/a', { changed: 1 }), here.length, here, 20_000)
+    ).toBe('app · 2 terminals · 1 changed · 2m · 7 tools · 50k tok')
   })
 })

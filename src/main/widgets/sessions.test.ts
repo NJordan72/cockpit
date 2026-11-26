@@ -32,7 +32,9 @@ const waiting: PaneStatus = {
   message: 'Claude needs permission to use Bash',
   title: 'Fix it',
   tokens: 100,
-  doneMessage: null
+  doneMessage: null,
+  activeMs: 12_000,
+  toolCalls: 4
 }
 
 const story: PaneLabel = {
@@ -70,7 +72,9 @@ describe('listSessions', () => {
         tokens: 100,
         focused: true,
         labels: [story],
-        background: null
+        background: null,
+        activeMs: 12_000,
+        toolCalls: 4
       },
       {
         id: 'pane-b',
@@ -87,7 +91,9 @@ describe('listSessions', () => {
         tokens: null,
         focused: false,
         labels: [],
-        background: null
+        background: null,
+        activeMs: 0,
+        toolCalls: 0
       }
     ])
   })
@@ -99,6 +105,8 @@ describe('listSessions', () => {
     expect('message' in shared).toBe(false)
     expect('labels' in shared).toBe(false)
     expect('background' in shared).toBe(false)
+    expect('activeMs' in shared).toBe(false)
+    expect('toolCalls' in shared).toBe(false)
     expect(shared.status).toBe('needs-input')
     expect(shared.branch).toBe('nick/sc-1234/fix-login')
   })

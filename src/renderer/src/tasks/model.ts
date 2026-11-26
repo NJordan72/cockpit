@@ -1,6 +1,7 @@
 // What the Tasks panel and the session list show about each task. Pure.
 import type { PaneSession } from '@shared/ipc'
 import { prLabel, taskAt, type TaskInfo, type TaskPr } from '@shared/tasks'
+import { formatTelemetry, rollupTelemetry } from '../sessions'
 
 /** The color a pull request's state gets: a theme token's name. */
 export type PrTone = 'merged' | 'passing' | 'failing' | 'pending' | 'muted'
@@ -47,13 +48,20 @@ const basename = (p: string): string => p.split('/').filter(Boolean).pop() ?? p
 const count = (n: number, one: string, many = `${one}s`): string =>
   `${String(n)} ${n === 1 ? one : many}`
 
-/** The line under a task's branch: its repository, its terminals, and what isn't pushed. */
-export function taskMeta(task: TaskInfo, terminals: number): string {
+/** The line under a task's branch: its repository, terminals, git state, and session telemetry. */
+export function taskMeta(
+  task: TaskInfo,
+  terminals: number,
+  sessions: readonly PaneSession[] = [],
+  now = Date.now()
+): string {
+  const telemetry = sessions.length > 0 ? formatTelemetry(rollupTelemetry(sessions, now)) : null
   return [
     basename(task.repo),
     terminals > 0 ? count(terminals, 'terminal') : null,
     task.changed > 0 ? `${String(task.changed)} changed` : null,
-    task.unpushed > 0 && task.pr?.state !== 'merged' ? `${String(task.unpushed)} unpushed` : null
+    task.unpushed > 0 && task.pr?.state !== 'merged' ? `${String(task.unpushed)} unpushed` : null,
+    telemetry
   ]
     .filter(Boolean)
     .join(' · ')

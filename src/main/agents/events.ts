@@ -44,6 +44,8 @@ export interface AgentReport {
   /** Claude Code's transcript, where the title and token counts live. */
   transcriptPath: string | null
   title: string | null
+  /** True when this event is a new tool call starting (PreToolUse). */
+  toolCall?: boolean
 }
 
 type Obj = Record<string, unknown>
@@ -110,10 +112,11 @@ export const CLAUDE_HOOK_EVENTS = [
 export function parseClaudeHook(event: string, payload: unknown): AgentReport {
   const p = isObj(payload) ? payload : {}
   const name = str(p.hook_event_name) ?? event
-  const report = (signal: AgentSignal): AgentReport => ({
+  const report = (signal: AgentSignal, toolCall?: boolean): AgentReport => ({
     signal,
     transcriptPath: str(p.transcript_path),
-    title: str(p.session_title)
+    title: str(p.session_title),
+    ...(toolCall ? { toolCall: true } : {})
   })
   const tool = str(p.tool_name)
   const key = toolKey(p.tool_name, p.tool_input)
@@ -132,15 +135,18 @@ export function parseClaudeHook(event: string, payload: unknown): AgentReport {
       return report({ kind: 'working', clears: true })
     case 'PreToolUse':
       if (tool && QUESTION_TOOLS.has(tool)) {
-        return report({
-          kind: 'waiting',
-          key,
-          scope,
-          starts: call,
-          message: 'Claude has a question'
-        })
+        return report(
+          {
+            kind: 'waiting',
+            key,
+            scope,
+            starts: call,
+            message: 'Claude has a question'
+          },
+          true
+        )
       }
-      return report({ kind: 'working', starts: call })
+      return report({ kind: 'working', starts: call }, true)
     case 'PermissionRequest':
       return report({
         kind: 'waiting',
