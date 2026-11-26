@@ -83,10 +83,14 @@ describe('migrateConfig', () => {
   })
 
   it('overrides individual keybindings and ignores unknown actions', () => {
-    const c = migrateConfig({ keybindings: { newTab: 'Cmd+N', bogus: 'Cmd+B', splitRight: 7 } })
+    const c = migrateConfig({
+      keybindings: { newTab: 'Cmd+N', nextAttention: 'Cmd+Shift+A', bogus: 'Cmd+B', splitRight: 7 }
+    })
     expect(c.keybindings.newTab).toBe('Cmd+N')
+    expect(c.keybindings.nextAttention).toBe('Cmd+Shift+A')
     expect(c.keybindings.splitRight).toBe(DEFAULT_KEYBINDINGS.splitRight)
     expect(c.keybindings).not.toHaveProperty('bogus')
+    expect(migrateConfig({}).keybindings.nextAttention).toBe('Cmd+Shift+U')
   })
 
   it('clamps terminal settings', () => {

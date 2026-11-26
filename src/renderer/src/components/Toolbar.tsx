@@ -26,6 +26,8 @@ interface Props {
   onWindows: (count: number) => void
   /** Open the plan dialog on the focused pane's newest plan. */
   onShowPlan: () => void
+  /** Panes waiting for user input across all windows and background runs. */
+  waitingCount: number
 }
 
 const COUNTS = Array.from({ length: MAX_WINDOWS }, (_, i) => i + 1)
@@ -86,7 +88,8 @@ export function Toolbar({
   windows,
   displays,
   onWindows,
-  onShowPlan
+  onShowPlan,
+  waitingCount
 }: Props): React.JSX.Element {
   const tip = (title: string, action: Action): string => {
     const keys = chordLabel(keybindings[action])
@@ -112,6 +115,24 @@ export function Toolbar({
         )}
       </div>
       <div className="toolbar-actions">
+        {waitingCount > 0 && (
+          <button
+            type="button"
+            tabIndex={-1}
+            className="toolbar-attention"
+            title={tip(
+              waitingCount === 1
+                ? 'Jump to waiting pane'
+                : `Jump to next waiting pane (${String(waitingCount)} waiting)`,
+              'nextAttention'
+            )}
+            onMouseDown={keepFocus}
+            onClick={() => onAction('nextAttention')}
+          >
+            <span className="status-dot needs-input" aria-hidden />
+            {waitingCount} waiting
+          </button>
+        )}
         {BUTTONS.map((b) => (
           <button
             key={b.action}
