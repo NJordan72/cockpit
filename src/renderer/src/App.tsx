@@ -38,6 +38,7 @@ import { QuickCommandDialog } from './components/QuickCommandDialog'
 import { SaveCommandDialog } from './components/SaveCommandDialog'
 import { SecretPromptDialog } from './components/SecretPromptDialog'
 import { SessionList } from './components/SessionList'
+import { SettingsDialog } from './components/SettingsDialog'
 import { TabBar } from './components/TabBar'
 import { Toolbar } from './components/Toolbar'
 import { Workspace } from './components/Workspace'
@@ -97,7 +98,7 @@ const SAVE_DELAY_MS = 150
 const tabIds = (tabs: readonly Tab[]): string[] => tabs.map((t) => t.id)
 
 /** Actions a window without terminals still runs itself; it forwards the rest. */
-const OWN_ACTIONS: readonly Action[] = ['toggleSidebar', 'kidsMode', 'showPlan']
+const OWN_ACTIONS: readonly Action[] = ['toggleSidebar', 'kidsMode', 'showPlan', 'openSettings']
 
 /** Give a pane the keyboard, whether it's a terminal or a web page. */
 function focusPane(paneId: string): void {
@@ -143,6 +144,8 @@ export function App(): React.JSX.Element {
   const [openingUrl, setOpeningUrl] = useState(false)
   /** The Quick command dialog is up. */
   const [quickOpen, setQuickOpen] = useState(false)
+  /** The Settings dialog is up. */
+  const [settingsOpen, setSettingsOpen] = useState(false)
   /** The New task dialog: what it starts with, and the repository it suggests. */
   const [taskDialog, setTaskDialog] = useState<{
     key: number
@@ -261,6 +264,7 @@ export function App(): React.JSX.Element {
   const planShownRef = useRef(planShown)
   const taskDialogRef = useRef(taskDialog)
   const quickOpenRef = useRef(quickOpen)
+  const settingsOpenRef = useRef(settingsOpen)
   const tasksRef = useRef(tasks)
   useEffect(() => {
     configRef.current = config
@@ -275,6 +279,7 @@ export function App(): React.JSX.Element {
     planShownRef.current = planShown
     taskDialogRef.current = taskDialog
     quickOpenRef.current = quickOpen
+    settingsOpenRef.current = settingsOpen
     tasksRef.current = tasks
   })
 
@@ -734,6 +739,11 @@ export function App(): React.JSX.Element {
           setPicker(null)
           setQuickOpen(true)
           return
+        case 'openSettings':
+          if (kidsRef.current) return
+          setPicker(null)
+          setSettingsOpen(true)
+          return
         default: {
           const n = /^goToTab(\d)$/.exec(action)?.[1]
           if (n)
@@ -763,7 +773,8 @@ export function App(): React.JSX.Element {
         openingUrlRef.current ||
         planShownRef.current ||
         taskDialogRef.current ||
-        quickOpenRef.current
+        quickOpenRef.current ||
+        settingsOpenRef.current
       )
         return
       const action = actionFor(keymap, e)
@@ -784,7 +795,8 @@ export function App(): React.JSX.Element {
         openingUrlRef.current ||
         planShownRef.current ||
         taskDialogRef.current ||
-        quickOpenRef.current
+        quickOpenRef.current ||
+        settingsOpenRef.current
       )
         return
       const action = actionFor(keymap, key)
@@ -1472,9 +1484,19 @@ export function App(): React.JSX.Element {
             initialPresetId={config.launcher.presetId}
             draft={taskDialog.draft}
             repo={taskDialog.repo}
+            taskSettings={config.tasks}
             onCreated={taskCreated}
             onCancel={() => {
               setTaskDialog(null)
+              requestAnimationFrame(focusWorkspace)
+            }}
+          />
+        )}
+        {settingsOpen && (
+          <SettingsDialog
+            config={config}
+            onClose={() => {
+              setSettingsOpen(false)
               requestAnimationFrame(focusWorkspace)
             }}
           />

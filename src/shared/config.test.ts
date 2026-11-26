@@ -2,6 +2,7 @@ import { describe, expect, it } from 'bun:test'
 import {
   ACTIVITY_MIN_HEIGHT,
   activeLayout,
+  applySettingsPatch,
   DEFAULT_KEYBINDINGS,
   DEFAULT_KIDS,
   defaultAppearance,
@@ -703,5 +704,63 @@ describe('migrateConfig: windows', () => {
 
   it('always has a main window', () => {
     expect(migrateConfig({ windows: [] }).windows).toEqual([defaultWindow()])
+  })
+
+  it('includes openSettings defaulting to Cmd+,', () => {
+    expect(DEFAULT_KEYBINDINGS.openSettings).toBe('Cmd+,')
+    expect(defaultConfig().keybindings.openSettings).toBe('Cmd+,')
+  })
+})
+
+describe('applySettingsPatch', () => {
+  it('applies valid edits across editable sections and preserves untouched ones', () => {
+    const base = defaultConfig()
+    base.recentDirs = [{ path: '~/dev/a', at: 10 }]
+    base.appearance.theme = 'amber'
+    const next = applySettingsPatch(base, {
+      editor: '  zed  ',
+      projectsDir: '~/code',
+      terminal: { fontSize: 15, copyOnSelect: false },
+      keybindings: { openSettings: 'Cmd+.' },
+      tasks: { '~/code/app': { setup: 'bun install', copy: ['.env', '.env.local'] } },
+      quickCommands: [
+        { id: 'standup', label: 'Standup', preset: 'claude', prompt: '/standup', background: true }
+      ]
+    })
+    expect(next.editor).toBe('zed')
+    expect(next.projectsDir).toBe('~/code')
+    expect(next.terminal.fontSize).toBe(15)
+    expect(next.terminal.copyOnSelect).toBe(false)
+    expect(next.terminal.scrollback).toBe(base.terminal.scrollback)
+    expect(next.keybindings.openSettings).toBe('Cmd+.')
+    expect(next.keybindings.newTab).toBe(DEFAULT_KEYBINDINGS.newTab)
+    expect(next.tasks).toEqual({
+      '~/code/app': { setup: 'bun install', copy: ['.env', '.env.local'] }
+    })
+    expect(next.quickCommands).toHaveLength(1)
+    expect(next.recentDirs).toEqual(base.recentDirs)
+    expect(next.appearance.theme).toBe('amber')
+  })
+
+  it('ignores non-object patches and non-editable sections, and sanitizes invalid values', () => {
+    const base = defaultConfig()
+    expect(applySettingsPatch(base, null)).toEqual(base)
+    expect(applySettingsPatch(base, 'nope')).toEqual(base)
+    const next = applySettingsPatch(base, {
+      editor: '   ',
+      terminal: { fontSize: 999, scrollback: -5 },
+      presets: [{ id: 'custom', name: 'Custom', command: 'claude', cwd: '~/dev', host: '-bad' }],
+      tasks: { '~/dev/app': { copy: ['.env', '../secret', '/abs'] } },
+      windows: [],
+      appearance: { theme: 'hacked' }
+    })
+    expect(next.editor).toBeNull()
+    expect(next.terminal.fontSize).toBe(base.terminal.fontSize)
+    expect(next.terminal.scrollback).toBe(base.terminal.scrollback)
+    expect(next.presets.map((p) => p.id)).toEqual(['shell', 'custom'])
+    expect(next.presets[1]?.host).toBeUndefined()
+    expect(next.tasks).toEqual({ '~/dev/app': { copy: ['.env'] } })
+    expect(next.windows).toEqual(base.windows)
+    expect(next.appearance).toEqual(base.appearance)
   })
 })

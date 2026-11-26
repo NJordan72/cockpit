@@ -151,6 +151,7 @@ address.
 | Cmd+Shift+] / [     | Next / previous tab                        |
 | Cmd+1 … Cmd+9       | Go to tab                                  |
 | Cmd+B               | Hide or show every panel but the terminals |
+| Cmd+,               | Open Settings                              |
 
 The toolbar along the bottom of the window shows the focused pane: its status,
 preset (or Claude Code's name for the conversation), directory, and git branch
@@ -458,7 +459,11 @@ the rest for each repository, keyed by its main checkout:
 `copy` lists files and folders, relative to the repository, that are copied
 from the main checkout into each new worktree. `setup` runs in the task's
 first terminal before the agent starts, so you see its output. If it fails,
-Cockpit says so and starts the agent anyway. mise trusts a worktree of a
+Cockpit says so and starts the agent anyway. When creating a task in a
+repository that has no `tasks` entry yet, Cockpit checks the main checkout for
+untracked `.env*` files and a lockfile (`bun.lock`, `pnpm-lock.yaml`,
+`yarn.lock`, `package-lock.json`) and offers a one-click button to save the
+suggested `copy` and `setup` settings to `config.json`. mise trusts a worktree of a
 checkout it trusts, so tools pinned in `mise.toml` work there without another
 `mise trust`. Claude Code, Codex, and Antigravity CLI may ask whether to trust
 the new folder the first time an agent starts in it.
@@ -780,6 +785,12 @@ Under `kids` in `config.json`, read each time kids mode starts:
 The `kidsMode` keybinding changes the shortcut.
 
 ## Config
+
+Press `Cmd+,` (or choose **Cockpit > Settings…**) to edit General settings
+(editor, projects directory, terminal font/size/scrollback/copy-on-select),
+Presets, Quick Commands, Item Actions, per-repository Tasks setup, and
+Keybindings in-app. Changes are validated and written to `~/.cockpit/config.json`
+and take effect immediately.
 
 `~/.cockpit/config.json` is created on first launch with every option filled
 in. Edits are picked up while the app runs (keybindings, presets, font).

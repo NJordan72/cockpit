@@ -106,6 +106,7 @@ const api: CockpitApi = {
   },
   config: {
     get: () => ipcRenderer.invoke(IPC.configGet),
+    save: (patch) => ipcRenderer.invoke(IPC.configSave, patch),
     onChange: (cb) => {
       configSubs.add(cb)
       return () => configSubs.delete(cb)
@@ -168,7 +169,8 @@ const api: CockpitApi = {
     cleanUp: () => ipcRenderer.invoke(IPC.tasksCleanUp),
     open: (req) => ipcRenderer.send(IPC.tasksOpen, req),
     onOpen: onTaskOpen,
-    onDraft: onTaskDraft
+    onDraft: onTaskDraft,
+    detectSetup: (repo) => ipcRenderer.invoke(IPC.tasksDetectSetup, repo)
   },
   runs: {
     list: () => ipcRenderer.invoke(IPC.runsList),

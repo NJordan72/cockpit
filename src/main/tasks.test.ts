@@ -4,7 +4,14 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { mergedAndClean, type RepoTaskSettings, type TaskInfo } from '@shared/tasks'
-import { defaultBranch, parseTaskPr, parseWorktrees, TaskStore, withSetup } from './tasks'
+import {
+  defaultBranch,
+  detectRepoSetup,
+  parseTaskPr,
+  parseWorktrees,
+  TaskStore,
+  withSetup
+} from './tasks'
 
 const git = (cwd: string, ...args: string[]): string =>
   execFileSync(
@@ -340,5 +347,58 @@ describe('TaskStore', () => {
     // What gh said before stays when it can't be reached.
     expect(later).toMatchObject({ pr: { number: 3 }, prError: 'could not connect', inPr: false })
     if (later) expect(mergedAndClean(later)).toBe(false)
+  })
+})
+
+describe('detectRepoSetup', () => {
+  it('returns null outside a git repo or when nothing is detected', async () => {
+    const plain = path.join(tmp, 'plain')
+    fs.mkdirSync(plain)
+    fs.writeFileSync(path.join(plain, '.env'), 'A=1\n')
+    expect(await detectRepoSetup(plain)).toBeNull()
+    expect(await detectRepoSetup(repo)).toBeNull()
+  })
+
+  it('detects untracked .env* files (including gitignored) and skips tracked ones', async () => {
+    commit(repo, '.gitignore', '.env\n.env.local\n')
+    commit(repo, '.env.example', 'KEY=\n')
+    fs.writeFileSync(path.join(repo, '.env'), 'KEY=secret\n')
+    fs.writeFileSync(path.join(repo, '.env.local'), 'LOCAL=1\n')
+    fs.writeFileSync(path.join(repo, '.env.development'), 'DEV=1\n')
+
+    expect(await detectRepoSetup(repo)).toEqual({
+      repo,
+      copy: ['.env', '.env.development', '.env.local']
+    })
+  })
+
+  it('detects lockfiles and maps them to install commands', async () => {
+    fs.writeFileSync(path.join(repo, 'package-lock.json'), '{}\n')
+    expect(await detectRepoSetup(repo)).toEqual({ repo, copy: [], setup: 'npm install' })
+
+    fs.writeFileSync(path.join(repo, 'yarn.lock'), '')
+    expect(await detectRepoSetup(repo)).toEqual({ repo, copy: [], setup: 'yarn install' })
+
+    fs.writeFileSync(path.join(repo, 'pnpm-lock.yaml'), '')
+    expect(await detectRepoSetup(repo)).toEqual({ repo, copy: [], setup: 'pnpm install' })
+
+    fs.writeFileSync(path.join(repo, 'bun.lock'), '')
+    fs.writeFileSync(path.join(repo, '.env'), 'X=1\n')
+    expect(await detectRepoSetup(repo)).toEqual({
+      repo,
+      copy: ['.env'],
+      setup: 'bun install'
+    })
+  })
+
+  it('resolves the main checkout when called from a subdirectory', async () => {
+    const sub = path.join(repo, 'packages', 'web')
+    fs.mkdirSync(sub, { recursive: true })
+    fs.writeFileSync(path.join(repo, 'bun.lock'), '')
+    expect(await detectRepoSetup(sub)).toEqual({
+      repo,
+      copy: [],
+      setup: 'bun install'
+    })
   })
 })
