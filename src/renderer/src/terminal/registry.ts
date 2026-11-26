@@ -6,6 +6,9 @@ import type { Terminal } from '@xterm/xterm'
  */
 export const terminals = new Map<string, Terminal>()
 
+/** Callbacks that open the floating find bar for each live terminal pane. */
+export const terminalFinders = new Map<string, () => void>()
+
 function screenText(id: string): string | null {
   const term = terminals.get(id)
   if (!term) return null

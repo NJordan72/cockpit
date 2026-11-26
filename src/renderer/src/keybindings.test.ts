@@ -47,6 +47,7 @@ describe('actionFor', () => {
     expect(actionFor(keymap, ev('KeyD', { meta: true }))).toBe('splitRight')
     expect(actionFor(keymap, ev('KeyD', { meta: true, shift: true }))).toBe('splitDown')
     expect(actionFor(keymap, ev('Digit3', { meta: true }))).toBe('goToTab3')
+    expect(actionFor(keymap, ev('KeyF', { meta: true }))).toBe('findInPane')
   })
 
   it('keeps Cmd+R and Cmd+Shift+R apart', () => {

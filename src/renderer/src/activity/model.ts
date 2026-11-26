@@ -46,9 +46,29 @@ export interface LogFilter {
   tools: boolean
 }
 
-export function filterLog(entries: ActivityEntry[], f: LogFilter): ActivityEntry[] {
-  if (f.events && f.tools) return entries
-  return entries.filter((e) => (e.kind === 'tool' ? f.tools : f.events))
+/**
+ * Case-insensitive substring match against an entry's tool name/label, text,
+ * expanded detail, Bash command, file path, or subagent type.
+ */
+export function matchesLogQuery(entry: ActivityEntry, query: string): boolean {
+  const q = query.trim().toLowerCase()
+  if (!q) return true
+  return (
+    entry.label.toLowerCase().includes(q) ||
+    entry.text.toLowerCase().includes(q) ||
+    (entry.detail?.toLowerCase().includes(q) ?? false) ||
+    (entry.command?.text.toLowerCase().includes(q) ?? false) ||
+    (entry.file?.toLowerCase().includes(q) ?? false) ||
+    (entry.agent?.toLowerCase().includes(q) ?? false)
+  )
+}
+
+export function filterLog(entries: ActivityEntry[], f: LogFilter, query = ''): ActivityEntry[] {
+  const hasQuery = query.trim().length > 0
+  if (f.events && f.tools && !hasQuery) return entries
+  return entries.filter(
+    (e) => (e.kind === 'tool' ? f.tools : f.events) && (!hasQuery || matchesLogQuery(e, query))
+  )
 }
 
 /**
