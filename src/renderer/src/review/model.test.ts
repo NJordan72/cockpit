@@ -21,6 +21,7 @@ const session = (over: Partial<PaneSession> = {}): PaneSession => ({
   message: null,
   labels: [],
   background: null,
+  ports: [],
   ...over
 })
 

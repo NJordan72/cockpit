@@ -3,6 +3,7 @@ import type { Preset } from '@shared/config'
 import type { MenuItem, PaneSession } from '@shared/ipc'
 import { taskFields, type ItemAction } from '@shared/itemActions'
 import { mergedAndClean, type TaskInfo } from '@shared/tasks'
+import { PortPills } from '../components/PortPills'
 import { actionMenu, type PromptRequest } from '../itemActions'
 import { prChip, prTone, sessionsByTask, sessionToShow, taskMeta } from './model'
 
@@ -20,6 +21,8 @@ interface Props {
   onReveal: (paneId: string) => void
   /** Open the diff review pane for a task's worktree. */
   onReview: (task: TaskInfo, where: 'tab' | 'row') => void
+  /** Open (or focus) a split web pane beside a task's pane at a detected local server URL. */
+  onOpenPort: (paneId: string, url: string) => void
   onPrompt: (req: PromptRequest) => void
 }
 
@@ -34,6 +37,7 @@ export function TasksPanel({
   onOpen,
   onReveal,
   onReview,
+  onOpenPort,
   onPrompt
 }: Props): React.JSX.Element {
   const api = window.cockpit
@@ -147,6 +151,12 @@ export function TasksPanel({
                   )}
                   <span className="prs-meta">{taskMeta(t, here.length)}</span>
                 </button>
+                <PortPills
+                  items={here.flatMap((s) => s.ports.map((server) => ({ paneId: s.id, server })))}
+                  sessions={sessions}
+                  className="task-ports"
+                  onOpenPort={onOpenPort}
+                />
               </li>
             )
           })}

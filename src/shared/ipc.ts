@@ -9,12 +9,14 @@ import type {
   LauncherSettings,
   Layout,
   RecentPage,
+  SettingsPatch,
   WindowView
 } from './config'
+import type { LocalServer } from './ports'
 import type { PrAct, PrActResult, PrDetailResult, PrList, PrLogResult, PrRef } from './prs'
 import type { ReviewDiffResult, ReviewRef } from './review'
 import type { RunAction, RunDraft, RunStartRequest, RunView } from './runs'
-import type { NewTask, NewTaskResult, TaskDraft, TaskInfo } from './tasks'
+import type { NewTask, NewTaskResult, RepoSetupSuggestion, TaskDraft, TaskInfo } from './tasks'
 import type { ThemeDefinition } from './theme'
 import type {
   PaneLabel,
@@ -38,6 +40,7 @@ export const IPC = {
   clipboardRead: 'clipboard:read',
   clipboardWrite: 'clipboard:write',
   configGet: 'config:get',
+  configSave: 'config:save',
   configChanged: 'config:changed',
   layoutSave: 'layout:save',
   launcherSave: 'launcher:save',
@@ -89,6 +92,7 @@ export const IPC = {
   tasksCleanUp: 'tasks:cleanup',
   tasksOpen: 'tasks:open',
   tasksDraft: 'tasks:draft',
+  tasksDetectSetup: 'tasks:detect-setup',
   runsList: 'runs:list',
   runsChanged: 'runs:changed',
   runsDraft: 'runs:draft',
@@ -103,6 +107,7 @@ export const IPC = {
   openGitHub: 'open:github',
   openWeb: 'open:web',
   webRecent: 'web:recent',
+  webOpenPane: 'web:open-pane',
   filesExisting: 'files:existing',
   filesOpen: 'files:open',
   editorFile: 'editor:file',
@@ -126,6 +131,8 @@ export interface PaneSession extends SessionInfo {
   labels: PaneLabel[]
   /** Set while the pane's tab is a quick command running out of sight. */
   background: BackgroundRun | null
+  /** Local dev-server URLs detected in the pane's output. */
+  ports: LocalServer[]
 }
 
 export interface PtyCreateOptions {
@@ -138,8 +145,13 @@ export interface PtyCreateOptions {
   cwd?: string
   /** Fail instead of falling back when `cwd` isn't a directory. */
   strictCwd?: boolean
-  /** Open the agent's session picker instead of a new session. */
-  resume?: boolean
+  /**
+   * Resume a past session instead of starting fresh: `true` opens the agent's
+   * session picker; `'last'` resumes `sessionId` or the directory's latest.
+   */
+  resume?: boolean | 'last'
+  /** Specific agent session to resume (Claude Code), used with `resume: 'last'`. */
+  sessionId?: string
   /** The agent's first prompt, for a new session. */
   prompt?: string
   /** The quick command the pane runs, by id; main passes on its model and effort. */
@@ -159,6 +171,8 @@ export interface TaskOpenRequest {
   presetId?: string
   /** The agent's first prompt. */
   prompt?: string
+  /** Resume the agent's last session in the worktree instead of starting fresh. */
+  resume?: boolean | 'last'
   /** Open the tab without switching to it, so a run doesn't pull the user away from their tab. */
   background?: boolean
 }
@@ -183,6 +197,12 @@ export interface ReviewPaneRequest {
   focusFile?: string
   /** A new tab, or split beside the focused pane. */
   where: 'tab' | 'row'
+}
+
+/** A local dev-server web pane to open beside a terminal pane. */
+export interface WebPaneRequest {
+  paneId: string
+  url: string
 }
 
 /** A native context menu. The chosen item's id comes back, or null. */
@@ -299,6 +319,8 @@ export interface CockpitApi {
   }
   config: {
     get(): Promise<CockpitConfig>
+    /** Validate and save editable settings sections, returning the saved config. */
+    save(patch: SettingsPatch): Promise<CockpitConfig>
     onChange(cb: (config: CockpitConfig) => void): () => void
     saveLayout(layout: Layout): void
     saveLauncher(launcher: LauncherSettings): void
@@ -390,6 +412,8 @@ export interface CockpitApi {
     onOpen(cb: (req: TaskOpenRequest) => void): () => void
     /** A widget asked for the New task dialog, filled in. */
     onDraft(cb: (draft: TaskDraft) => void): () => void
+    /** Inspect a repo for untracked .env* files and lockfiles to suggest worktree setup. */
+    detectSetup(repo: string): Promise<RepoSetupSuggestion | null>
   }
   runs: {
     /** Every confirmed run, newest first, with its items' states. */
@@ -451,6 +475,10 @@ export interface CockpitApi {
     openExternal(url: string): void
     /** Pages most recently loaded in web panes, newest first. */
     recent(): Promise<RecentPage[]>
+    /** Opens or focuses a split web pane beside `paneId`, even from another window. */
+    openPane(req: WebPaneRequest): void
+    /** Another window asked this one to open a web pane beside one of its panes. */
+    onOpenPane(cb: (req: WebPaneRequest) => void): () => void
   }
   /** Shows a native context menu at the pointer. */
   menu(items: MenuItem[]): Promise<string | null>

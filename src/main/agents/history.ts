@@ -8,6 +8,8 @@
 // to its file as it goes, so the file's mtime is when it last ran.
 import fs from 'node:fs/promises'
 import path from 'node:path'
+import { validSessionId } from '@shared/config'
+import type { AgentKind } from '@shared/widgets'
 
 /** Codex session files read per listing, newest first. */
 const CODEX_FILES = 500
@@ -170,4 +172,45 @@ export async function agyLastUsed(agyHome: string): Promise<Map<string, number>>
     })
   )
   return used
+}
+
+export interface AgentHomes {
+  claude: string
+  codex: string
+  agy: string
+}
+
+/**
+ * Whether `agent` has a resumable conversation on disk for `cwd`.
+ * When `sessionId` is given for Claude Code, checks that specific transcript;
+ * otherwise checks whether any session exists for `cwd`.
+ */
+export async function hasAgentSession(
+  agent: AgentKind,
+  cwd: string,
+  homes: AgentHomes,
+  sessionId?: string
+): Promise<boolean> {
+  switch (agent) {
+    case 'claude': {
+      const folder = path.join(homes.claude, 'projects', claudeProjectDir(cwd))
+      if (sessionId) {
+        if (!validSessionId(sessionId)) return false
+        return fs.stat(path.join(folder, `${sessionId}.jsonl`)).then(
+          (st) => st.isFile(),
+          () => false
+        )
+      }
+      try {
+        const names = await fs.readdir(folder)
+        return names.some((n) => n.endsWith('.jsonl'))
+      } catch {
+        return false
+      }
+    }
+    case 'codex':
+      return (await codexLastUsed(homes.codex)).has(cwd)
+    case 'agy':
+      return (await agyLastUsed(homes.agy)).has(cwd)
+  }
 }

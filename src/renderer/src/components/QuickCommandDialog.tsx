@@ -5,6 +5,8 @@ import { clipboardInput, inputValid, quickPrompt, type QuickCommand } from '@sha
 interface Props {
   commands: QuickCommand[]
   presets: Preset[]
+  /** Open straight to this command's input step (e.g. from the command palette). */
+  initialCommand?: QuickCommand | null
   /** Run it: `prompt` has the input filled in, `input` is the value typed. */
   onRun: (cmd: QuickCommand, prompt: string, input: string) => void
   onCancel: () => void
@@ -30,12 +32,13 @@ function detail(cmd: QuickCommand, preset: Preset | undefined): string {
 export function QuickCommandDialog({
   commands,
   presets,
+  initialCommand = null,
   onRun,
   onCancel
 }: Props): React.JSX.Element {
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState(0)
-  const [chosen, setChosen] = useState<QuickCommand | null>(null)
+  const [chosen, setChosen] = useState<QuickCommand | null>(initialCommand)
   const [value, setValue] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLUListElement>(null)
@@ -49,6 +52,14 @@ export function QuickCommandDialog({
   useEffect(() => {
     inputRef.current?.focus()
   }, [chosen])
+
+  useEffect(() => {
+    if (!initialCommand?.input) return
+    void window.cockpit.clipboard.readText().then((text) => {
+      const filled = clipboardInput(initialCommand, text)
+      if (filled) setValue((v) => v || filled)
+    })
+  }, [initialCommand])
 
   useEffect(() => {
     listRef.current?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest' })
@@ -76,8 +87,8 @@ export function QuickCommandDialog({
   const onKeyDown = (e: React.KeyboardEvent): void => {
     if (e.key === 'Escape') {
       e.preventDefault()
-      // Back to the list from the input; out from the list.
-      if (chosen && commands.length > 1) {
+      // Back to the list from the input; out from the list (or when opened straight to one command).
+      if (chosen && !initialCommand && commands.length > 1) {
         setChosen(null)
         setValue('')
       } else onCancel()

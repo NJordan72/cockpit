@@ -14,6 +14,7 @@ import {
   type PtyCreateOptions,
   type PtyExitInfo,
   type SystemSample,
+  type WebPaneRequest,
   type WindowInfo
 } from '@shared/ipc'
 import type { RunDraft, RunView } from '@shared/runs'
@@ -80,6 +81,7 @@ const onRunsChanged: Subscribe<[RunView[]]> = channel(IPC.runsChanged)
 const onRunDraft: Subscribe<[RunDraft]> = channel(IPC.runsDraft)
 const onPrPane: Subscribe<[PrPaneRequest]> = channel(IPC.prsPane)
 const onReviewPane: Subscribe<[ReviewPaneRequest]> = channel(IPC.reviewPane)
+const onWebOpenPane: Subscribe<[WebPaneRequest]> = channel(IPC.webOpenPane)
 
 function subscribe<T>(map: Map<string, Set<T>>, id: string, cb: T): () => void {
   let set = map.get(id)
@@ -108,6 +110,7 @@ const api: CockpitApi = {
   },
   config: {
     get: () => ipcRenderer.invoke(IPC.configGet),
+    save: (patch) => ipcRenderer.invoke(IPC.configSave, patch),
     onChange: (cb) => {
       configSubs.add(cb)
       return () => configSubs.delete(cb)
@@ -170,7 +173,8 @@ const api: CockpitApi = {
     cleanUp: () => ipcRenderer.invoke(IPC.tasksCleanUp),
     open: (req) => ipcRenderer.send(IPC.tasksOpen, req),
     onOpen: onTaskOpen,
-    onDraft: onTaskDraft
+    onDraft: onTaskDraft,
+    detectSetup: (repo) => ipcRenderer.invoke(IPC.tasksDetectSetup, repo)
   },
   runs: {
     list: () => ipcRenderer.invoke(IPC.runsList),
@@ -209,7 +213,9 @@ const api: CockpitApi = {
   },
   web: {
     openExternal: (url) => ipcRenderer.send(IPC.openWeb, url),
-    recent: () => ipcRenderer.invoke(IPC.webRecent)
+    recent: () => ipcRenderer.invoke(IPC.webRecent),
+    openPane: (req) => ipcRenderer.send(IPC.webOpenPane, req),
+    onOpenPane: onWebOpenPane
   },
   menu: (items) => ipcRenderer.invoke(IPC.menuPopup, items),
   activity: {

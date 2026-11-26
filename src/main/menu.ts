@@ -3,6 +3,7 @@ import type { ThemeDefinition } from '@shared/theme'
 
 export interface MenuHandlers {
   onAbout: () => void
+  onSettings: () => void
   /** Check for Updates and what it turns into; null in builds that can't update. */
   update: { label: string; enabled: boolean; onClick: () => void } | null
   onKidsMode: () => void
@@ -76,6 +77,9 @@ export function buildMenu(handlers: MenuHandlers): Menu {
               }
             ]
           : []),
+        { type: 'separator' },
+        // No accelerator: Cmd+, (openSettings) is the chrome's, and can be rebound.
+        { id: 'settings', label: 'Settings…', click: handlers.onSettings },
         { type: 'separator' },
         { role: 'hide' },
         { role: 'hideOthers' },
