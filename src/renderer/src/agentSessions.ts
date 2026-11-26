@@ -16,6 +16,11 @@ export function presetAgent(command: string | undefined): AgentKind | null {
   return null
 }
 
+/** Presets whose command starts a recognized agent (Claude Code, Codex, or Antigravity CLI). */
+export function agentPresets(presets: readonly Preset[]): Preset[] {
+  return presets.filter((p) => presetAgent(p.command) !== null)
+}
+
 /**
  * The preset and directory for a new agent session: the focused pane's, if
  * it runs an agent; otherwise the first Claude Code preset (then Codex, then

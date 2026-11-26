@@ -367,11 +367,25 @@ and green once you approve it. Click it, or press Cmd+Shift+P, to read the plan
 over the window as formatted Markdown. Esc or a click outside closes it.
 
 The plan view shows when Claude proposed the plan, whether you approved it,
-and how many rounds it took if you asked for changes. **Open** opens the plan
-file (`~/.claude/plans/<name>.md`) in your editor, and **Copy** copies the
-Markdown; right-click for the same and to copy a selection. A session that
+and how many rounds it took if you asked for changes. **Ask another agent…**
+sends the plan Markdown with a review prompt to another open agent pane or to a
+new split in the same directory running a chosen agent preset. **Open** opens
+the plan file (`~/.claude/plans/<name>.md`) in your editor, and **Copy** copies
+the Markdown; right-click for the same and to copy a selection. A session that
 made more than one plan shows a count on the button and **1 of 2 ▾** to pick
 another.
+
+### Cross-agent handoff and comparison
+
+- **Second opinion on a plan**: click **Ask another agent…** in the plan dialog
+  (or right-click the plan) to send the plan Markdown with a concise review
+  prompt to another running agent pane or a new split running a chosen preset.
+- **Send terminal selection to an agent**: select text in any terminal pane and
+  right-click to **Copy** or **Send selection to agent…** (targeting another
+  running agent pane or a new split in the same directory).
+- **Compare agents side by side**: click **⇄ Compare** in the toolbar to pick
+  two agent presets, a directory, and a prompt, opening both agents side by side
+  in a new split tab with the same initial prompt.
 
 Plans stay through `/clear`, so a plan is still there while Claude carries it
 out in a fresh conversation. Toolbar Clear and closing the pane drop them, as

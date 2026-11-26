@@ -30,9 +30,17 @@ import {
 export type LayoutAction =
   | { type: 'replace'; layout: Layout }
   | { type: 'newTab'; pane: PaneNode; background?: boolean }
+  | { type: 'newSplitTab'; left: PaneNode; right: PaneNode; direction?: 'row' | 'column' }
   | { type: 'newRun'; pane: PaneNode; run: BackgroundRun }
   | { type: 'restore'; layout: Layout; resume?: boolean }
-  | { type: 'split'; paneId: string; direction: 'row' | 'column'; pane: PaneNode }
+  | {
+      type: 'split'
+      paneId: string
+      direction: 'row' | 'column'
+      pane: PaneNode
+      /** Open as a new tab if `paneId` is no longer in this window. */
+      fallbackNewTab?: boolean
+    }
   | { type: 'closePane'; paneId: string; shown?: readonly string[] }
   | { type: 'clearPane'; paneId: string; resume?: boolean }
   | { type: 'closeTab'; tabId: string; shown?: readonly string[] }
@@ -93,6 +101,25 @@ export function layoutReducer(layout: Layout, action: LayoutAction): Layout {
       return { ...layout, tabs, activeTabId: keep ? layout.activeTabId : tab.id }
     }
 
+    case 'newSplitTab': {
+      // Two panes side by side in a new tab, placed after the active tab.
+      const tab: Tab = {
+        id: newId('tab'),
+        root: {
+          type: 'split',
+          id: newId('split'),
+          direction: action.direction ?? 'row',
+          children: [action.left, action.right],
+          sizes: [0.5, 0.5]
+        },
+        activePaneId: action.left.id
+      }
+      const idx = layout.tabs.findIndex((t) => t.id === layout.activeTabId && !t.pinned)
+      const tabs = [...layout.tabs]
+      tabs.splice(idx === -1 ? unpinnedCount(tabs) : idx + 1, 0, tab)
+      return { ...layout, tabs, activeTabId: tab.id }
+    }
+
     case 'newRun': {
       // Out of sight: never selected, and kept before the pinned tabs.
       const tab: Tab = {
@@ -128,7 +155,11 @@ export function layoutReducer(layout: Layout, action: LayoutAction): Layout {
 
     case 'split': {
       const tab = tabOfPane(layout, action.paneId)
-      if (!tab) return layout
+      if (!tab) {
+        return action.fallbackNewTab
+          ? layoutReducer(layout, { type: 'newTab', pane: action.pane })
+          : layout
+      }
       return mapTab(layout, tab.id, (t) => ({
         ...t,
         root: splitPane(t.root, action.paneId, action.direction, action.pane),

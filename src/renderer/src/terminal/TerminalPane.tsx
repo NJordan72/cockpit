@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Terminal, type ITheme } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebglAddon } from '@xterm/addon-webgl'
@@ -6,8 +6,10 @@ import { Unicode11Addon } from '@xterm/addon-unicode11'
 import { SearchAddon, type ISearchOptions } from '@xterm/addon-search'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import { terminalFontStack, type PaneNode, type TerminalSettings } from '@shared/config'
-import type { PtyExitInfo } from '@shared/ipc'
+import type { MenuItem, PtyExitInfo } from '@shared/ipc'
 import type { PaneLabel } from '@shared/widgets'
+import { AgentHandoffContext } from '../handoff/context'
+import { handoffChoices, handoffMenuItems, selectionPrompt } from '../handoff/model'
 import { OutputAcks } from './acks'
 import { classifyKey } from './keys'
 import { LabelStrip } from './LabelStrip'
@@ -51,6 +53,7 @@ export function TerminalPane({
   onStarted
 }: Props): React.JSX.Element {
   const { id } = pane
+  const handoffEnv = useContext(AgentHandoffContext)
   const hostRef = useRef<HTMLDivElement>(null)
   const termRef = useRef<Terminal | null>(null)
   const fitRef = useRef<FitAddon | null>(null)
@@ -470,6 +473,46 @@ export function TerminalPane({
     startRef.current()
   }, [])
 
+  const onContextMenu = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      const term = termRef.current
+      if (!term?.hasSelection()) return
+      const selection = term.getSelection()
+      if (!selection.trim()) return
+      e.preventDefault()
+      const groups = handoffChoices({
+        sourcePaneId: id,
+        sourceCwd: pane.cwd,
+        sourcePresetId: pane.presetId,
+        sessions: handoffEnv.sessions,
+        presets: handoffEnv.presets,
+        canSplit: true
+      })
+      const handoff = groups.length > 0 ? handoffMenuItems(groups, 'send') : null
+      const items: MenuItem[] = [
+        { id: 'copy', label: 'Copy' },
+        ...(handoff
+          ? [
+              { type: 'separator' } as const,
+              { label: 'Send selection to agent…', submenu: handoff.items }
+            ]
+          : [])
+      ]
+      void window.cockpit.menu(items).then((chosen) => {
+        if (chosen === null) return
+        if (chosen === 'copy') {
+          window.cockpit.clipboard.writeText(selection)
+          return
+        }
+        const target = handoff?.targets.get(chosen)
+        if (target) {
+          void handoffEnv.handOff(selectionPrompt(selection, { sourceName: presetName }), target)
+        }
+      })
+    },
+    [id, pane.cwd, pane.presetId, presetName, handoffEnv]
+  )
+
   const invalidRegex = regex && findQuery.length > 0 && !isValidRegex(findQuery)
   const countLabel = formatMatchCount(findQuery, searchResults, invalidRegex)
   const canStep = findQuery.length > 0 && !invalidRegex && (searchResults?.resultCount ?? 0) > 0
@@ -479,7 +522,7 @@ export function TerminalPane({
       {/* The host shrinks to make room, and its resize observer fits the rows again. */}
       {labels && labels.length > 0 && <LabelStrip paneId={id} labels={labels} />}
       <div className="terminal-stage">
-        <div className="terminal-host" ref={hostRef} />
+        <div className="terminal-host" ref={hostRef} onContextMenu={onContextMenu} />
         {findOpen && (
           <div
             className="terminal-find"

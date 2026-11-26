@@ -28,6 +28,8 @@ interface Props {
   onWindows: (count: number) => void
   /** Open the plan dialog on the focused pane's newest plan. */
   onShowPlan: () => void
+  /** Open the Compare agents dialog to launch two presets side by side. */
+  onCompare?: () => void
   /** Open (or focus) a split web pane beside a pane at a detected local server URL. */
   onOpenPort: (paneId: string, url: string) => void
   /** Panes waiting for user input across all windows and background runs. */
@@ -94,6 +96,7 @@ export function Toolbar({
   displays,
   onWindows,
   onShowPlan,
+  onCompare,
   onOpenPort,
   waitingCount
 }: Props): React.JSX.Element {
@@ -154,6 +157,17 @@ export function Toolbar({
             {b.label}
           </button>
         ))}
+        {onCompare && (
+          <button
+            type="button"
+            tabIndex={-1}
+            title="Compare two agents side by side with the same prompt"
+            onMouseDown={keepFocus}
+            onClick={onCompare}
+          >
+            ⇄ Compare
+          </button>
+        )}
         <button
           type="button"
           tabIndex={-1}
