@@ -56,7 +56,7 @@ import { PrPaneContext, type PrPaneEnv } from './prs/context'
 import type { HandOffTarget } from './prs/model'
 import { activeTab, layoutReducer } from './layout/reducer'
 import { foregroundTabs, shownTabs, tabDirs, tabFolders } from './layout/tabs'
-import { terminals } from './terminal/registry'
+import { terminalFinders, terminals } from './terminal/registry'
 import { queueRun } from './terminal/run'
 import { applyTheme } from './theme'
 import { OpenUrlDialog, type OpenWhere } from './web/OpenUrlDialog'
@@ -733,6 +733,9 @@ export function App(): React.JSX.Element {
         case 'quickCommand':
           setPicker(null)
           setQuickOpen(true)
+          return
+        case 'findInPane':
+          if (tab) terminalFinders.get(tab.activePaneId)?.()
           return
         default: {
           const n = /^goToTab(\d)$/.exec(action)?.[1]

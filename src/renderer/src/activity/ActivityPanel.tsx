@@ -81,6 +81,7 @@ export function ActivityPanel({
 }: Props): React.JSX.Element {
   const activity = usePaneActivity(session.id)
   const [logFilter, setLogFilter] = useState<LogFilter>({ events: true, tools: true })
+  const [logQuery, setLogQuery] = useState('')
   const [fileFilter, setFileFilter] = useState<FileFilter>({ edited: true, read: true })
   const edits = activity?.files.reduce((n, f) => n + f.edits, 0) ?? 0
   const git = useGit(session.id, visible, `${String(loggedCount(activity))}:${String(edits)}`)
@@ -138,6 +139,8 @@ export function ActivityPanel({
             activity={activity}
             filter={logFilter}
             onFilter={setLogFilter}
+            query={logQuery}
+            onQuery={setLogQuery}
             onSavePrompt={onSavePrompt}
             onRunCommand={onRunCommand}
             onShowPlan={onShowPlan}
@@ -303,6 +306,8 @@ function LogView({
   activity,
   filter,
   onFilter,
+  query,
+  onQuery,
   onSavePrompt,
   onRunCommand,
   onShowPlan
@@ -311,12 +316,14 @@ function LogView({
   activity: PaneActivity | null
   filter: LogFilter
   onFilter: (f: LogFilter) => void
+  query: string
+  onQuery: (q: string) => void
   onSavePrompt: (prompt: string) => void
   onRunCommand: (command: BashCommand) => void
   onShowPlan: (file: string) => void
 }): React.JSX.Element {
   const entries = useMemo(() => activity?.entries ?? [], [activity])
-  const shown = useMemo(() => filterLog(entries, filter), [entries, filter])
+  const shown = useMemo(() => filterLog(entries, filter, query), [entries, filter, query])
   const [openRow, setOpenRow] = useState<string | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const onScroll = useStickyScroll(scrollRef, shown.at(-1)?.seq, session.id)
@@ -348,6 +355,35 @@ function LogView({
         <Chip on={filter.tools} onClick={() => onFilter(toggleFilter(filter, 'tools'))}>
           Tools
         </Chip>
+        <div className="activity-search">
+          <input
+            type="text"
+            className="activity-search-input"
+            placeholder="Filter…"
+            aria-label="Filter activity log"
+            value={query}
+            onChange={(e) => onQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') {
+                e.preventDefault()
+                if (query) onQuery('')
+                e.currentTarget.blur()
+              }
+            }}
+          />
+          {query && (
+            <button
+              type="button"
+              tabIndex={-1}
+              className="activity-search-clear"
+              title="Clear filter"
+              aria-label="Clear filter"
+              onClick={() => onQuery('')}
+            >
+              ×
+            </button>
+          )}
+        </div>
         <span className="activity-total" title="Shown / logged">
           {shown.length}/{loggedCount(activity)}
         </span>
@@ -380,6 +416,8 @@ function LogView({
             Only Claude Code, Codex, and Antigravity CLI panes report activity. This one runs{' '}
             {session.name}.
           </Empty>
+        ) : entries.length > 0 ? (
+          <Empty>No matching entries.</Empty>
         ) : (
           <Empty>Nothing yet.</Empty>
         )}

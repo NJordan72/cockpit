@@ -147,6 +147,7 @@ address.
 | Cmd+Shift+R         | Resume: pick an old session for the pane   |
 | Cmd+Shift+E         | Open the pane's project in your editor     |
 | Cmd+Shift+P         | Read the pane's plan (see [Plans](#plans)) |
+| Cmd+F               | Find in the focused terminal pane          |
 | Cmd+Alt+Arrow       | Move focus between panes                   |
 | Cmd+Shift+] / [     | Next / previous tab                        |
 | Cmd+1 … Cmd+9       | Go to tab                                  |
@@ -294,7 +295,8 @@ tabs, each with a count:
   permission requests, failures, subagents starting and finishing,
   notifications, and finished turns. Calls made inside a subagent are marked
   ↳. Click a line to read all of it, such as a multi-line command or Claude's
-  whole reply. **Events** and **Tools** filter the list.
+  whole reply. **Events** and **Tools** filter the list, and the filter box
+  narrows entries by tool name, command, file path, or text.
 - **Files**: the files Claude read or changed, most recent first, with lines
   added and removed. `A` marks a new file, `M` an edited one, and `R` one that
   was only read.
@@ -974,6 +976,7 @@ can't use. The first 20 entries are kept.
 | Option        | Acts as Meta (Alt+b, Alt+f, ...)                          |
 | Cmd+C / Cmd+V | Copy selection / paste (bracketed paste when enabled)     |
 | Cmd+K         | Clear the screen and scrollback                           |
+| Cmd+F         | Find in terminal (Enter/Cmd+G next, Shift+Enter/⇧⌘G prev) |
 
 Selecting text with the mouse copies it, as in iTerm2. Set
 `terminal.copyOnSelect` to `false` to copy only with Cmd+C. Claude Code,
