@@ -133,6 +133,14 @@ on. Cmd+R reloads the focused page. The Cmd+T picker's Web option lists the 20
 pages most recently loaded in web panes; type to filter them, or type a new
 address.
 
+When a terminal pane prints a local dev-server URL (`http(s)://localhost:<port>`,
+`127.0.0.1:<port>`, or `[::1]:<port>`), Cockpit shows a clickable `:port` pill in
+the toolbar and on the matching row in Sessions and Tasks. Clicking the pill opens
+a split web pane beside that terminal (or focuses one already showing that origin).
+When two different panes or worktrees advertise the same port, the pill highlights
+in yellow with a warning tooltip naming the other pane. Detected ports clear when
+the pane exits or is cleared.
+
 | Key (default)       | Action                                     |
 | ------------------- | ------------------------------------------ |
 | Cmd+T               | New tab (picker)                           |

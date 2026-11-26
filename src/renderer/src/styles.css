@@ -886,6 +886,63 @@ button.label-row:hover .label-title {
   font-variant-numeric: tabular-nums;
 }
 
+/* Detected local dev-server ports in the toolbar, Sessions, and Tasks. */
+.port-pills {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+.toolbar-ports {
+  flex: none;
+  flex-wrap: nowrap;
+}
+
+.session-ports {
+  flex-basis: 100%;
+  padding: 0 10px 6px 26px;
+}
+
+.task-ports {
+  padding: 0 10px 6px 26px;
+}
+
+.port-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  height: 18px;
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-raised);
+  color: var(--blue);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.port-pill:hover {
+  background: var(--bg-hover);
+  border-color: var(--blue);
+}
+
+.port-pill.collision {
+  color: var(--yellow);
+  border-color: var(--yellow);
+}
+
+.port-pill.collision:hover {
+  background: var(--bg-hover);
+  border-color: var(--yellow);
+}
+
+.port-pill-warn {
+  font-size: 10px;
+}
+
 .toolbar-actions {
   flex: none;
   display: flex;
@@ -1567,6 +1624,7 @@ button.label-row:hover .label-title {
 /* A background run: its row and a dismiss button side by side. */
 .session-run {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
 }
 

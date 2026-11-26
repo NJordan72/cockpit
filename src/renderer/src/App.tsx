@@ -49,7 +49,14 @@ import { Monitor } from './frame/Monitor'
 import { takesPrompts, type PromptRequest } from './itemActions'
 import { KidsMode, type KidsStatus } from './kids/KidsMode'
 import { actionFor, compileKeymap } from './keybindings'
-import { findPane, findPrPane, makePane, makePrPane, makeWebPane } from './layout/model'
+import {
+  findPane,
+  findPrPane,
+  findWebPane,
+  makePane,
+  makePrPane,
+  makeWebPane
+} from './layout/model'
 import { CommandsPanel, type RunWhere } from './panels/CommandsPanel'
 import { PrPanel } from './panels/PrPanel'
 import { PrPaneContext, type PrPaneEnv } from './prs/context'
@@ -945,6 +952,32 @@ export function App(): React.JSX.Element {
     [focused]
   )
 
+  /** Opens (or focuses) a split web pane beside `paneId` at a detected local server URL. */
+  const openPort = useCallback(
+    (paneId: string, url: string) => {
+      const tab = layoutRef.current.tabs.find((t) => findPane(t.root, paneId))
+      if (!tab) {
+        api.web.openPane({ paneId, url })
+        return
+      }
+      const existing = findWebPane(tab.root, url)
+      if (existing) {
+        showPane(existing.id)
+        return
+      }
+      const target = findPane(tab.root, paneId)
+      if (!target) return
+      setPicker(null)
+      setRestorable(null)
+      const webPane = makeWebPane(url, target.cwd)
+      dispatch({ type: 'split', paneId, direction: 'row', pane: webPane })
+      dispatch({ type: 'focusPane', paneId: webPane.id })
+    },
+    [api, showPane]
+  )
+
+  useEffect(() => api.web.onOpenPane(({ paneId, url }) => openPort(paneId, url)), [api, openPort])
+
   /**
    * A new tab in a task's worktree, running the preset (the start screen's
    * agent if none). A window of panels has the terminal window open it.
@@ -1197,6 +1230,7 @@ export function App(): React.JSX.Element {
             collapsed={place.collapsed}
             onToggle={place.canCollapse ? place.toggleCollapsed : undefined}
             onSelect={revealPane}
+            onOpenPort={openPort}
             onDismiss={
               terminals
                 ? (paneId) => {
@@ -1258,6 +1292,7 @@ export function App(): React.JSX.Element {
             onNew={() => runAction('newTask')}
             onOpen={(task, presetId) => openInTask(task.path, presetId)}
             onReveal={revealPane}
+            onOpenPort={openPort}
             onPrompt={runItemPrompt}
           />
         )
@@ -1399,6 +1434,7 @@ export function App(): React.JSX.Element {
         </div>
         <Toolbar
           focused={toolbarPane}
+          sessions={sessions}
           keybindings={config.keybindings}
           layouts={layoutChoices(config.appearance)}
           layout={view.layout}
@@ -1412,6 +1448,7 @@ export function App(): React.JSX.Element {
           onShowPlan={() => {
             if (toolbarPane) showPlan(toolbarPane, null)
           }}
+          onOpenPort={openPort}
         />
         {picker && (
           <Picker

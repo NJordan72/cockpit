@@ -101,6 +101,7 @@ import { listCharacters } from './kids'
 import { buildKidsMenu, buildMenu, menuTemplate } from './menu'
 import { abbreviateHome, agyHome, claudeHome, cockpitHome, codexHome, expandHome } from './paths'
 import { actOnPr, checkLog, listPrs, readPr, readPrAct } from './prs'
+import { PortTracker } from './ports'
 import { PtyManager } from './pty'
 import { runRequests, RunStore } from './runs'
 import { registerSchemes } from './schemes'
@@ -115,12 +116,22 @@ import { autoUpdater } from 'electron-updater'
 import { listSessions, widgetSession } from './widgets/sessions'
 
 // PTYs only start once the app is ready, by which time agents exists.
+const ports = new PortTracker(() => sessionsChanged())
 const ptys = new PtyManager({
-  output: (id, data) => agents.output(id, data),
+  output: (id, data) => {
+    agents.output(id, data)
+    ports.output(id, data)
+  },
   input: (id, data) => agents.input(id, data),
   resized: (id) => agents.resized(id),
-  exited: (id) => agents.exited(id),
-  killed: (id) => agents.killed(id)
+  exited: (id) => {
+    ports.clear(id)
+    agents.exited(id)
+  },
+  killed: (id) => {
+    ports.clear(id)
+    agents.killed(id)
+  }
 })
 let config: ConfigStore
 let themes: ThemeStore
@@ -259,7 +270,8 @@ function sessions(): PaneSession[] {
     {
       status: (id) => agents.status(id),
       branch: (id) => branches.get(id),
-      labels: (id) => widgets.labels.of(id)
+      labels: (id) => widgets.labels.of(id),
+      ports: (id) => ports.get(id)
     },
     focusedPaneId()
   )
@@ -1088,6 +1100,7 @@ function registerIpc(): void {
       host !== undefined
     )
     const env = agents.spawn(opts.id, launch.agent, host !== undefined, launch.prompted)
+    ports.clear(opts.id)
     // A new task's worktree runs its repository's setup first, once.
     const setup = host ? null : tasks.takeSetup(cwd)
     const command =
@@ -1481,6 +1494,15 @@ function registerIpc(): void {
   ipcMain.handle(IPC.webRecent, (e): RecentPage[] => {
     if (!trusted(e)) throw new Error('untrusted sender')
     return config.get().recentPages
+  })
+  ipcMain.on(IPC.webOpenPane, (e, req: unknown) => {
+    if (!trusted(e) || typeof req !== 'object' || req === null) return
+    const { paneId, url } = req as Record<string, unknown>
+    if (typeof paneId !== 'string' || typeof url !== 'string' || !isWebUrl(url)) return
+    const target = windowOfPane(paneId) ?? terminalWindow()
+    if (!target) return
+    raise(target)
+    send(target, IPC.webOpenPane, { paneId, url })
   })
 }
 

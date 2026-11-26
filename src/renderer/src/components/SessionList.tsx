@@ -2,6 +2,7 @@ import type { PaneSession } from '@shared/ipc'
 import { taskAt, type TaskInfo } from '@shared/tasks'
 import { formatTokens, STATUS_LABEL } from '../sessions'
 import { prChip, prTone } from '../tasks/model'
+import { PortPills } from './PortPills'
 
 interface Props {
   sessions: PaneSession[]
@@ -11,6 +12,8 @@ interface Props {
   /** Missing where the panel can't fold (outside a column). */
   onToggle?: () => void
   onSelect: (paneId: string) => void
+  /** Open (or focus) a split web pane beside a session at a detected local server URL. */
+  onOpenPort: (paneId: string, url: string) => void
   /** Close a background run's pane. Missing in a window without terminals. */
   onDismiss?: (paneId: string) => void
   onHidePanels: () => void
@@ -30,6 +33,7 @@ export function SessionList({
   collapsed,
   onToggle,
   onSelect,
+  onOpenPort,
   onDismiss,
   onHidePanels
 }: Props): React.JSX.Element {
@@ -68,7 +72,14 @@ export function SessionList({
       {!collapsed && (
         <ul className="session-list">
           {tabbed.map((s) => (
-            <SessionRow key={s.id} session={s} tasks={tasks} onSelect={onSelect} />
+            <SessionRow
+              key={s.id}
+              session={s}
+              sessions={sessions}
+              tasks={tasks}
+              onSelect={onSelect}
+              onOpenPort={onOpenPort}
+            />
           ))}
           {background.length > 0 && (
             <li className="session-group" aria-hidden="true">
@@ -79,8 +90,10 @@ export function SessionList({
             <SessionRow
               key={s.id}
               session={s}
+              sessions={sessions}
               tasks={tasks}
               onSelect={onSelect}
+              onOpenPort={onOpenPort}
               onDismiss={onDismiss}
             />
           ))}
@@ -92,14 +105,23 @@ export function SessionList({
 
 interface RowProps {
   session: PaneSession
+  sessions: readonly PaneSession[]
   tasks: readonly TaskInfo[]
   onSelect: (paneId: string) => void
+  onOpenPort: (paneId: string, url: string) => void
   /** Shown as a close button: a background run is dismissed, not opened. */
   onDismiss?: (paneId: string) => void
 }
 
 /** One session. A background run is named for its quick command and shows what it was given. */
-function SessionRow({ session: s, tasks, onSelect, onDismiss }: RowProps): React.JSX.Element {
+function SessionRow({
+  session: s,
+  sessions,
+  tasks,
+  onSelect,
+  onOpenPort,
+  onDismiss
+}: RowProps): React.JSX.Element {
   const task = taskAt(tasks, s.cwd)
   const pr = task?.pr ?? null
   const run = s.background
@@ -155,6 +177,12 @@ function SessionRow({ session: s, tasks, onSelect, onDismiss }: RowProps): React
           ×
         </button>
       )}
+      <PortPills
+        items={s.ports.map((server) => ({ paneId: s.id, server }))}
+        sessions={sessions}
+        className="session-ports"
+        onOpenPort={onOpenPort}
+      />
     </li>
   )
 }
