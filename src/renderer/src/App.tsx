@@ -33,6 +33,7 @@ import { ActivityPanel } from './activity/ActivityPanel'
 import { PlanDialog } from './activity/PlanDialog'
 import { newSessionTarget } from './agentSessions'
 import { Launcher } from './components/Launcher'
+import { CompareAgentsDialog } from './components/CompareAgentsDialog'
 import { Picker } from './components/Picker'
 import { QuickCommandDialog } from './components/QuickCommandDialog'
 import { SaveCommandDialog } from './components/SaveCommandDialog'
@@ -41,6 +42,8 @@ import { SessionList } from './components/SessionList'
 import { TabBar } from './components/TabBar'
 import { Toolbar } from './components/Toolbar'
 import { Workspace } from './components/Workspace'
+import { AgentHandoffContext, type AgentHandoffEnv } from './handoff/context'
+import type { AgentHandoffTarget } from './handoff/model'
 import { Clock } from './frame/Clock'
 import { FrameView, type PanelPlace } from './frame/FrameView'
 import { ImagePanel } from './frame/ImagePanel'
@@ -143,6 +146,8 @@ export function App(): React.JSX.Element {
   const [openingUrl, setOpeningUrl] = useState(false)
   /** The Quick command dialog is up. */
   const [quickOpen, setQuickOpen] = useState(false)
+  /** The Compare agents dialog is up. */
+  const [compareOpen, setCompareOpen] = useState(false)
   /** The New task dialog: what it starts with, and the repository it suggests. */
   const [taskDialog, setTaskDialog] = useState<{
     key: number
@@ -261,6 +266,7 @@ export function App(): React.JSX.Element {
   const planShownRef = useRef(planShown)
   const taskDialogRef = useRef(taskDialog)
   const quickOpenRef = useRef(quickOpen)
+  const compareOpenRef = useRef(compareOpen)
   const tasksRef = useRef(tasks)
   useEffect(() => {
     configRef.current = config
@@ -275,6 +281,7 @@ export function App(): React.JSX.Element {
     planShownRef.current = planShown
     taskDialogRef.current = taskDialog
     quickOpenRef.current = quickOpen
+    compareOpenRef.current = compareOpen
     tasksRef.current = tasks
   })
 
@@ -763,7 +770,8 @@ export function App(): React.JSX.Element {
         openingUrlRef.current ||
         planShownRef.current ||
         taskDialogRef.current ||
-        quickOpenRef.current
+        quickOpenRef.current ||
+        compareOpenRef.current
       )
         return
       const action = actionFor(keymap, e)
@@ -784,7 +792,8 @@ export function App(): React.JSX.Element {
         openingUrlRef.current ||
         planShownRef.current ||
         taskDialogRef.current ||
-        quickOpenRef.current
+        quickOpenRef.current ||
+        compareOpenRef.current
       )
         return
       const action = actionFor(keymap, key)
@@ -830,7 +839,8 @@ export function App(): React.JSX.Element {
           openingUrlRef.current ||
           planShownRef.current ||
           taskDialogRef.current ||
-          quickOpenRef.current
+          quickOpenRef.current ||
+          compareOpenRef.current
         )
           return
         const el = document.activeElement
@@ -859,6 +869,7 @@ export function App(): React.JSX.Element {
         setPlanShown(null)
         setTaskDialog(null)
         setQuickOpen(false)
+        setCompareOpen(false)
       } else requestAnimationFrame(focusWorkspace)
     })
     void api.kids.active().then((active) => {
@@ -1068,6 +1079,70 @@ export function App(): React.JSX.Element {
   )
 
   const prEnv = useMemo<PrPaneEnv>(() => ({ sessions, tasks, handOff }), [sessions, tasks, handOff])
+
+  /** Sends a plan or terminal selection to an existing agent pane, a new split, or a new tab. */
+  const handOffAgent = useCallback(
+    async (prompt: string, target: AgentHandoffTarget): Promise<boolean> => {
+      switch (target.kind) {
+        case 'pane': {
+          const ok = await api.sessions.send(target.paneId, prompt)
+          if (ok) api.sessions.reveal(target.paneId)
+          return ok
+        }
+        case 'split': {
+          if (!terminals) {
+            api.tasks.open({ path: target.cwd, presetId: target.presetId, prompt })
+            return true
+          }
+          setRestorable(null)
+          dispatch({
+            type: 'split',
+            paneId: target.sourcePaneId,
+            direction: 'row',
+            pane: { ...makePane(target.presetId, target.cwd), prompt },
+            fallbackNewTab: true
+          })
+          return true
+        }
+        case 'newTab': {
+          if (!terminals) {
+            api.tasks.open({ path: target.cwd, presetId: target.presetId, prompt })
+            return true
+          }
+          setRestorable(null)
+          dispatch({
+            type: 'newTab',
+            pane: { ...makePane(target.presetId, target.cwd), prompt }
+          })
+          return true
+        }
+      }
+    },
+    [api, terminals]
+  )
+
+  const agentHandoffEnv = useMemo<AgentHandoffEnv>(
+    () => ({ presets: config?.presets ?? [], sessions, handOff: handOffAgent }),
+    [config?.presets, sessions, handOffAgent]
+  )
+
+  const openCompare = useCallback(
+    (leftPresetId: string, rightPresetId: string, cwd: string, prompt: string) => {
+      setCompareOpen(false)
+      setRestorable(null)
+      dispatch({
+        type: 'newSplitTab',
+        left: { ...makePane(leftPresetId, cwd), prompt },
+        right: { ...makePane(rightPresetId, cwd), prompt }
+      })
+    },
+    []
+  )
+
+  const closeCompare = useCallback(() => {
+    setCompareOpen(false)
+    requestAnimationFrame(focusWorkspace)
+  }, [focusWorkspace])
   useEffect(
     () => api.tasks.onOpen((req) => openInTask(req.path, req.presetId, req.prompt, req.background)),
     [api, openInTask]
@@ -1351,14 +1426,16 @@ export function App(): React.JSX.Element {
                 {layout.tabs.length > 0 && (
                   <div style={{ display: onScreen ? 'contents' : 'none' }}>
                     <PrPaneContext.Provider value={prEnv}>
-                      <Workspace
-                        layout={layout}
-                        presets={config.presets}
-                        settings={config.terminal}
-                        theme={terminalTheme}
-                        labels={labels}
-                        dispatch={dispatch}
-                      />
+                      <AgentHandoffContext.Provider value={agentHandoffEnv}>
+                        <Workspace
+                          layout={layout}
+                          presets={config.presets}
+                          settings={config.terminal}
+                          theme={terminalTheme}
+                          labels={labels}
+                          dispatch={dispatch}
+                        />
+                      </AgentHandoffContext.Provider>
                     </PrPaneContext.Provider>
                   </div>
                 )}
@@ -1412,6 +1489,14 @@ export function App(): React.JSX.Element {
           onShowPlan={() => {
             if (toolbarPane) showPlan(toolbarPane, null)
           }}
+          onCompare={
+            terminals
+              ? () => {
+                  setPicker(null)
+                  setCompareOpen(true)
+                }
+              : undefined
+          }
         />
         {picker && (
           <Picker
@@ -1454,11 +1539,26 @@ export function App(): React.JSX.Element {
             onAnswer={(value) => answerPrompt(prompt, value)}
           />
         )}
+        {compareOpen && (
+          <CompareAgentsDialog
+            presets={config.presets}
+            focusedPresetId={toolbarPane?.presetId ?? null}
+            initialDir={toolbarPane?.cwd ?? config.projectsDir}
+            onCompare={openCompare}
+            onCancel={closeCompare}
+          />
+        )}
         {planShown && (
           <PlanDialog
             paneId={planShown.paneId}
             chosen={planShown.key}
             label={planShown.label}
+            presets={config.presets}
+            sessions={sessions}
+            canSplit={
+              terminals && layout.tabs.some((t) => findPane(t.root, planShown.paneId) !== null)
+            }
+            onHandOff={handOffAgent}
             onChoose={(key) => {
               setPlanShown({ ...planShown, key })
             }}

@@ -2559,6 +2559,19 @@ button.icon:hover,
   opacity: 0.45;
 }
 
+.compare-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.compare-side {
+  flex: none;
+  width: 38px;
+  margin-top: 0 !important;
+}
+
 .tasks {
   display: flex;
   flex-direction: column;

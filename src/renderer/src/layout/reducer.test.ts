@@ -38,6 +38,19 @@ describe('layoutReducer', () => {
     expect(allPanes(l.tabs[0]?.root ?? pane('x')).map((p) => p.id)).toEqual(['a', 'b'])
   })
 
+  it('opens a split tab with two panes side by side and selects the left pane', () => {
+    const l = run([
+      { type: 'newTab', pane: pane('a') },
+      { type: 'newSplitTab', left: pane('left'), right: pane('right') }
+    ])
+    expect(l.tabs).toHaveLength(2)
+    const tab = l.tabs[1]
+    expect(l.activeTabId).toBe(tab?.id ?? null)
+    expect(tab?.activePaneId).toBe('left')
+    expect(tab?.root.type).toBe('split')
+    expect(allPanes(tab?.root ?? pane('x')).map((p) => p.id)).toEqual(['left', 'right'])
+  })
+
   it('closing the focused pane focuses its neighbour', () => {
     const l = run([
       { type: 'newTab', pane: pane('a') },
