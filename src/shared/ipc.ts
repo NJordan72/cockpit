@@ -11,6 +11,7 @@ import type {
   RecentPage,
   WindowView
 } from './config'
+import type { LocalServer } from './ports'
 import type { PrAct, PrActResult, PrDetailResult, PrList, PrLogResult, PrRef } from './prs'
 import type { RunAction, RunDraft, RunStartRequest, RunView } from './runs'
 import type { NewTask, NewTaskResult, TaskDraft, TaskInfo } from './tasks'
@@ -100,6 +101,7 @@ export const IPC = {
   openGitHub: 'open:github',
   openWeb: 'open:web',
   webRecent: 'web:recent',
+  webOpenPane: 'web:open-pane',
   filesExisting: 'files:existing',
   filesOpen: 'files:open',
   editorFile: 'editor:file',
@@ -123,6 +125,8 @@ export interface PaneSession extends SessionInfo {
   labels: PaneLabel[]
   /** Set while the pane's tab is a quick command running out of sight. */
   background: BackgroundRun | null
+  /** Local dev-server URLs detected in the pane's output. */
+  ports: LocalServer[]
 }
 
 export interface PtyCreateOptions {
@@ -177,6 +181,12 @@ export interface PrPaneRequest {
   title?: string
   /** A new tab, or split beside the focused pane. */
   where: 'tab' | 'row'
+}
+
+/** A local dev-server web pane to open beside a terminal pane. */
+export interface WebPaneRequest {
+  paneId: string
+  url: string
 }
 
 /** A native context menu. The chosen item's id comes back, or null. */
@@ -437,6 +447,10 @@ export interface CockpitApi {
     openExternal(url: string): void
     /** Pages most recently loaded in web panes, newest first. */
     recent(): Promise<RecentPage[]>
+    /** Opens or focuses a split web pane beside `paneId`, even from another window. */
+    openPane(req: WebPaneRequest): void
+    /** Another window asked this one to open a web pane beside one of its panes. */
+    onOpenPane(cb: (req: WebPaneRequest) => void): () => void
   }
   /** Shows a native context menu at the pointer. */
   menu(items: MenuItem[]): Promise<string | null>
