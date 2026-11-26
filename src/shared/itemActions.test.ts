@@ -41,7 +41,8 @@ const itemState: RunItemView['state'] = {
   pr: taskPr,
   mergedInto: null,
   baseMerged: false,
-  reason: null
+  reason: null,
+  ciFix: null
 }
 
 describe('itemPrompt', () => {

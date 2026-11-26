@@ -1,6 +1,12 @@
 // What the Runs panel shows about each run and each of its items. Pure.
 import type { PaneSession } from '@shared/ipc'
-import type { ItemState, RunItemView, RunMode, RunView } from '@shared/runs'
+import {
+  MAX_CI_FIX_ATTEMPTS,
+  type ItemState,
+  type RunItemView,
+  type RunMode,
+  type RunView
+} from '@shared/runs'
 import { prChip } from '../tasks/model'
 
 /** The status dot's class: the agent's status while the item works, else its phase. */
@@ -69,6 +75,9 @@ export function itemMeta(item: RunItemView, run: Pick<RunView, 'mode' | 'paused'
       if (s.mergedInto) parts.push(`merged into ${s.mergedInto}, which isn't done`)
       else if (run.mode === 'stack' && s.pr.base) parts.push(`into ${s.pr.base}`)
       if (s.baseMerged) parts.push('the branch under it merged, so rebase it')
+      if (s.ciFix && s.pr.checks === 'failing') {
+        parts.push(`CI auto-fix ${String(s.ciFix.attempts)}/${String(MAX_CI_FIX_ATTEMPTS)}`)
+      }
       return parts.join(' · ')
     }
     case 'done':
@@ -86,6 +95,7 @@ const MODE_LABEL: Record<RunMode, string> = {
 /** The line under a run's title. */
 export function runMeta(v: RunView): string {
   const parts = [`${String(v.done)}/${String(v.total)} done`, MODE_LABEL[v.mode]]
+  if (v.autoFixCi) parts.push('auto-fix CI')
   if (v.cancelled) parts.push('cancelled')
   else if (v.finished) parts.push('finished')
   else if (v.paused) parts.push('paused')

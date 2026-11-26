@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import type { Preset } from '@shared/config'
 import type { MenuItem, PaneSession } from '@shared/ipc'
 import { runItemFields, type ItemAction } from '@shared/itemActions'
@@ -5,6 +6,7 @@ import type { RunAction, RunItemView, RunView } from '@shared/runs'
 import { actionMenu, type PromptRequest } from '../itemActions'
 import { sessionToShow } from '../tasks/model'
 import { itemDot, itemMeta, phaseLabel, runMeta, sessionsIn } from './model'
+import { RunDag } from './RunDag'
 
 interface Props {
   runs: readonly RunView[]
@@ -33,6 +35,16 @@ export function RunsPanel({
   onPrompt
 }: Props): React.JSX.Element {
   const api = window.cockpit
+  const [graphRuns, setGraphRuns] = useState<Set<string>>(() => new Set())
+
+  const toggleGraph = (runId: string): void => {
+    setGraphRuns((prev) => {
+      const next = new Set(prev)
+      if (next.has(runId)) next.delete(runId)
+      else next.add(runId)
+      return next
+    })
+  }
 
   const act = (run: RunView, action: RunAction, itemId?: string): void => {
     void api.runs.act(run.id, action, itemId).then((r) => {
@@ -106,12 +118,24 @@ export function RunsPanel({
       run.paused
         ? { id: 'resume', label: 'Resume', enabled: !run.cancelled }
         : { id: 'pause', label: 'Pause', enabled: !run.cancelled && !run.finished },
+      {
+        id: 'toggleAutoFixCi',
+        label: 'Auto-fix failing CI',
+        checked: run.autoFixCi,
+        enabled: !run.cancelled && !run.finished
+      },
       { id: 'cancel', label: 'Cancel run', enabled: !run.cancelled && !run.finished },
       { type: 'separator' },
       { id: 'remove', label: 'Remove', enabled: run.cancelled || run.finished }
     ]
     const chosen = await api.menu(items)
-    if (chosen === 'pause' || chosen === 'resume' || chosen === 'cancel' || chosen === 'remove') {
+    if (
+      chosen === 'pause' ||
+      chosen === 'resume' ||
+      chosen === 'toggleAutoFixCi' ||
+      chosen === 'cancel' ||
+      chosen === 'remove'
+    ) {
       act(run, chosen)
     }
   }
@@ -143,6 +167,15 @@ export function RunsPanel({
               <span className="prs-title run-title" title={`${run.title}\nRight-click for more`}>
                 {run.title}
               </span>
+              <button
+                type="button"
+                tabIndex={-1}
+                className="activity-chip"
+                title={graphRuns.has(run.id) ? 'Show as list' : 'Show dependency graph'}
+                onClick={() => toggleGraph(run.id)}
+              >
+                {graphRuns.has(run.id) ? 'List' : 'Graph'}
+              </button>
               {!run.cancelled && !run.finished && (
                 <button
                   type="button"
@@ -164,42 +197,57 @@ export function RunsPanel({
               </button>
               <span className="prs-meta run-meta">{runMeta(run)}</span>
             </div>
-            <ol className="run-items">
-              {run.items.map((item) => (
-                <li key={item.id}>
-                  <button
-                    type="button"
-                    tabIndex={-1}
-                    className={`prs-row task-row run-row phase-${item.state.phase}`}
-                    title={
-                      item.state.phase === 'working' &&
-                      !item.state.agent &&
-                      item.state.path &&
-                      !item.external
-                        ? `${item.id}: ${item.title}\nClick to resume its last session; right-click for more`
-                        : `${item.id}: ${item.title}\nClick to show it; right-click for more`
-                    }
-                    onClick={() => show(run, item)}
-                    onContextMenu={(e) => {
-                      e.preventDefault()
-                      void itemMenu(run, item)
-                    }}
-                  >
-                    <span className={`status-dot ${itemDot(item.state)}`} />
-                    <span className="prs-title">{item.title}</span>
-                    <span className={`task-pr run-phase ${item.state.phase}`}>
-                      {phaseLabel(item.state)}
-                    </span>
-                    <span className="prs-meta">
-                      {item.id} · {itemMeta(item, run)}
-                      {!item.external && item.presetId && item.presetId !== run.presetId
-                        ? ` · ${presets.find((p) => p.id === item.presetId)?.name ?? item.presetId}`
-                        : ''}
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ol>
+            {graphRuns.has(run.id) ? (
+              <RunDag
+                items={run.items}
+                states={Object.fromEntries(run.items.map((i) => [i.id, i.state]))}
+                onSelect={(id) => {
+                  const found = run.items.find((i) => i.id === id)
+                  if (found) show(run, found)
+                }}
+                onContextMenu={(id) => {
+                  const found = run.items.find((i) => i.id === id)
+                  if (found) void itemMenu(run, found)
+                }}
+              />
+            ) : (
+              <ol className="run-items">
+                {run.items.map((item) => (
+                  <li key={item.id}>
+                    <button
+                      type="button"
+                      tabIndex={-1}
+                      className={`prs-row task-row run-row phase-${item.state.phase}`}
+                      title={
+                        item.state.phase === 'working' &&
+                        !item.state.agent &&
+                        item.state.path &&
+                        !item.external
+                          ? `${item.id}: ${item.title}\nClick to resume its last session; right-click for more`
+                          : `${item.id}: ${item.title}\nClick to show it; right-click for more`
+                      }
+                      onClick={() => show(run, item)}
+                      onContextMenu={(e) => {
+                        e.preventDefault()
+                        void itemMenu(run, item)
+                      }}
+                    >
+                      <span className={`status-dot ${itemDot(item.state)}`} />
+                      <span className="prs-title">{item.title}</span>
+                      <span className={`task-pr run-phase ${item.state.phase}`}>
+                        {phaseLabel(item.state)}
+                      </span>
+                      <span className="prs-meta">
+                        {item.id} · {itemMeta(item, run)}
+                        {!item.external && item.presetId && item.presetId !== run.presetId
+                          ? ` · ${presets.find((p) => p.id === item.presetId)?.name ?? item.presetId}`
+                          : ''}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ol>
+            )}
           </li>
         ))}
       </ol>

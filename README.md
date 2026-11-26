@@ -560,9 +560,11 @@ other in a loop.
 
 Nothing starts until you confirm the run. Cockpit shows a dialog with every
 item in the order it can start, what it waits on, its repository, agent, and
-branch, and its full prompt. There you pick the agent, how many items work at
-once (3 unless the run says otherwise), the repository when the run doesn't
-name one, and the mode:
+branch, and its full prompt, plus a **List** / **Graph** toggle to inspect the
+dependency DAG across topological tiers. There you pick the agent, how many
+items work at once (3 unless the run says otherwise), whether to **Auto-fix
+failing CI** (off by default, or set `"autoFixCi": true` in the run JSON), the
+repository when the run doesn't name one, and the mode:
 
 - **Wait for merges** starts an item once every item it waits on is done, on
   a branch from the default branch, which then has the merged work.
@@ -595,13 +597,22 @@ and each item's state:
 
 A finished turn doesn't make an item done, because agents also end turns to
 ask questions. An item stays done after **Clean up merged** removes its
-worktree. Click an item to show its pane or its pull request. Right-click it
-for **Start now**, which starts it even while it waits, **Mark done**,
-**Retry** for a stuck item, **Open** for its link, and the prompts in
-`itemActions.runItem` (see [Right-click prompts](#right-click-prompts)). The
-run's own menu has **Pause**, which stops new items from starting and leaves
-running agents alone, **Cancel**, which ends the run and leaves its tasks in
-place, and **Remove** once it's finished or cancelled.
+worktree. Each run in the **Runs** panel has a **Graph** / **List** toggle to
+view its dependency DAG with live phase colors. Click an item (in either view)
+to show its pane or its pull request. Right-click it for **Start now**, which
+starts it even while it waits, **Mark done**, **Retry** for a stuck item,
+**Open** for its link, and the prompts in `itemActions.runItem` (see
+[Right-click prompts](#right-click-prompts)). The run's own menu has **Pause**,
+which stops new items from starting and leaves running agents alone, **Auto-fix
+failing CI**, **Cancel**, which ends the run and leaves its tasks in place, and
+**Remove** once it's finished or cancelled.
+
+When **Auto-fix failing CI** is enabled on a run and an **In review** item has
+a failing check, Cockpit fetches the failed GitHub Actions log tail and sends
+it to the item's worktree agent (opening one if needed). Attempts are capped at
+2 per PR head commit SHA with a cooldown between retries, so a persistent
+failure never loops infinitely, and reset automatically when a new commit is
+pushed.
 
 Cockpit saves each run to `~/.cockpit/runs/<id>.json`, so a run survives a
 restart. Agents don't, because each pane starts a new process when Cockpit

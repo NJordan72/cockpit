@@ -26,6 +26,7 @@ const state = (extra: Partial<ItemState>): ItemState => ({
   mergedInto: null,
   baseMerged: false,
   reason: null,
+  ciFix: null,
   ...extra
 })
 
@@ -71,6 +72,16 @@ describe('the Runs panel model', () => {
     expect(itemMeta(item({ phase: 'review', pr: pr(), baseMerged: true }), merge)).toBe(
       '#12 open · the branch under it merged, so rebase it'
     )
+    expect(
+      itemMeta(
+        item({
+          phase: 'review',
+          pr: pr({ checks: 'failing' }),
+          ciFix: { sha: 'h', attempts: 1 }
+        }),
+        merge
+      )
+    ).toBe('#12 failing · CI auto-fix 1/2')
     expect(itemMeta(item({ phase: 'stuck', reason: 'Its worktree is gone' }), merge)).toBe(
       'Its worktree is gone'
     )
@@ -83,6 +94,7 @@ describe('the Runs panel model', () => {
       pending: false,
       mode: 'stack',
       maxParallel: 3,
+      autoFixCi: false,
       presetId: 'claude',
       paused: false,
       cancelled: false,
@@ -93,6 +105,9 @@ describe('the Runs panel model', () => {
       items: []
     }
     expect(runMeta(v)).toBe('2/5 done · stacks pull requests · 3 at a time')
+    expect(runMeta({ ...v, autoFixCi: true })).toBe(
+      '2/5 done · stacks pull requests · auto-fix CI · 3 at a time'
+    )
     expect(runMeta({ ...v, paused: true })).toBe('2/5 done · stacks pull requests · paused')
     expect(runMeta({ ...v, cancelled: true, paused: true })).toBe(
       '2/5 done · stacks pull requests · cancelled'
