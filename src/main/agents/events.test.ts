@@ -131,10 +131,12 @@ describe('parseClaudeHook', () => {
     })
   })
 
-  it('carries the transcript path and session title', () => {
+  it('carries the transcript path, session title, and session id', () => {
     const r = parseClaudeHook('SessionStart', { ...base, session_title: 'Fix login' })
     expect(r.transcriptPath).toBe(base.transcript_path)
     expect(r.title).toBe('Fix login')
+    expect(r.sessionId).toBe('s1')
+    expect(parseClaudeHook('SessionStart', { session_id: '  ' }).sessionId).toBeNull()
   })
 
   it('falls back to the event name from the URL when the payload is unreadable', () => {

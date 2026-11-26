@@ -2,6 +2,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import type { PrDetail } from '@shared/prs'
 import type { RunDraft, RunView } from '@shared/runs'
 import type { NewTask, NewTaskResult, TaskInfo, TaskPr } from '@shared/tasks'
 import type { SessionStatus } from '@shared/widgets'
@@ -98,7 +99,7 @@ const graph = (items: unknown[], extra: Record<string, unknown> = {}) => ({
 async function started(
   s: RunStore,
   g: unknown,
-  choices: { mode?: 'merge' | 'stack'; maxParallel?: number } = {}
+  choices: { mode?: 'merge' | 'stack'; maxParallel?: number; autoFixCi?: boolean } = {}
 ): Promise<string> {
   const sub = s.submit(g, { kind: 'script' }, 'cockpit-run')
   if (!sub.ok) throw new Error(sub.error)
@@ -106,6 +107,7 @@ async function started(
     id: sub.id,
     mode: choices.mode ?? 'merge',
     maxParallel: choices.maxParallel ?? 3,
+    autoFixCi: choices.autoFixCi ?? false,
     presetId: 'claude',
     repo: '~/dev/app'
   })
@@ -329,6 +331,109 @@ describe('RunStore', () => {
     await s.tick()
     await s.idle()
     expect(created.map((c) => c.branch)).toEqual(['me/a'])
+  })
+
+  it('auto-fixes failing CI by sending log tail to the worktree agent and capping attempts per SHA', async () => {
+    let clock = 1000
+    const sent: { path: string; prompt: string }[] = []
+    let hasRunningAgent = true
+    const detail: PrDetail = {
+      repo: 'o/r',
+      number: 1,
+      title: 'Fix auth',
+      url: 'https://github.com/o/r/pull/1',
+      state: 'open',
+      draft: false,
+      author: 'me',
+      body: '',
+      branch: 'me/a',
+      base: 'main',
+      fork: false,
+      review: null,
+      checks: [
+        {
+          name: 'test',
+          workflow: 'CI',
+          state: 'failing',
+          url: 'https://github.com/o/r/actions/runs/1/job/42',
+          jobId: 42
+        }
+      ],
+      mergeable: 'yes',
+      mergeMethods: ['squash'],
+      mine: true,
+      canUpdate: true,
+      comments: [],
+      reviews: [],
+      threads: [],
+      partial: false,
+      updatedAt: 0
+    }
+    const s = store({
+      now: () => clock,
+      ciFixCooldownMs: 1000,
+      sendToWorktree: (p, prompt) => {
+        if (!hasRunningAgent) return false
+        sent.push({ path: p, prompt })
+        return true
+      },
+      readPrDetail: () => Promise.resolve(detail),
+      readCheckLog: (_url, jobId) => Promise.resolve(`== test ==\nfailed in job ${String(jobId)}`)
+    })
+    const id = await started(s, graph([item('a')]), { autoFixCi: true })
+    setPr('me/a', pr('open', { checks: 'failing', head: 'sha-1' }))
+    agents['~/w/me/a'] = 'idle'
+    s.poke()
+    await s.idle()
+
+    // Attempt 1 sent to existing agent pane.
+    expect(sent).toHaveLength(1)
+    expect(sent[0]?.path).toBe('~/w/me/a')
+    expect(sent[0]?.prompt).toContain('The check "CI / test" failed on pull request #1')
+    expect(sent[0]?.prompt).toContain('failed in job 42')
+    expect(s.list()[0]?.items[0]?.state.ciFix).toEqual({
+      sha: 'sha-1',
+      attempts: 1,
+      lastAt: 1000
+    })
+
+    // Inside cooldown: no second send.
+    clock = 1500
+    s.poke()
+    await s.idle()
+    expect(sent).toHaveLength(1)
+
+    // Past cooldown with no running agent: opens a new tab for attempt 2.
+    clock = 2500
+    hasRunningAgent = false
+    delete agents['~/w/me/a']
+    s.poke()
+    await s.idle()
+    expect(opened).toHaveLength(2)
+    expect(opened[1]?.prompt).toContain('failed in job 42')
+
+    // At cap (2 attempts) on sha-1: never triggers again even after cooldown.
+    clock = 10_000
+    s.poke()
+    await s.idle()
+    expect(opened).toHaveLength(2)
+
+    // New commit sha-2 resets the cap.
+    setPr('me/a', pr('open', { checks: 'failing', head: 'sha-2' }))
+    hasRunningAgent = true
+    agents['~/w/me/a'] = 'done'
+    s.poke()
+    await s.idle()
+    expect(sent).toHaveLength(2)
+    expect(s.list()[0]?.items[0]?.state.ciFix).toEqual({
+      sha: 'sha-2',
+      attempts: 1,
+      lastAt: 10_000
+    })
+
+    // toggleAutoFixCi flips the persisted flag.
+    expect(await s.act(id, 'toggleAutoFixCi')).toEqual({ ok: true })
+    expect(s.list()[0]?.autoFixCi).toBe(false)
   })
 })
 

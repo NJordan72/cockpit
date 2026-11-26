@@ -7,13 +7,17 @@
 import { randomUUID } from 'node:crypto'
 import fs from 'node:fs/promises'
 import path from 'node:path'
+import { checkPrompt, type PrDetail } from '@shared/prs'
 import {
   checkGraph,
+  CI_FIX_COOLDOWN_MS,
   DEFAULT_PARALLEL,
   isFinished,
   isRunId,
   itemStates,
+  MAX_CI_FIX_ATTEMPTS,
   MAX_PARALLEL,
+  nextToFixCi,
   nextToStart,
   progress,
   promptFor,
@@ -52,6 +56,8 @@ export interface RunStoreOptions {
   defaultBranch: (repo: string) => Promise<string | null>
   /** The status of the agent running in a worktree, or null with none. */
   agentIn: (worktree: string) => SessionStatus | null
+  /** Types a prompt into an agent already running in the worktree. False when none is running. */
+  sendToWorktree?: (worktree: string, prompt: string) => boolean
   /** Opens a tab in the worktree that runs the preset with the prompt. False when it can't. */
   open: (req: { path: string; presetId: string; prompt: string }) => boolean
   /** False while nothing should start, such as in kids mode or with no terminal window. */
@@ -59,9 +65,12 @@ export interface RunStoreOptions {
   /** Asks the user to confirm a submitted run. False when no window can show the dialog. */
   confirm: (draft: RunDraft) => boolean
   readPr: (url: string) => Promise<TaskPr['state'] | null>
+  readPrDetail?: (url: string) => Promise<PrDetail | null>
+  readCheckLog?: (url: string, jobId: number) => Promise<string | null>
   notify: (title: string, body: string, worktree: string | null) => void
   onChange: (runs: RunView[]) => void
   now?: () => number
+  ciFixCooldownMs?: number
 }
 
 interface Pending {
@@ -83,6 +92,8 @@ export class RunStore {
   private readonly pending = new Map<string, Pending>()
   /** `<run>/<item>` for each item whose task is being made. */
   private readonly starting = new Set<string>()
+  /** `<run>/<item>` for each item whose failing CI log is being fetched and sent. */
+  private readonly fixing = new Set<string>()
   private readonly prs = new Map<string, { state: TaskPr['state'] | null; at: number }>()
   private chain: Promise<unknown>
   private queued = false
@@ -179,6 +190,7 @@ export class RunStore {
       from: p.from,
       mode: p.graph.mode ?? 'merge',
       maxParallel: p.graph.maxParallel ?? DEFAULT_PARALLEL,
+      autoFixCi: p.graph.autoFixCi ?? false,
       ...(p.graph.presetId ? { presetId: p.graph.presetId } : {}),
       ...(p.graph.repo ? { repo: p.graph.repo } : {}),
       items: startOrder(p.graph.items)
@@ -228,6 +240,7 @@ export class RunStore {
         title: p.graph.title,
         mode: req.mode,
         maxParallel: req.maxParallel,
+        autoFixCi: req.autoFixCi === true,
         presetId: req.presetId,
         items,
         records: {},
@@ -268,6 +281,9 @@ export class RunStore {
           break
         case 'cancel':
           run.cancelled = true
+          break
+        case 'toggleAutoFixCi':
+          run.autoFixCi = !run.autoFixCi
           break
         case 'remove': {
           const states = itemStates(run, this.facts(run))
@@ -391,8 +407,57 @@ export class RunStore {
         const item = run.items.find((i) => i.id === pick.id)
         if (item && !item.external) await this.start(run, item, pick)
       }
+      if (run.autoFixCi && this.opts.readPrDetail) {
+        const cooldown = this.opts.ciFixCooldownMs ?? CI_FIX_COOLDOWN_MS
+        for (const item of nextToFixCi(run, states, this.now(), cooldown)) {
+          const s = states[item.id]
+          if (s) await this.fixCi(run, item, s)
+        }
+      }
     }
     this.emit()
+  }
+
+  /** Fetches a failing check's log tail and sends it to the item's worktree agent. */
+  private async fixCi(run: Run, item: TaskItem, s: ItemState): Promise<void> {
+    if (!s.path || !s.pr || !this.opts.readPrDetail) return
+    const key = `${run.id}/${item.id}`
+    if (this.fixing.has(key)) return
+    this.fixing.add(key)
+    try {
+      const detail = await this.opts.readPrDetail(s.pr.url).catch(() => null)
+      if (detail?.state !== 'open') return
+      const failed = detail.checks.find((c) => c.state === 'failing')
+      if (!failed) return
+      const log =
+        failed.jobId !== null && this.opts.readCheckLog
+          ? ((await this.opts.readCheckLog(s.pr.url, failed.jobId).catch(() => null)) ?? null)
+          : null
+      const prompt = checkPrompt(detail, failed, log)
+      const delivered =
+        (this.opts.sendToWorktree?.(s.path, prompt) ?? false) ||
+        this.opts.open({
+          path: s.path,
+          presetId: item.presetId ?? run.presetId,
+          prompt
+        })
+      if (!delivered) return
+      const prev = run.records[item.id]?.ciFix
+      const attempts = prev?.sha === s.pr.head ? prev.attempts + 1 : 1
+      run.records[item.id] = {
+        ...run.records[item.id],
+        ciFix: { sha: s.pr.head, attempts, lastAt: this.now() }
+      }
+      await this.save(run)
+      this.opts.notify(
+        `Auto-fixing CI for ${item.title}`,
+        `${failed.name} failed on #${String(s.pr.number)} (attempt ${String(attempts)}/${String(MAX_CI_FIX_ATTEMPTS)}).`,
+        s.path
+      )
+      this.emit()
+    } finally {
+      this.fixing.delete(key)
+    }
   }
 
   /** Makes the item's task and opens its agent, unless one is running there already. */
@@ -458,7 +523,8 @@ export class RunStore {
         pr: null,
         mergedInto: null,
         baseMerged: false,
-        reason: null
+        reason: null,
+        ciFix: null
       }
     }
     const d = this.draft(p)
@@ -468,6 +534,7 @@ export class RunStore {
         title: d.title,
         mode: d.mode,
         maxParallel: d.maxParallel,
+        autoFixCi: d.autoFixCi,
         presetId: d.presetId ?? '',
         items: p.graph.items,
         records: {},
@@ -489,6 +556,7 @@ export class RunStore {
       pending,
       mode: run.mode,
       maxParallel: run.maxParallel,
+      autoFixCi: run.autoFixCi,
       presetId: run.presetId,
       paused: run.paused,
       cancelled: run.cancelled,

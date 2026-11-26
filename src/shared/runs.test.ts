@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'bun:test'
 import {
   checkGraph,
+  CI_FIX_COOLDOWN_MS,
   itemStates,
+  MAX_CI_FIX_ATTEMPTS,
   MAX_ITEMS,
+  nextToFixCi,
   nextToStart,
   progress,
   promptFor,
@@ -31,6 +34,7 @@ const run = (graph: unknown, extra: Partial<Run> = {}): Run => {
     title: g.value.title,
     mode: 'merge',
     maxParallel: 3,
+    autoFixCi: false,
     presetId: 'claude',
     items: g.value.items.map((i) => (i.external ? i : { ...i, repo: i.repo ?? '~/dev/app' })),
     records: {},
@@ -167,6 +171,14 @@ describe('checkGraph', () => {
     ).toBe(false)
     expect(checkGraph({ title: '', items: [item('a')] }).ok).toBe(false)
     expect(checkGraph([]).ok).toBe(false)
+    expect(checkGraph({ title: 't', autoFixCi: true, items: [item('a')] })).toMatchObject({
+      ok: true,
+      value: { autoFixCi: true }
+    })
+    expect(checkGraph({ title: 't', autoFixCi: 'yes', items: [item('a')] })).toEqual({
+      ok: false,
+      error: 'autoFixCi is true or false'
+    })
   })
 })
 
@@ -413,5 +425,84 @@ describe('readRun', () => {
       records: { a: { startedAt: 'soon', doneAt: 3 }, gone: { startedAt: 1 } }
     })
     expect(r?.records).toEqual({ a: { doneAt: 3 } })
+  })
+
+  it('round-trips autoFixCi and ciFix records, dropping malformed ciFix entries', () => {
+    const r = run(
+      { title: 't', items: [item('a')] },
+      {
+        autoFixCi: true,
+        records: { a: { startedAt: 1, ciFix: { sha: 'abc123', attempts: 2, lastAt: 500 } } }
+      }
+    )
+    expect(readRun(JSON.parse(JSON.stringify({ version: RUN_VERSION, ...r })))).toEqual(r)
+    const bad = readRun({
+      id: 'r',
+      title: 't',
+      autoFixCi: 'yes',
+      items: [item('a'), item('b')],
+      records: {
+        a: { ciFix: { sha: 'abc', attempts: MAX_CI_FIX_ATTEMPTS + 1 } },
+        b: { ciFix: { sha: '', attempts: 1 } }
+      }
+    })
+    expect(bad?.autoFixCi).toBe(false)
+    expect(bad?.records).toEqual({ a: {}, b: {} })
+  })
+})
+
+describe('nextToFixCi', () => {
+  const failing = (head: string, agent: ItemFacts['agent'] = null): ItemFacts =>
+    facts({
+      task: { path: '~/w/a', pr: pr('open', { checks: 'failing', head }) },
+      agent
+    })
+
+  it('picks failing in-review items only when autoFixCi is on and the run is active', () => {
+    const base = run({ title: 't', items: [item('a')] })
+    const f = { a: failing('sha1') }
+    expect(nextToFixCi(base, itemStates(base, f), 10_000)).toEqual([])
+    const on = { ...base, autoFixCi: true }
+    expect(nextToFixCi(on, itemStates(on, f), 10_000).map((i) => i.id)).toEqual(['a'])
+    expect(nextToFixCi({ ...on, paused: true }, itemStates(on, f), 10_000)).toEqual([])
+    expect(nextToFixCi({ ...on, cancelled: true }, itemStates(on, f), 10_000)).toEqual([])
+  })
+
+  it('skips items whose agent is busy or whose checks are not failing', () => {
+    const r = run({ title: 't', items: [item('a'), item('b'), item('c')] }, { autoFixCi: true })
+    const f: Record<string, ItemFacts> = {
+      a: failing('sha1', 'working'),
+      b: failing('sha1', 'needs-input'),
+      c: facts({ task: { path: '~/w/c', pr: pr('open', { checks: 'passing', head: 'sha1' }) } })
+    }
+    expect(nextToFixCi(r, itemStates(r, f), 10_000)).toEqual([])
+  })
+
+  it('enforces cooldown and caps attempts per PR head commit SHA, resetting on a new SHA', () => {
+    const r1 = run(
+      { title: 't', items: [item('a')] },
+      {
+        autoFixCi: true,
+        records: { a: { startedAt: 1, ciFix: { sha: 'sha1', attempts: 1, lastAt: 1000 } } }
+      }
+    )
+    const f1 = { a: failing('sha1', 'idle') }
+    // Inside cooldown: skip.
+    expect(nextToFixCi(r1, itemStates(r1, f1), 1000 + CI_FIX_COOLDOWN_MS - 1)).toEqual([])
+    // Past cooldown: eligible for attempt 2.
+    expect(nextToFixCi(r1, itemStates(r1, f1), 1000 + CI_FIX_COOLDOWN_MS).map((i) => i.id)).toEqual(
+      ['a']
+    )
+    // At cap on sha1: never eligible again for sha1.
+    const capped = {
+      ...r1,
+      records: {
+        a: { startedAt: 1, ciFix: { sha: 'sha1', attempts: MAX_CI_FIX_ATTEMPTS, lastAt: 1000 } }
+      }
+    }
+    expect(nextToFixCi(capped, itemStates(capped, f1), 1000 + CI_FIX_COOLDOWN_MS * 10)).toEqual([])
+    // New commit SHA resets the cap and cooldown.
+    const f2 = { a: failing('sha2', 'done') }
+    expect(nextToFixCi(capped, itemStates(capped, f2), 1005).map((i) => i.id)).toEqual(['a'])
   })
 })

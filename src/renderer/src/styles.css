@@ -314,6 +314,14 @@ kbd {
   background: var(--bg);
 }
 
+.terminal-stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 /* The fit addon counts rows and columns from this box's computed size. With
    border-box that size includes the padding, and the last row gets clipped. */
 .terminal-host {
@@ -321,6 +329,85 @@ kbd {
   min-height: 0;
   box-sizing: content-box;
   padding: 6px 4px 4px 8px;
+}
+
+.terminal-find {
+  position: absolute;
+  top: 8px;
+  right: 12px;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  max-width: calc(100% - 24px);
+  padding: 4px 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-raised);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+}
+
+.terminal-find-input {
+  width: 180px;
+  min-width: 80px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--fg);
+  padding: 2px 6px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.terminal-find-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.terminal-find-input.invalid {
+  border-color: var(--danger);
+}
+
+.terminal-find-count {
+  padding: 0 4px;
+  color: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.terminal-find-count.empty {
+  color: var(--danger);
+}
+
+.terminal-find-btn {
+  flex: none;
+  min-width: 22px;
+  height: 22px;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  background: none;
+  padding: 0 5px;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 20px;
+}
+
+.terminal-find-btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--fg);
+}
+
+.terminal-find-btn:disabled {
+  opacity: 0.35;
+}
+
+.terminal-find-btn.on {
+  color: var(--fg);
+  border-color: color-mix(in srgb, var(--accent) 70%, transparent);
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
 }
 
 .terminal-host .xterm {
@@ -558,6 +645,7 @@ button.label-row:hover .label-title {
 
 .launcher-controls {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 10px;
   margin-bottom: 10px;
@@ -593,6 +681,12 @@ button.label-row:hover .label-title {
   flex: 1;
 }
 
+.launcher-restore-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .launcher-restore {
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -604,6 +698,16 @@ button.label-row:hover .label-title {
 .launcher-restore:hover {
   color: var(--fg);
   background: var(--bg-hover);
+}
+
+.launcher-restore-resume {
+  color: var(--fg);
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+.launcher-restore-resume:hover {
+  background: color-mix(in srgb, var(--accent) 28%, var(--bg-hover));
 }
 
 .launcher .picker-input {
@@ -886,6 +990,63 @@ button.label-row:hover .label-title {
   font-variant-numeric: tabular-nums;
 }
 
+/* Detected local dev-server ports in the toolbar, Sessions, and Tasks. */
+.port-pills {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+.toolbar-ports {
+  flex: none;
+  flex-wrap: nowrap;
+}
+
+.session-ports {
+  flex-basis: 100%;
+  padding: 0 10px 6px 26px;
+}
+
+.task-ports {
+  padding: 0 10px 6px 26px;
+}
+
+.port-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  height: 18px;
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-raised);
+  color: var(--blue);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.port-pill:hover {
+  background: var(--bg-hover);
+  border-color: var(--blue);
+}
+
+.port-pill.collision {
+  color: var(--yellow);
+  border-color: var(--yellow);
+}
+
+.port-pill.collision:hover {
+  background: var(--bg-hover);
+  border-color: var(--yellow);
+}
+
+.port-pill-warn {
+  font-size: 10px;
+}
+
 .toolbar-actions {
   flex: none;
   display: flex;
@@ -916,6 +1077,21 @@ button.label-row:hover .label-title {
 
 .toolbar-actions button:disabled {
   opacity: 0.4;
+}
+
+.toolbar-actions button.toolbar-attention {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-right: 4px;
+  color: var(--yellow);
+  background: color-mix(in srgb, var(--yellow) 12%, transparent);
+  font-variant-numeric: tabular-nums;
+}
+
+.toolbar-actions button.toolbar-attention:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--yellow) 22%, transparent);
+  color: var(--yellow);
 }
 
 /* 1, 2, or 3 windows. */
@@ -1567,6 +1743,7 @@ button.label-row:hover .label-title {
 /* A background run: its row and a dismiss button side by side. */
 .session-run {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
 }
 
@@ -1640,6 +1817,85 @@ button.label-row:hover .label-title {
 .session-tokens {
   font-variant-numeric: tabular-nums;
   opacity: 0.8;
+}
+
+.session-item.waiting {
+  background: color-mix(in srgb, var(--yellow) 5%, transparent);
+}
+
+.session-triage {
+  padding: 0 8px 6px 24px;
+}
+
+.session-triage-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.session-triage-actions button,
+.session-reply button {
+  height: 20px;
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.session-triage-actions button:hover:not(:disabled),
+.session-reply button:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--fg);
+}
+
+.session-triage-actions button.approve {
+  color: var(--green);
+  border-color: color-mix(in srgb, var(--green) 40%, var(--border));
+}
+
+.session-triage-actions button.approve:hover {
+  background: color-mix(in srgb, var(--green) 14%, transparent);
+  color: var(--green);
+}
+
+.session-triage-actions button.deny {
+  color: var(--red);
+  border-color: color-mix(in srgb, var(--red) 40%, var(--border));
+}
+
+.session-triage-actions button.deny:hover {
+  background: color-mix(in srgb, var(--red) 14%, transparent);
+  color: var(--red);
+}
+
+.session-reply {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.session-reply input {
+  flex: 1;
+  min-width: 0;
+  height: 20px;
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--fg);
+  font-family: inherit;
+  font-size: 11px;
+}
+
+.session-reply input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.session-reply button:disabled {
+  opacity: 0.4;
 }
 
 .sidebar-head {
@@ -1816,8 +2072,50 @@ button.icon:hover,
   background: color-mix(in srgb, var(--accent) 14%, transparent);
 }
 
+.activity-search {
+  position: relative;
+  flex: 1;
+  min-width: 60px;
+  display: flex;
+  align-items: center;
+}
+
+.activity-search-input {
+  width: 100%;
+  min-width: 0;
+  height: 20px;
+  padding: 0 18px 0 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+  font-size: 11px;
+}
+
+.activity-search-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.activity-search-clear {
+  position: absolute;
+  right: 2px;
+  border: none;
+  background: none;
+  padding: 0 4px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1;
+}
+
+.activity-search-clear:hover {
+  color: var(--fg);
+}
+
 .activity-total {
   margin-left: auto;
+  flex: none;
   color: var(--muted);
   font-size: 11px;
   font-variant-numeric: tabular-nums;
@@ -2638,7 +2936,7 @@ button.icon:hover,
 
 .run-head {
   display: grid;
-  grid-template-columns: 1fr auto auto;
+  grid-template-columns: 1fr auto auto auto;
   column-gap: 6px;
   align-items: center;
   padding: 3px 8px;
@@ -2654,7 +2952,7 @@ button.icon:hover,
 }
 
 .run-meta {
-  grid-column: 1 / 4;
+  grid-column: 1 / -1;
 }
 
 .run-items {
@@ -2769,6 +3067,142 @@ button.icon:hover,
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: var(--radius);
+}
+
+.run-dialog-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.run-autofix {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--fg);
+  cursor: pointer;
+}
+
+.run-autofix input {
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.run-dialog-graph {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  margin-top: 6px;
+  border-top: 1px solid var(--border);
+  padding-top: 6px;
+}
+
+.run-dag {
+  overflow: auto;
+  padding: 2px 4px 6px;
+}
+
+.run-dag svg {
+  display: block;
+}
+
+.run-dag-edge {
+  fill: none;
+  stroke: var(--border);
+  stroke-width: 1.5;
+}
+
+.run-dag-edge.done {
+  stroke: color-mix(in srgb, var(--magenta) 55%, var(--border));
+}
+
+.run-dag-arrow {
+  fill: var(--muted);
+}
+
+.run-dag-node rect {
+  fill: var(--bg);
+  stroke: var(--border);
+  stroke-width: 1.2;
+}
+
+.run-dag-node.external rect {
+  stroke-dasharray: 4 2;
+}
+
+.run-dag-node.phase-working rect {
+  stroke: var(--blue);
+}
+
+.run-dag-node.phase-review rect {
+  stroke: var(--accent);
+}
+
+.run-dag-node.phase-done rect {
+  stroke: var(--magenta);
+}
+
+.run-dag-node.phase-stuck rect {
+  stroke: var(--danger);
+}
+
+.run-dag-node.interactive {
+  cursor: pointer;
+}
+
+.run-dag-node.interactive:hover rect {
+  stroke: var(--fg);
+}
+
+.run-dag-id {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  fill: var(--muted);
+}
+
+.run-dag-title {
+  font-size: 11px;
+  fill: var(--fg);
+}
+
+.run-dag-dot.idle {
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 1.5;
+  opacity: 0.7;
+}
+
+.run-dag-dot.working {
+  fill: var(--blue);
+}
+
+.run-dag-dot.needs-input {
+  fill: var(--yellow);
+}
+
+.run-dag-dot.done {
+  fill: var(--green);
+}
+
+.run-dag-dot.exited {
+  fill: none;
+  stroke: var(--red);
+  stroke-width: 1.5;
+}
+
+.run-dag-dot.review {
+  fill: var(--accent);
+}
+
+.run-dag-dot.merged {
+  fill: var(--magenta);
+}
+
+.run-dag-dot.stuck {
+  fill: var(--danger);
 }
 
 /* ---- pull requests and commands panels ---- */

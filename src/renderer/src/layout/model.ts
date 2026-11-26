@@ -51,6 +51,20 @@ export function findPrPane(
   return null
 }
 
+function sameWebOrigin(a: string, b: string): boolean {
+  if (a === b) return true
+  try {
+    return new URL(a).origin === new URL(b).origin
+  } catch {
+    return false
+  }
+}
+
+/** A web pane already open in `root` for `url` (exact match or same origin). */
+export function findWebPane(root: LayoutNode, url: string): PaneNode | null {
+  return allPanes(root).find((p) => p.url !== undefined && sameWebOrigin(p.url, url)) ?? null
+}
+
 export function findPane(node: LayoutNode, id: string): PaneNode | null {
   if (node.type === 'pane') return node.id === id ? node : null
   for (const c of node.children) {
