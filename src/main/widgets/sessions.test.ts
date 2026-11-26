@@ -33,6 +33,8 @@ const waiting: PaneStatus = {
   title: 'Fix it',
   tokens: 100,
   doneMessage: null,
+  activeMs: 12_000,
+  toolCalls: 4,
   sessionId: null
 }
 
@@ -73,6 +75,8 @@ describe('listSessions', () => {
         focused: true,
         labels: [story],
         background: null,
+        activeMs: 12_000,
+        toolCalls: 4,
         ports: [{ url: 'http://localhost:5173', port: 5173 }]
       },
       {
@@ -91,6 +95,8 @@ describe('listSessions', () => {
         focused: false,
         labels: [],
         background: null,
+        activeMs: 0,
+        toolCalls: 0,
         ports: []
       }
     ])
@@ -103,6 +109,8 @@ describe('listSessions', () => {
     expect('message' in shared).toBe(false)
     expect('labels' in shared).toBe(false)
     expect('background' in shared).toBe(false)
+    expect('activeMs' in shared).toBe(false)
+    expect('toolCalls' in shared).toBe(false)
     expect('ports' in shared).toBe(false)
     expect(shared.status).toBe('needs-input')
     expect(shared.branch).toBe('nick/sc-1234/fix-login')

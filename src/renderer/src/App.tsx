@@ -1558,6 +1558,8 @@ export function App(): React.JSX.Element {
             collapsed={place.collapsed}
             onToggle={place.canCollapse ? place.toggleCollapsed : undefined}
             onSelect={revealPane}
+            onCompact={(paneId) => sendPrompt(paneId, '/compact')}
+            onFreshPane={(s) => openInTask(s.cwd, s.presetId)}
             onOpenPort={openPort}
             onDismiss={
               terminals
@@ -1811,6 +1813,8 @@ export function App(): React.JSX.Element {
           onShowPlan={() => {
             if (toolbarPane) showPlan(toolbarPane, null)
           }}
+          onCompact={(paneId) => sendPrompt(paneId, '/compact')}
+          onFreshPane={(s) => openInTask(s.cwd, s.presetId)}
           onCompare={
             terminals
               ? () => {

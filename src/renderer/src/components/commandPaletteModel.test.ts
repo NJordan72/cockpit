@@ -31,6 +31,8 @@ function makeSession(overrides: Partial<PaneSession> = {}): PaneSession {
     message: null,
     labels: [],
     background: null,
+    activeMs: 0,
+    toolCalls: 0,
     ports: [],
     ...overrides
   }

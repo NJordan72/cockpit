@@ -149,7 +149,7 @@ export function TasksPanel({
                   ) : (
                     <span className="task-pr muted">no PR</span>
                   )}
-                  <span className="prs-meta">{taskMeta(t, here.length)}</span>
+                  <span className="prs-meta">{taskMeta(t, here.length, here)}</span>
                 </button>
                 <PortPills
                   items={here.flatMap((s) => s.ports.map((server) => ({ paneId: s.id, server })))}

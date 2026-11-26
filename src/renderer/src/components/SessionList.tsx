@@ -1,7 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
 import type { MenuItem, PaneSession } from '@shared/ipc'
 import { taskAt, type TaskInfo } from '@shared/tasks'
-import { formatTokens, STATUS_LABEL } from '../sessions'
+import {
+  contextPressure,
+  formatDuration,
+  formatTokens,
+  sessionActiveMs,
+  STATUS_LABEL,
+  type ContextPressure
+} from '../sessions'
 import { prChip, prTone } from '../tasks/model'
 import { PortPills } from './PortPills'
 
@@ -13,6 +20,10 @@ interface Props {
   /** Missing where the panel can't fold (outside a column). */
   onToggle?: () => void
   onSelect: (paneId: string) => void
+  /** Send `/compact` to an agent pane to reduce context pressure. */
+  onCompact?: (paneId: string) => void
+  /** Open a fresh pane in the same directory with the same preset. */
+  onFreshPane?: (session: PaneSession) => void
   /** Open (or focus) a split web pane beside a session at a detected local server URL. */
   onOpenPort: (paneId: string, url: string) => void
   /** Close a background run's pane. Missing in a window without terminals. */
@@ -42,6 +53,8 @@ export function SessionList({
   collapsed,
   onToggle,
   onSelect,
+  onCompact,
+  onFreshPane,
   onOpenPort,
   onDismiss,
   onApprove,
@@ -91,6 +104,8 @@ export function SessionList({
               sessions={sessions}
               tasks={tasks}
               onSelect={onSelect}
+              onCompact={onCompact}
+              onFreshPane={onFreshPane}
               onOpenPort={onOpenPort}
               onApprove={onApprove}
               onDeny={onDeny}
@@ -110,6 +125,8 @@ export function SessionList({
               sessions={sessions}
               tasks={tasks}
               onSelect={onSelect}
+              onCompact={onCompact}
+              onFreshPane={onFreshPane}
               onOpenPort={onOpenPort}
               onDismiss={onDismiss}
               onApprove={onApprove}
@@ -129,6 +146,8 @@ interface RowProps {
   sessions: readonly PaneSession[]
   tasks: readonly TaskInfo[]
   onSelect: (paneId: string) => void
+  onCompact?: (paneId: string) => void
+  onFreshPane?: (session: PaneSession) => void
   onOpenPort: (paneId: string, url: string) => void
   /** Shown as a close button: a background run is dismissed, not opened. */
   onDismiss?: (paneId: string) => void
@@ -143,12 +162,29 @@ const keepFocus = (e: React.MouseEvent): void => {
   e.preventDefault()
 }
 
+function contextTooltip(session: PaneSession, pressure: ContextPressure): string {
+  const lines = [
+    `Context: ${formatTokens(pressure.tokens)} / ${formatTokens(pressure.limit)} (${String(pressure.percent)}%)`
+  ]
+  const activeMs = sessionActiveMs(session)
+  const stats: string[] = []
+  if (activeMs >= 1000) stats.push(`Active ${formatDuration(activeMs)}`)
+  if (session.toolCalls > 0) {
+    stats.push(`${String(session.toolCalls)} ${session.toolCalls === 1 ? 'tool' : 'tools'}`)
+  }
+  if (stats.length > 0) lines.push(stats.join(' · '))
+  if (pressure.tone !== 'normal') lines.push('Right-click to compact or open a fresh pane')
+  return lines.join('\n')
+}
+
 /** One session. A background run is named for its quick command and shows what it was given. */
 function SessionRow({
   session: s,
   sessions,
   tasks,
   onSelect,
+  onCompact,
+  onFreshPane,
   onOpenPort,
   onDismiss,
   onApprove,
@@ -183,29 +219,43 @@ function SessionRow({
     onDone?.()
   }
 
-  const openMenu = (e: React.MouseEvent): void => {
-    if (!waiting) return
-    e.preventDefault()
-    const items: MenuItem[] = [{ id: 'focus', label: 'Focus pane' }]
-    if (onApprove || onDeny || onReply) items.push({ type: 'separator' })
-    if (onApprove) items.push({ id: 'approve', label: 'Approve (Enter)' })
-    if (onDeny) items.push({ id: 'deny', label: 'Deny (Esc)' })
-    if (onReply) items.push({ id: 'reply', label: 'Quick reply…' })
-    void window.cockpit.menu(items).then((choice) => {
-      if (choice === 'focus') onSelect(s.id)
-      else if (choice === 'approve') onApprove?.(s.id)
-      else if (choice === 'deny') onDeny?.(s.id)
-      else if (choice === 'reply') setReplying(true)
-    })
-  }
   const task = taskAt(tasks, s.cwd)
   const pr = task?.pr ?? null
   const run = s.background
   const detail = waiting ? s.message : (run?.input ?? s.title)
   const where = task ? `${task.branch ?? 'detached'} · task in ${task.repo}\n${s.cwd}` : s.cwd
+  const pressure = contextPressure(s.tokens)
+  const canCompact = Boolean(onCompact && s.agent !== null && s.status !== 'exited')
+  const elevated = pressure !== null && pressure.tone !== 'normal'
+  const showCompactBtn = elevated && canCompact
+
+  const openMenu = (e: React.MouseEvent): void => {
+    e.preventDefault()
+    const items: MenuItem[] = [{ id: 'focus', label: 'Focus pane' }]
+    if (waiting && (onApprove || onDeny || onReply)) {
+      items.push({ type: 'separator' })
+      if (onApprove) items.push({ id: 'approve', label: 'Approve (Enter)' })
+      if (onDeny) items.push({ id: 'deny', label: 'Deny (Esc)' })
+      if (onReply) items.push({ id: 'reply', label: 'Quick reply…' })
+    }
+    if (canCompact || onFreshPane) {
+      items.push({ type: 'separator' })
+      if (canCompact) items.push({ id: 'compact', label: 'Compact (/compact)' })
+      if (onFreshPane) items.push({ id: 'fresh', label: 'Open fresh pane' })
+    }
+    void window.cockpit.menu(items).then((choice) => {
+      if (choice === 'focus') onSelect(s.id)
+      else if (choice === 'approve') onApprove?.(s.id)
+      else if (choice === 'deny') onDeny?.(s.id)
+      else if (choice === 'reply') setReplying(true)
+      else if (choice === 'compact') onCompact?.(s.id)
+      else if (choice === 'fresh') onFreshPane?.(s)
+    })
+  }
+
   return (
     <li className={waiting ? 'session-item waiting' : 'session-item'} onContextMenu={openMenu}>
-      <div className={run ? 'session-run' : undefined}>
+      <div className={run || showCompactBtn ? 'session-run' : undefined}>
         <button
           type="button"
           tabIndex={-1}
@@ -228,22 +278,42 @@ function SessionRow({
           </span>
           <span className="session-meta">
             <span className={`session-status ${s.status}`}>{STATUS_LABEL[s.status]}</span>
-            {(pr !== null || s.tokens !== null) && (
+            {(pr !== null || pressure !== null) && (
               <span className="session-meta-row">
                 {pr && (
                   <span className={`task-pr ${prTone(pr)}`} title={pr.title}>
                     {prChip(pr)}
                   </span>
                 )}
-                {s.tokens !== null && (
-                  <span className="session-tokens" title="Tokens in context">
-                    {formatTokens(s.tokens)}
+                {pressure && (
+                  <span className="session-ctx" title={contextTooltip(s, pressure)}>
+                    <span className={`ctx-bar ${pressure.tone}`} aria-hidden="true">
+                      <span
+                        className="ctx-bar-fill"
+                        style={{ width: `${String(pressure.barPercent)}%` }}
+                      />
+                    </span>
+                    <span className={`session-tokens ${pressure.tone}`}>
+                      {formatTokens(pressure.tokens)}
+                    </span>
                   </span>
                 )}
               </span>
             )}
           </span>
         </button>
+        {showCompactBtn && (
+          <button
+            type="button"
+            tabIndex={-1}
+            className={`session-compact ${pressure.tone}`}
+            title={`Context at ${String(pressure.percent)}% — click to send /compact (right-click row for fresh pane)`}
+            onMouseDown={keepFocus}
+            onClick={() => onCompact?.(s.id)}
+          >
+            Compact
+          </button>
+        )}
         {run && onDismiss && (
           <button
             type="button"

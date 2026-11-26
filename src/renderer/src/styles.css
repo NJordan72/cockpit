@@ -983,6 +983,89 @@ button.label-row:hover .label-title {
   color: var(--yellow);
 }
 
+/* Context-window pressure meter in the toolbar and session list. */
+.ctx-bar {
+  display: inline-block;
+  width: 28px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--border);
+  overflow: hidden;
+  vertical-align: middle;
+  flex: none;
+}
+
+.ctx-bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--muted);
+}
+
+.ctx-bar.warn .ctx-bar-fill {
+  background: var(--yellow);
+}
+
+.ctx-bar.high .ctx-bar-fill {
+  background: var(--danger);
+}
+
+.toolbar-ctx {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 20px;
+  border: 0;
+  border-radius: var(--radius);
+  background: none;
+  padding: 0 5px;
+  color: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.toolbar-ctx:hover {
+  background: var(--bg-hover);
+  color: var(--fg);
+}
+
+.toolbar-ctx.warn .toolbar-ctx-pct,
+.toolbar-ctx.warn .toolbar-ctx-tokens {
+  color: var(--yellow);
+}
+
+.toolbar-ctx.high .toolbar-ctx-pct,
+.toolbar-ctx.high .toolbar-ctx-tokens {
+  color: var(--danger);
+}
+
+.toolbar-ctx-action {
+  flex: none;
+  height: 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: none;
+  padding: 0 6px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.toolbar-ctx-action:hover {
+  background: var(--bg-hover);
+  color: var(--fg);
+}
+
+.toolbar-ctx-action.warn {
+  border-color: var(--yellow);
+  color: var(--yellow);
+}
+
+.toolbar-ctx-action.high {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
 /* The focused pane's plan, once it has one. */
 .toolbar-plan {
   flex: none;
@@ -1839,9 +1922,51 @@ button.label-row:hover .label-title {
   color: var(--blue);
 }
 
+.session-ctx {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
 .session-tokens {
   font-variant-numeric: tabular-nums;
   opacity: 0.8;
+}
+
+.session-tokens.warn {
+  color: var(--yellow);
+  opacity: 1;
+}
+
+.session-tokens.high {
+  color: var(--danger);
+  opacity: 1;
+}
+
+.session-compact {
+  flex: none;
+  margin-right: 6px;
+  height: 18px;
+  padding: 0 5px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: none;
+  font-size: 10px;
+  color: var(--muted);
+}
+
+.session-compact.warn {
+  border-color: var(--yellow);
+  color: var(--yellow);
+}
+
+.session-compact.high {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.session-compact:hover {
+  background: var(--bg-hover);
 }
 
 .session-item.waiting {

@@ -312,4 +312,42 @@ describe('with hooks', () => {
     expect(changes.length).toBe(before)
     expect(tracker.report('t1', report({ kind: 'idle' }))).toBe(false)
   })
+
+  it('accumulates active working duration and tool calls, and resets them on /clear', () => {
+    expect(state()).toMatchObject({ activeMs: 0, toolCalls: 0 })
+
+    // First working stretch: 5 seconds, 2 tool calls (one via starts, one via toolCall flag).
+    tracker.report('t1', report({ kind: 'working', clears: true }))
+    vi.advanceTimersByTime(2000)
+    tracker.report('t1', report({ kind: 'working', starts: { id: 'toolu_1', scope: 'Bash@main' } }))
+    vi.advanceTimersByTime(3000)
+    tracker.report('t1', {
+      signal: { kind: 'waiting', key: 'Ask:1', message: 'Question?' },
+      transcriptPath: null,
+      title: null,
+      toolCall: true
+    })
+    expect(state()).toMatchObject({ status: 'needs-input', activeMs: 5000, toolCalls: 2 })
+
+    // Time spent waiting for input is not counted as active working time.
+    vi.advanceTimersByTime(10_000)
+    tracker.report('t1', report({ kind: 'working', resolves: 'Ask:1' }))
+    expect(state()).toMatchObject({ status: 'working', activeMs: 5000, toolCalls: 2 })
+
+    // Second working stretch: 4 seconds, then done.
+    vi.advanceTimersByTime(4000)
+    tracker.report('t1', report({ kind: 'done', message: 'Done' }))
+    expect(state()).toMatchObject({ status: 'done', activeMs: 9000, toolCalls: 2 })
+
+    // /clear (fresh: true) resets both activeMs and toolCalls.
+    tracker.report('t1', report({ kind: 'idle', fresh: true }))
+    expect(state()).toMatchObject({ status: 'idle', activeMs: 0, toolCalls: 0 })
+  })
+
+  it('counts active working time when a working process exits', () => {
+    tracker.report('t1', report({ kind: 'working', clears: true }))
+    vi.advanceTimersByTime(3500)
+    tracker.exit('p1')
+    expect(state()).toMatchObject({ status: 'exited', activeMs: 3500 })
+  })
 })

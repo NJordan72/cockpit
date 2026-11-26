@@ -195,7 +195,7 @@ export function RunsPanel({
               >
                 ⋯
               </button>
-              <span className="prs-meta run-meta">{runMeta(run)}</span>
+              <span className="prs-meta run-meta">{runMeta(run, sessions)}</span>
             </div>
             {graphRuns.has(run.id) ? (
               <RunDag
@@ -238,7 +238,7 @@ export function RunsPanel({
                         {phaseLabel(item.state)}
                       </span>
                       <span className="prs-meta">
-                        {item.id} · {itemMeta(item, run)}
+                        {item.id} · {itemMeta(item, run, sessionsIn(item, sessions))}
                         {!item.external && item.presetId && item.presetId !== run.presetId
                           ? ` · ${presets.find((p) => p.id === item.presetId)?.name ?? item.presetId}`
                           : ''}

@@ -1,9 +1,15 @@
 import { MAX_WINDOWS, type Action, type Keybindings } from '@shared/config'
-import type { PaneSession } from '@shared/ipc'
+import type { MenuItem, PaneSession } from '@shared/ipc'
 import { planStatus } from '../activity/PlanDialog'
 import { useGit, usePanePlans } from '../activity/useActivity'
 import { chordLabel } from '../keybindings'
-import { STATUS_LABEL } from '../sessions'
+import {
+  contextPressure,
+  formatDuration,
+  formatTokens,
+  sessionActiveMs,
+  STATUS_LABEL
+} from '../sessions'
 import { PortPills } from './PortPills'
 
 interface Props {
@@ -28,6 +34,10 @@ interface Props {
   onWindows: (count: number) => void
   /** Open the plan dialog on the focused pane's newest plan. */
   onShowPlan: () => void
+  /** Send `/compact` to an agent pane. */
+  onCompact: (paneId: string) => void
+  /** Open a fresh pane in the same directory with the same preset. */
+  onFreshPane: (session: PaneSession) => void
   /** Open the Compare agents dialog to launch two presets side by side. */
   onCompare?: () => void
   /** Open (or focus) a split web pane beside a pane at a detected local server URL. */
@@ -108,6 +118,8 @@ export function Toolbar({
   displays,
   onWindows,
   onShowPlan,
+  onCompact,
+  onFreshPane,
   onCompare,
   onOpenPort,
   waitingCount
@@ -131,6 +143,8 @@ export function Toolbar({
             active={active}
             planTip={tip('Click to read it', 'showPlan')}
             onShowPlan={onShowPlan}
+            onCompact={onCompact}
+            onFreshPane={onFreshPane}
             onOpenPort={onOpenPort}
           />
         ) : (
@@ -232,6 +246,8 @@ function FocusedPane({
   active,
   planTip,
   onShowPlan,
+  onCompact,
+  onFreshPane,
   onOpenPort
 }: {
   session: PaneSession
@@ -240,11 +256,45 @@ function FocusedPane({
   /** The last line of the Plan button's tooltip, with its shortcut. */
   planTip: string
   onShowPlan: () => void
+  onCompact: (paneId: string) => void
+  onFreshPane: (session: PaneSession) => void
   onOpenPort: (paneId: string, url: string) => void
 }): React.JSX.Element {
   // Read git again when the agent finishes something; it may have committed.
   const git = useGit(session.id, active, `${session.status}:${String(session.since)}`)
   const label = STATUS_LABEL[session.status]
+  const pressure = contextPressure(session.tokens)
+  const canCompact = session.agent !== null && session.status !== 'exited'
+  const keepFocus = (e: React.MouseEvent): void => {
+    e.preventDefault()
+  }
+
+  const openContextMenu = async (): Promise<void> => {
+    const items: MenuItem[] = [
+      ...(canCompact ? [{ id: 'compact', label: 'Compact (/compact)' }] : []),
+      { id: 'fresh', label: 'Open fresh pane' }
+    ]
+    const chosen = await window.cockpit.menu(items)
+    if (chosen === 'compact') onCompact(session.id)
+    else if (chosen === 'fresh') onFreshPane(session)
+  }
+
+  const ctxTitle = ((): string => {
+    if (!pressure) return ''
+    const lines = [
+      `Context: ${formatTokens(pressure.tokens)} / ${formatTokens(pressure.limit)} (${String(pressure.percent)}%)`
+    ]
+    const activeMs = sessionActiveMs(session)
+    const stats: string[] = []
+    if (activeMs >= 1000) stats.push(`Active ${formatDuration(activeMs)}`)
+    if (session.toolCalls > 0) {
+      stats.push(`${String(session.toolCalls)} ${session.toolCalls === 1 ? 'tool' : 'tools'}`)
+    }
+    if (stats.length > 0) lines.push(stats.join(' · '))
+    lines.push('Click for Compact or Fresh pane')
+    return lines.join('\n')
+  })()
+
   return (
     <>
       <span className="toolbar-status" title={session.message ?? label}>
@@ -262,6 +312,54 @@ function FocusedPane({
           {git.behind > 0 && ` ↓${String(git.behind)}`}
           {git.changed > 0 && <span className="toolbar-changed"> ±{git.changed}</span>}
         </span>
+      )}
+      {pressure && (
+        <>
+          <button
+            type="button"
+            tabIndex={-1}
+            className={`toolbar-ctx ${pressure.tone}`}
+            title={ctxTitle}
+            onMouseDown={keepFocus}
+            onClick={() => void openContextMenu()}
+            onContextMenu={(e) => {
+              e.preventDefault()
+              void openContextMenu()
+            }}
+          >
+            <span className={`ctx-bar ${pressure.tone}`} aria-hidden="true">
+              <span className="ctx-bar-fill" style={{ width: `${String(pressure.barPercent)}%` }} />
+            </span>
+            <span className="toolbar-ctx-tokens">{formatTokens(pressure.tokens)}</span>
+            <span className="toolbar-ctx-pct">{String(pressure.percent)}%</span>
+          </button>
+          {pressure.tone !== 'normal' && (
+            <>
+              {canCompact && (
+                <button
+                  type="button"
+                  tabIndex={-1}
+                  className={`toolbar-ctx-action ${pressure.tone}`}
+                  title="Send /compact to free context"
+                  onMouseDown={keepFocus}
+                  onClick={() => onCompact(session.id)}
+                >
+                  Compact
+                </button>
+              )}
+              <button
+                type="button"
+                tabIndex={-1}
+                className="toolbar-ctx-action"
+                title="Open a fresh pane in this directory"
+                onMouseDown={keepFocus}
+                onClick={() => onFreshPane(session)}
+              >
+                Fresh
+              </button>
+            </>
+          )}
+        </>
       )}
       <PortPills
         items={session.ports.map((server) => ({ paneId: session.id, server }))}

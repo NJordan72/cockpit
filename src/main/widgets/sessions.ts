@@ -19,6 +19,8 @@ export function widgetSession({
   message: _message,
   labels: _labels,
   background: _background,
+  activeMs: _activeMs,
+  toolCalls: _toolCalls,
   ports: _ports,
   ...info
 }: PaneSession): SessionInfo {
@@ -71,6 +73,8 @@ export function listSessions(
           focused: p.id === focused,
           labels: lookup.labels(p.id),
           background: tab.background ?? null,
+          activeMs: s?.activeMs ?? 0,
+          toolCalls: s?.toolCalls ?? 0,
           ports: lookup.ports?.(p.id) ?? []
         }
       })
