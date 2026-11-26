@@ -9,6 +9,7 @@ import {
   defaultConfig,
   defaultSidebar,
   defaultWindow,
+  isTerminalPane,
   migrateConfig,
   normalizeSizes,
   pushRecentDir,
@@ -792,6 +793,49 @@ describe('migrateConfig: windows', () => {
 
   it('always has a main window', () => {
     expect(migrateConfig({ windows: [] }).windows).toEqual([defaultWindow()])
+  })
+
+  it('keeps valid review panes, drops malformed review refs, and marks them non-terminal', () => {
+    const c = migrateConfig({
+      windows: [
+        {
+          id: 'main',
+          tabs: [
+            {
+              id: 't1',
+              root: {
+                type: 'pane',
+                id: 'p1',
+                presetId: 'shell',
+                cwd: '~/dev/cockpit',
+                review: { dir: '~/dev/cockpit', branch: 'feat/diff' },
+                title: 'feat/diff'
+              },
+              activePaneId: 'p1'
+            },
+            {
+              id: 't2',
+              root: {
+                type: 'pane',
+                id: 'p2',
+                presetId: 'shell',
+                cwd: '~/dev/cockpit',
+                review: { dir: '' }
+              },
+              activePaneId: 'p2'
+            }
+          ],
+          activeTabId: 't1'
+        }
+      ]
+    })
+    const p1 = win(c).tabs[0]?.root as PaneNode
+    const p2 = win(c).tabs[1]?.root as PaneNode
+    expect(p1.review).toEqual({ dir: '~/dev/cockpit', branch: 'feat/diff' })
+    expect(p1.title).toBe('feat/diff')
+    expect(isTerminalPane(p1)).toBe(false)
+    expect(p2.review).toBeUndefined()
+    expect(isTerminalPane(p2)).toBe(true)
   })
 
   it('includes openSettings defaulting to Cmd+,', () => {

@@ -24,7 +24,13 @@ import {
 import { builtInLayout, layoutChoices } from '@shared/layouts'
 import { resolveTheme, themeVars, type ResolvedTheme, type ThemeDefinition } from '@shared/theme'
 import type { BashCommand } from '@shared/activity'
-import type { AppearanceCommand, PaneSession, PrPaneRequest, WindowInfo } from '@shared/ipc'
+import type {
+  AppearanceCommand,
+  PaneSession,
+  PrPaneRequest,
+  ReviewPaneRequest,
+  WindowInfo
+} from '@shared/ipc'
 import { prRefFromUrl } from '@shared/prs'
 import { cleanInput, quickPrompt, type QuickCommand } from '@shared/quickCommands'
 import type { RunDraft } from '@shared/runs'
@@ -60,9 +66,11 @@ import {
   allPanes,
   findPane,
   findPrPane,
+  findReviewPane,
   findWebPane,
   makePane,
   makePrPane,
+  makeReviewPane,
   makeWebPane
 } from './layout/model'
 import { CommandsPanel, type RunWhere } from './panels/CommandsPanel'
@@ -167,6 +175,8 @@ export function App(): React.JSX.Element {
   const [openingUrl, setOpeningUrl] = useState(false)
   /** The Quick command dialog is up. */
   const [quickOpen, setQuickOpen] = useState(false)
+  /** Requested focus file per review pane id, when opened from Activity Git/Files. */
+  const [reviewFocusFiles, setReviewFocusFiles] = useState<Record<string, string>>({})
   /** The Settings dialog is up. */
   const [settingsOpen, setSettingsOpen] = useState(false)
   /** A quick command picked from the command palette that needs an input. */
@@ -297,6 +307,7 @@ export function App(): React.JSX.Element {
   const paletteOpenRef = useRef(paletteOpen)
   const compareOpenRef = useRef(compareOpen)
   const tasksRef = useRef(tasks)
+  const openReviewRef = useRef<(req: ReviewPaneRequest) => void>(() => undefined)
   useEffect(() => {
     configRef.current = config
     layoutRef.current = layout
@@ -793,6 +804,21 @@ export function App(): React.JSX.Element {
           setQuickInitial(null)
           setQuickOpen(true)
           return
+        case 'reviewDiff': {
+          const pane = tab ? findPane(tab.root, tab.activePaneId) : null
+          const session = sessionsRef.current.find((s) => s.id === tab?.activePaneId) ?? null
+          const dir = session?.cwd ?? pane?.cwd
+          if (dir) {
+            void api.activity.git(tab?.activePaneId ?? '').then((g) => {
+              const targetDir = g?.root ?? dir
+              openReviewRef.current({
+                review: { dir: targetDir, ...(g?.branch ? { branch: g.branch } : {}) },
+                where: 'row'
+              })
+            })
+          }
+          return
+        }
         case 'openSettings':
           if (kidsRef.current) return
           setPicker(null)
@@ -1160,6 +1186,43 @@ export function App(): React.JSX.Element {
   )
 
   useEffect(() => api.prs.onOpenPane(openPr), [api, openPr])
+
+  /** A diff review pane in a new tab or beside the focused pane, or its pane if one is open. */
+  const openReview = useCallback(
+    (req: ReviewPaneRequest) => {
+      if (!terminals) {
+        api.review.openPane(req)
+        return
+      }
+      const open = findReviewPane(layoutRef.current.tabs, req.review.dir)
+      if (open) {
+        const focusFile = req.focusFile
+        if (focusFile) {
+          setReviewFocusFiles((prev) => ({ ...prev, [open.paneId]: focusFile }))
+        }
+        revealPane(open.paneId)
+        return
+      }
+      setPicker(null)
+      setRestorable(null)
+      const pane = makeReviewPane(req.review, req.title)
+      const focusFile = req.focusFile
+      if (focusFile) {
+        setReviewFocusFiles((prev) => ({ ...prev, [pane.id]: focusFile }))
+      }
+      const tab = activeTab(layoutRef.current)
+      if (req.where === 'row' && tab) {
+        dispatch({ type: 'split', paneId: tab.activePaneId, direction: 'row', pane })
+      } else dispatch({ type: 'newTab', pane })
+    },
+    [api, terminals, revealPane]
+  )
+
+  useEffect(() => {
+    openReviewRef.current = openReview
+  }, [openReview])
+
+  useEffect(() => api.review.onOpenPane(openReview), [api, openReview])
 
   /** Feedback from a pull request pane goes to an agent pane, a task, a new task, or a new agent tab. */
   const handOff = useCallback(
@@ -1539,6 +1602,9 @@ export function App(): React.JSX.Element {
               showPlan(focused, file)
             }}
             fileActions={config.itemActions.file}
+            onReview={(dir, focusFile) =>
+              openReview({ review: { dir }, ...(focusFile ? { focusFile } : {}), where: 'row' })
+            }
             onPrompt={runItemPrompt}
           />
         ) : null
@@ -1565,6 +1631,13 @@ export function App(): React.JSX.Element {
             onNew={() => runAction('newTask')}
             onOpen={(task, presetId) => openInTask(task.path, presetId)}
             onReveal={revealPane}
+            onReview={(task, where) =>
+              openReview({
+                review: { dir: task.path, ...(task.branch ? { branch: task.branch } : {}) },
+                ...(task.branch ? { title: task.branch } : {}),
+                where
+              })
+            }
             onOpenPort={openPort}
             onPrompt={runItemPrompt}
           />
@@ -1668,6 +1741,7 @@ export function App(): React.JSX.Element {
                           settings={config.terminal}
                           theme={terminalTheme}
                           labels={labels}
+                          reviewFocusFiles={reviewFocusFiles}
                           dispatch={dispatch}
                         />
                       </AgentHandoffContext.Provider>

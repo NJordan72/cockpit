@@ -14,6 +14,7 @@ import type {
 } from './config'
 import type { LocalServer } from './ports'
 import type { PrAct, PrActResult, PrDetailResult, PrList, PrLogResult, PrRef } from './prs'
+import type { ReviewDiffResult, ReviewRef } from './review'
 import type { RunAction, RunDraft, RunStartRequest, RunView } from './runs'
 import type { NewTask, NewTaskResult, RepoSetupSuggestion, TaskDraft, TaskInfo } from './tasks'
 import type { ThemeDefinition } from './theme'
@@ -81,6 +82,8 @@ export const IPC = {
   prsAct: 'prs:act',
   prsLog: 'prs:log',
   prsPane: 'prs:pane',
+  reviewDiff: 'review:diff',
+  reviewPane: 'review:pane',
   tasksList: 'tasks:list',
   tasksChanged: 'tasks:changed',
   tasksRefresh: 'tasks:refresh',
@@ -182,6 +185,16 @@ export interface PrPaneRequest {
   /** The checkout it was opened from, with ~ for home. */
   cwd: string
   title?: string
+  /** A new tab, or split beside the focused pane. */
+  where: 'tab' | 'row'
+}
+
+/** A diff review pane to open, asked for by a window of panels. */
+export interface ReviewPaneRequest {
+  review: ReviewRef
+  title?: string
+  /** Optional repo-relative file path to scroll to on open. */
+  focusFile?: string
   /** A new tab, or split beside the focused pane. */
   where: 'tab' | 'row'
 }
@@ -429,6 +442,14 @@ export interface CockpitApi {
     openPane(req: PrPaneRequest): void
     /** Another window asked this one to open a pull request pane. */
     onOpenPane(cb: (req: PrPaneRequest) => void): () => void
+  }
+  review: {
+    /** Unified diff of changes since merge-base with the remote default branch, plus uncommitted/untracked files. */
+    diff(dir: string): Promise<ReviewDiffResult>
+    /** Opens a diff review pane in the window with terminals the user last worked in. */
+    openPane(req: ReviewPaneRequest): void
+    /** Another window asked this one to open a diff review pane. */
+    onOpenPane(cb: (req: ReviewPaneRequest) => void): () => void
   }
   files: {
     /** Which of these paths exist, relative to the pane's directory. */

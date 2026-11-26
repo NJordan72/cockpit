@@ -19,6 +19,7 @@ export interface GitRun {
 
 export interface GitOptions {
   timeoutMs?: number
+  maxBuffer?: number
   env?: Record<string, string>
 }
 
@@ -33,7 +34,7 @@ export function runGit(cwd: string, args: string[], opts: GitOptions = {}): Prom
       ['--no-optional-locks', '-c', 'core.fsmonitor=false', '-C', cwd, ...args],
       {
         timeout: opts.timeoutMs ?? TIMEOUT_MS,
-        maxBuffer: 8 * 1024 * 1024,
+        maxBuffer: opts.maxBuffer ?? 8 * 1024 * 1024,
         env: {
           ...process.env,
           GIT_OPTIONAL_LOCKS: '0',

@@ -57,6 +57,7 @@ export type LayoutAction =
   | { type: 'setCwd'; paneId: string; cwd: string }
   | { type: 'setPage'; paneId: string; url: string; title?: string }
   | { type: 'setPrTitle'; paneId: string; title: string }
+  | { type: 'setReviewTitle'; paneId: string; title: string; branch?: string }
 
 export function activeTab(layout: Layout): Tab | null {
   return layout.tabs.find((t) => t.id === layout.activeTabId) ?? null
@@ -355,6 +356,20 @@ export function layoutReducer(layout: Layout, action: LayoutAction): Layout {
       return mapTab(layout, tab.id, (t) => ({
         ...t,
         root: updatePane(t.root, action.paneId, { title: action.title })
+      }))
+    }
+
+    case 'setReviewTitle': {
+      const tab = tabOfPane(layout, action.paneId)
+      const pane = tab && findPane(tab.root, action.paneId)
+      if (!tab || !pane?.review) return layout
+      const nextReview = action.branch
+        ? { dir: pane.review.dir, branch: action.branch }
+        : { dir: pane.review.dir }
+      if (pane.title === action.title && pane.review.branch === nextReview.branch) return layout
+      return mapTab(layout, tab.id, (t) => ({
+        ...t,
+        root: updatePane(t.root, action.paneId, { title: action.title, review: nextReview })
       }))
     }
   }

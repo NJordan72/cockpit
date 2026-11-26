@@ -6,6 +6,7 @@ import { allPanes, arrange, dragSizes, findSplit, type Divider } from '../layout
 import type { LayoutAction } from '../layout/reducer'
 import { TerminalPane } from '../terminal/TerminalPane'
 import { PrPane } from '../prs/PrPane'
+import { ReviewPane } from '../review/ReviewPane'
 import { WebPane } from '../web/WebPane'
 
 interface Props {
@@ -15,6 +16,8 @@ interface Props {
   theme: ITheme
   /** Widgets' labels by pane id. */
   labels: ReadonlyMap<string, PaneLabel[]>
+  /** Optional file path to scroll to in a review pane, by pane id. */
+  reviewFocusFiles?: Readonly<Record<string, string>>
   dispatch: (a: LayoutAction) => void
 }
 
@@ -31,6 +34,7 @@ export function Workspace({
   settings,
   theme,
   labels,
+  reviewFocusFiles,
   dispatch
 }: Props): React.JSX.Element {
   const ref = useRef<HTMLDivElement>(null)
@@ -118,6 +122,17 @@ export function Workspace({
                 visible={visible}
                 onFocus={() => dispatch({ type: 'focusPane', paneId: pane.id })}
                 onTitle={(title) => dispatch({ type: 'setPrTitle', paneId: pane.id, title })}
+              />
+            ) : pane.review ? (
+              <ReviewPane
+                pane={{ ...pane, review: pane.review }}
+                focused={tab.activePaneId === pane.id && (multi || visible)}
+                visible={visible}
+                focusFile={reviewFocusFiles?.[pane.id] ?? null}
+                onFocus={() => dispatch({ type: 'focusPane', paneId: pane.id })}
+                onTitle={(title, branch) =>
+                  dispatch({ type: 'setReviewTitle', paneId: pane.id, title, branch })
+                }
               />
             ) : (
               <TerminalPane

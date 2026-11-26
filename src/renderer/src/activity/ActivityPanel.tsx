@@ -48,6 +48,8 @@ interface Props {
   onShowPlan: (file: string) => void
   /** config.json's itemActions.file: what a file's right-click menu can send about it. */
   fileActions: readonly ItemAction[]
+  /** Open the diff review pane for a directory, optionally scrolling to a file. */
+  onReview: (dir: string, focusFile?: string) => void
   onPrompt: (req: PromptRequest) => void
 }
 
@@ -77,6 +79,7 @@ export function ActivityPanel({
   onRunCommand,
   onShowPlan,
   fileActions,
+  onReview,
   onPrompt
 }: Props): React.JSX.Element {
   const activity = usePaneActivity(session.id)
@@ -152,12 +155,13 @@ export function ActivityPanel({
             filter={fileFilter}
             onFilter={setFileFilter}
             actions={fileActions}
+            onReview={(focusFile) => onReview(git?.root ?? session.cwd, focusFile)}
             onPrompt={onPrompt}
           />
         ) : settings.tab === 'agents' ? (
           <AgentsView agents={activity?.agents ?? []} running={running} />
         ) : (
-          <GitView git={git} />
+          <GitView git={git} onReview={(dir, focusFile) => onReview(dir, focusFile)} />
         ))}
     </section>
   )
@@ -204,16 +208,19 @@ async function commandMenu(c: BashCommand, onRun: (c: BashCommand) => void): Pro
 /** `prompts`: the Files tab's entries from config.json's itemActions.file. */
 async function fileMenu(
   file: string,
-  prompts?: { menu: ActionMenu; run: (req: PromptRequest) => void }
+  prompts?: { menu: ActionMenu; run: (req: PromptRequest) => void },
+  onReview?: () => void
 ): Promise<void> {
   const api = window.cockpit
   const chosen = await api.menu([
+    ...(onReview ? [{ id: 'review', label: 'Review diff' }] : []),
     { id: 'edit', label: 'Open in editor' },
     { id: 'copy', label: 'Copy path' },
     ...(prompts?.menu.items ?? [])
   ])
   const req = prompts?.menu.pick(chosen)
   if (req) prompts?.run(req)
+  else if (chosen === 'review') onReview?.()
   else if (chosen === 'edit') api.editor.openFile(file)
   else if (chosen === 'copy') api.clipboard.writeText(file)
 }
@@ -482,6 +489,7 @@ function FilesView({
   filter,
   onFilter,
   actions,
+  onReview,
   onPrompt
 }: {
   session: PaneSession
@@ -489,6 +497,7 @@ function FilesView({
   filter: FileFilter
   onFilter: (f: FileFilter) => void
   actions: readonly ItemAction[]
+  onReview: (focusFile?: string) => void
   onPrompt: (req: PromptRequest) => void
 }): React.JSX.Element {
   const shown = files.filter((f) => (f.change === 'read' ? filter.read : filter.edited))
@@ -502,6 +511,15 @@ function FilesView({
         <Chip on={filter.read} onClick={() => onFilter(toggleFilter(filter, 'read'))}>
           Read
         </Chip>
+        <button
+          type="button"
+          tabIndex={-1}
+          className="activity-chip"
+          title="Open diff review pane"
+          onClick={() => onReview()}
+        >
+          ± Diff
+        </button>
         <span className="activity-total">
           {shown.length}/{files.length}
         </span>
@@ -522,10 +540,14 @@ function FilesView({
                   title={`${f.path}\n${times.filter(Boolean).join(', ')}\nRight-click for more`}
                   onContextMenu={(e) => {
                     e.preventDefault()
-                    void fileMenu(f.path, {
-                      menu: actionMenu('file', actions, fileFields(f.path), { here: session }),
-                      run: onPrompt
-                    })
+                    void fileMenu(
+                      f.path,
+                      {
+                        menu: actionMenu('file', actions, fileFields(f.path), { here: session }),
+                        run: onPrompt
+                      },
+                      () => onReview(f.display)
+                    )
                   }}
                 >
                   <span className={`file-change ${f.change}`}>{CHANGE_LETTER[f.change]}</span>
@@ -608,7 +630,13 @@ function AgentsView({
   )
 }
 
-function GitView({ git }: { git: GitStatus | null | undefined }): React.JSX.Element {
+function GitView({
+  git,
+  onReview
+}: {
+  git: GitStatus | null | undefined
+  onReview: (dir: string, focusFile?: string) => void
+}): React.JSX.Element {
   const now = useNow(AGO_EVERY_MS)
   if (git === undefined) return <Empty>Reading git…</Empty>
   if (git === null) return <Empty>Not in a git repository.</Empty>
@@ -624,6 +652,15 @@ function GitView({ git }: { git: GitStatus | null | undefined }): React.JSX.Elem
           </span>
         )}
         <span className="git-root">{git.root}</span>
+        <button
+          type="button"
+          tabIndex={-1}
+          className="activity-chip"
+          title="Review branch diff"
+          onClick={() => onReview(git.root)}
+        >
+          ± Review diff
+        </button>
       </div>
       <h4 className="activity-subhead">
         Changes <span className="activity-count">{git.changed}</span>
@@ -635,8 +672,9 @@ function GitView({ git }: { git: GitStatus | null | undefined }): React.JSX.Elem
             return (
               <li
                 key={f.path}
-                className="file-row"
-                title={f.from ? `${f.from} → ${f.path}` : f.path}
+                className="file-row clickable"
+                title={`${f.from ? `${f.from} → ${f.path}` : f.path}\nClick to review diff`}
+                onClick={() => onReview(git.root, f.path)}
               >
                 <span className={`git-xy${f.index === '?' ? ' untracked' : ''}`}>
                   <span className="staged">{gitCode(f)[0]}</span>
