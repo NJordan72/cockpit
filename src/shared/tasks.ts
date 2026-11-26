@@ -98,6 +98,16 @@ export interface RepoTaskSettings {
 
 export type TaskSettings = Record<string, RepoTaskSettings>
 
+/** Suggested `tasks` settings for a repository that has none in config.json yet. */
+export interface RepoSetupSuggestion {
+  /** Main checkout path with ~ for home (the key in config.json's `tasks`). */
+  repo: string
+  /** Untracked `.env*` files found in the main checkout. */
+  copy: string[]
+  /** Install command inferred from a lockfile, if any. */
+  setup?: string
+}
+
 const MAX_REPOS = 100
 const MAX_COPY = 50
 const MAX_SETUP = 4000

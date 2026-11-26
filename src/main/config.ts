@@ -1,6 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import {
+  applySettingsPatch,
   CONFIG_VERSION,
   migrateConfig,
   pushRecentDir,
@@ -59,6 +60,13 @@ export class ConfigStore {
   setLauncher(launcher: LauncherSettings): void {
     this.config = { ...this.config, launcher: migrateConfig({ launcher }).launcher }
     this.write()
+  }
+
+  /** Validate and save editable settings sections from the Settings or Task dialog. */
+  saveSettings(patch: unknown): CockpitConfig {
+    this.config = applySettingsPatch(this.config, patch)
+    this.write()
+    return this.config
   }
 
   addRecentDir(dir: string, presetId: string): void {

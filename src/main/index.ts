@@ -109,7 +109,7 @@ import { PtyManager } from './pty'
 import { runRequests, RunStore } from './runs'
 import { registerSchemes } from './schemes'
 import { SystemMonitor } from './system'
-import { defaultBranch, mainCheckout, TaskStore, withSetup } from './tasks'
+import { defaultBranch, detectRepoSetup, mainCheckout, TaskStore, withSetup } from './tasks'
 import { ThemeStore } from './themes'
 import { restartPrompt, signedWithDeveloperId, Updates } from './updater'
 import { TreeWatcher } from './watch'
@@ -710,6 +710,10 @@ function applyMenu(): void {
       ? buildKidsMenu({ onAbout: showAbout })
       : buildMenu({
           onAbout: showAbout,
+          onSettings: () => {
+            const w = currentWindow()
+            if (w) send(w, IPC.appAction, 'openSettings')
+          },
           update: updates && {
             ...updates.menuItem(),
             onClick: () => updates?.checkNow()
@@ -1214,6 +1218,13 @@ function registerIpc(): void {
     if (!trusted(e)) throw new Error('untrusted sender')
     return config.get()
   })
+  ipcMain.handle(IPC.configSave, (e, patch: unknown) => {
+    if (!trusted(e)) throw new Error('untrusted sender')
+    const saved = config.saveSettings(patch)
+    broadcast(IPC.configChanged, saved)
+    appearanceChanged()
+    return saved
+  })
   ipcMain.on(IPC.layoutSave, (e, layout: unknown) => {
     const w = windowFor(e.sender)
     if (!trusted(e) || !w || typeof layout !== 'object' || layout === null) return
@@ -1376,6 +1387,10 @@ function registerIpc(): void {
   ipcMain.handle(IPC.tasksCleanUp, (e) => {
     if (!trusted(e) || kidsActive) return 0
     return cleanUpTasks()
+  })
+  ipcMain.handle(IPC.tasksDetectSetup, async (e, repo: unknown) => {
+    if (!trusted(e) || typeof repo !== 'string' || !repo.trim() || repo.length > 1024) return null
+    return detectRepoSetup(repo)
   })
   // A window of panels opens task tabs in the window with terminals.
   ipcMain.on(IPC.tasksOpen, (e, req: unknown) => {

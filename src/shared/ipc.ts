@@ -9,12 +9,13 @@ import type {
   LauncherSettings,
   Layout,
   RecentPage,
+  SettingsPatch,
   WindowView
 } from './config'
 import type { LocalServer } from './ports'
 import type { PrAct, PrActResult, PrDetailResult, PrList, PrLogResult, PrRef } from './prs'
 import type { RunAction, RunDraft, RunStartRequest, RunView } from './runs'
-import type { NewTask, NewTaskResult, TaskDraft, TaskInfo } from './tasks'
+import type { NewTask, NewTaskResult, RepoSetupSuggestion, TaskDraft, TaskInfo } from './tasks'
 import type { ThemeDefinition } from './theme'
 import type {
   PaneLabel,
@@ -38,6 +39,7 @@ export const IPC = {
   clipboardRead: 'clipboard:read',
   clipboardWrite: 'clipboard:write',
   configGet: 'config:get',
+  configSave: 'config:save',
   configChanged: 'config:changed',
   layoutSave: 'layout:save',
   launcherSave: 'launcher:save',
@@ -87,6 +89,7 @@ export const IPC = {
   tasksCleanUp: 'tasks:cleanup',
   tasksOpen: 'tasks:open',
   tasksDraft: 'tasks:draft',
+  tasksDetectSetup: 'tasks:detect-setup',
   runsList: 'runs:list',
   runsChanged: 'runs:changed',
   runsDraft: 'runs:draft',
@@ -303,6 +306,8 @@ export interface CockpitApi {
   }
   config: {
     get(): Promise<CockpitConfig>
+    /** Validate and save editable settings sections, returning the saved config. */
+    save(patch: SettingsPatch): Promise<CockpitConfig>
     onChange(cb: (config: CockpitConfig) => void): () => void
     saveLayout(layout: Layout): void
     saveLauncher(launcher: LauncherSettings): void
@@ -394,6 +399,8 @@ export interface CockpitApi {
     onOpen(cb: (req: TaskOpenRequest) => void): () => void
     /** A widget asked for the New task dialog, filled in. */
     onDraft(cb: (draft: TaskDraft) => void): () => void
+    /** Inspect a repo for untracked .env* files and lockfiles to suggest worktree setup. */
+    detectSetup(repo: string): Promise<RepoSetupSuggestion | null>
   }
   runs: {
     /** Every confirmed run, newest first, with its items' states. */

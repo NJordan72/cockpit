@@ -81,6 +81,7 @@ export type Action =
   | 'nextAttention'
   | 'findInPane'
   | 'commandPalette'
+  | 'openSettings'
 
 export type Keybindings = Record<Action, string>
 
@@ -358,7 +359,8 @@ export const DEFAULT_KEYBINDINGS: Keybindings = {
   quickCommand: 'Cmd+Shift+J',
   nextAttention: 'Cmd+Shift+U',
   findInPane: 'Cmd+F',
-  commandPalette: 'Cmd+P'
+  commandPalette: 'Cmd+P',
+  openSettings: 'Cmd+,'
 }
 
 export const DEFAULT_TERMINAL: TerminalSettings = {
@@ -874,6 +876,42 @@ export function migrateConfig(raw: unknown): CockpitConfig {
     tasks: readTaskSettings(raw.tasks),
     windows: readWindows(raw, appearance, new Set(presets.map((p) => p.id)))
   }
+}
+
+/**
+ * Editable settings sections saved from the Settings dialog or the Task
+ * dialog's auto-detected repo setup. Omitted fields keep their current value.
+ */
+export interface SettingsPatch {
+  editor?: string | null
+  projectsDir?: string
+  terminal?: Partial<TerminalSettings>
+  presets?: Preset[]
+  quickCommands?: QuickCommand[]
+  itemActions?: ItemActions
+  tasks?: TaskSettings
+  keybindings?: Partial<Keybindings>
+}
+
+/**
+ * Apply an untrusted settings patch to `current` and validate through
+ * `migrateConfig`. Non-editable sections (windows, appearance, launcher,
+ * kids, recentDirs, recentPages) are never touched.
+ */
+export function applySettingsPatch(current: CockpitConfig, patch: unknown): CockpitConfig {
+  if (!isObj(patch)) return current
+  const next: Obj = { ...current }
+  if ('editor' in patch) next.editor = patch.editor
+  if ('projectsDir' in patch) next.projectsDir = patch.projectsDir
+  if (isObj(patch.terminal)) next.terminal = { ...current.terminal, ...patch.terminal }
+  if ('presets' in patch) next.presets = patch.presets
+  if ('quickCommands' in patch) next.quickCommands = patch.quickCommands
+  if ('itemActions' in patch) next.itemActions = patch.itemActions
+  if ('tasks' in patch) next.tasks = patch.tasks
+  if (isObj(patch.keybindings)) {
+    next.keybindings = { ...current.keybindings, ...patch.keybindings }
+  }
+  return migrateConfig(next)
 }
 
 export function pushRecentDir(dirs: RecentDir[], dir: RecentDir): RecentDir[] {

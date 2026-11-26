@@ -11,6 +11,7 @@ import {
   worktreeName,
   type NewTask,
   type NewTaskResult,
+  type RepoSetupSuggestion,
   type RepoTaskSettings,
   type TaskInfo,
   type TaskPr
@@ -160,6 +161,45 @@ export async function mainCheckout(
   if (!main) return { ok: false, error: `${abbreviateHome(from)} isn't in a git repository` }
   if (main.bare) return { ok: false, error: "Tasks can't be made in a bare repository" }
   return { ok: true, path: main.path }
+}
+
+const LOCKFILE_SETUPS: readonly [file: string, setup: string][] = [
+  ['bun.lock', 'bun install'],
+  ['pnpm-lock.yaml', 'pnpm install'],
+  ['yarn.lock', 'yarn install'],
+  ['package-lock.json', 'npm install']
+]
+
+/**
+ * Inspect a repository's main checkout for untracked `.env*` files and a
+ * package manager lockfile, suggesting `copy` and `setup` settings for
+ * config.json's `tasks`. Returns null if `dir` isn't a git repo or nothing
+ * was detected.
+ */
+export async function detectRepoSetup(dir: string): Promise<RepoSetupSuggestion | null> {
+  const main = await mainCheckout(dir)
+  if (!main.ok) return null
+  let entries: { name: string; isFile: () => boolean }[]
+  try {
+    entries = await fs.readdir(main.path, { withFileTypes: true })
+  } catch {
+    return null
+  }
+  const files = new Set(entries.filter((d) => d.isFile()).map((d) => d.name))
+  const envCandidates = [...files].filter((name) => name.startsWith('.env')).sort()
+  let copy: string[] = []
+  if (envCandidates.length > 0) {
+    const tracked = await git(main.path, ['ls-files', '-z', '--', ...envCandidates])
+    const trackedSet = new Set(tracked.code === 0 ? tracked.stdout.split('\0').filter(Boolean) : [])
+    copy = envCandidates.filter((name) => !trackedSet.has(name) && isRepoPath(name))
+  }
+  const setup = LOCKFILE_SETUPS.find(([file]) => files.has(file))?.[1]
+  if (copy.length === 0 && !setup) return null
+  return {
+    repo: abbreviateHome(main.path),
+    copy,
+    ...(setup ? { setup } : {})
+  }
 }
 
 /**

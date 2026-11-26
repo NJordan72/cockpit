@@ -42,6 +42,7 @@ import { QuickCommandDialog } from './components/QuickCommandDialog'
 import { SaveCommandDialog } from './components/SaveCommandDialog'
 import { SecretPromptDialog } from './components/SecretPromptDialog'
 import { SessionList } from './components/SessionList'
+import { SettingsDialog } from './components/SettingsDialog'
 import { TabBar } from './components/TabBar'
 import { Toolbar } from './components/Toolbar'
 import { Workspace } from './components/Workspace'
@@ -118,7 +119,8 @@ const OWN_ACTIONS: readonly Action[] = [
   'kidsMode',
   'showPlan',
   'nextAttention',
-  'commandPalette'
+  'commandPalette',
+  'openSettings'
 ]
 
 /** Give a pane the keyboard, whether it's a terminal or a web page. */
@@ -165,6 +167,8 @@ export function App(): React.JSX.Element {
   const [openingUrl, setOpeningUrl] = useState(false)
   /** The Quick command dialog is up. */
   const [quickOpen, setQuickOpen] = useState(false)
+  /** The Settings dialog is up. */
+  const [settingsOpen, setSettingsOpen] = useState(false)
   /** A quick command picked from the command palette that needs an input. */
   const [quickInitial, setQuickInitial] = useState<QuickCommand | null>(null)
   /** The unified command palette is up. */
@@ -289,6 +293,7 @@ export function App(): React.JSX.Element {
   const planShownRef = useRef(planShown)
   const taskDialogRef = useRef(taskDialog)
   const quickOpenRef = useRef(quickOpen)
+  const settingsOpenRef = useRef(settingsOpen)
   const paletteOpenRef = useRef(paletteOpen)
   const compareOpenRef = useRef(compareOpen)
   const tasksRef = useRef(tasks)
@@ -305,6 +310,7 @@ export function App(): React.JSX.Element {
     planShownRef.current = planShown
     taskDialogRef.current = taskDialog
     quickOpenRef.current = quickOpen
+    settingsOpenRef.current = settingsOpen
     paletteOpenRef.current = paletteOpen
     compareOpenRef.current = compareOpen
     tasksRef.current = tasks
@@ -787,6 +793,11 @@ export function App(): React.JSX.Element {
           setQuickInitial(null)
           setQuickOpen(true)
           return
+        case 'openSettings':
+          if (kidsRef.current) return
+          setPicker(null)
+          setSettingsOpen(true)
+          return
         case 'commandPalette':
           setPicker(null)
           setQuickOpen(false)
@@ -836,6 +847,7 @@ export function App(): React.JSX.Element {
         planShownRef.current ||
         taskDialogRef.current ||
         quickOpenRef.current ||
+        settingsOpenRef.current ||
         paletteOpenRef.current ||
         compareOpenRef.current
       )
@@ -859,6 +871,7 @@ export function App(): React.JSX.Element {
         planShownRef.current ||
         taskDialogRef.current ||
         quickOpenRef.current ||
+        settingsOpenRef.current ||
         paletteOpenRef.current ||
         compareOpenRef.current
       )
@@ -889,7 +902,8 @@ export function App(): React.JSX.Element {
           taskDialogRef.current ||
           quickOpenRef.current ||
           paletteOpenRef.current ||
-          compareOpenRef.current
+          compareOpenRef.current ||
+          settingsOpenRef.current
         )
           return
         const el = document.activeElement
@@ -921,6 +935,7 @@ export function App(): React.JSX.Element {
         setQuickInitial(null)
         setPaletteOpen(false)
         setCompareOpen(false)
+        setSettingsOpen(false)
       } else requestAnimationFrame(focusWorkspace)
     })
     void api.kids.active().then((active) => {
@@ -1832,9 +1847,19 @@ export function App(): React.JSX.Element {
             initialPresetId={config.launcher.presetId}
             draft={taskDialog.draft}
             repo={taskDialog.repo}
+            taskSettings={config.tasks}
             onCreated={taskCreated}
             onCancel={() => {
               setTaskDialog(null)
+              requestAnimationFrame(focusWorkspace)
+            }}
+          />
+        )}
+        {settingsOpen && (
+          <SettingsDialog
+            config={config}
+            onClose={() => {
+              setSettingsOpen(false)
               requestAnimationFrame(focusWorkspace)
             }}
           />
