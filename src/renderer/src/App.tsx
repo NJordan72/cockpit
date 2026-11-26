@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import {
   activeLayout,
+  isTerminalPane,
   type Action,
   type AppearanceSettings,
   type CockpitConfig,
@@ -31,7 +32,7 @@ import { taskAt, type TaskDraft } from '@shared/tasks'
 import type { SecretPrompt, SessionStatus, WidgetInfo } from '@shared/widgets'
 import { ActivityPanel } from './activity/ActivityPanel'
 import { PlanDialog } from './activity/PlanDialog'
-import { newSessionTarget } from './agentSessions'
+import { newSessionTarget, presetAgent } from './agentSessions'
 import { Launcher } from './components/Launcher'
 import { Picker } from './components/Picker'
 import { QuickCommandDialog } from './components/QuickCommandDialog'
@@ -49,7 +50,7 @@ import { Monitor } from './frame/Monitor'
 import { takesPrompts, type PromptRequest } from './itemActions'
 import { KidsMode, type KidsStatus } from './kids/KidsMode'
 import { actionFor, compileKeymap } from './keybindings'
-import { findPane, findPrPane, makePane, makePrPane, makeWebPane } from './layout/model'
+import { allPanes, findPane, findPrPane, makePane, makePrPane, makeWebPane } from './layout/model'
 import { CommandsPanel, type RunWhere } from './panels/CommandsPanel'
 import { PrPanel } from './panels/PrPanel'
 import { PrPaneContext, type PrPaneEnv } from './prs/context'
@@ -960,7 +961,13 @@ export function App(): React.JSX.Element {
    * agent if none). A window of panels has the terminal window open it.
    */
   const openInTask = useCallback(
-    (path: string, presetId?: string, prompt?: string, background = false) => {
+    (
+      path: string,
+      presetId?: string,
+      prompt?: string,
+      background = false,
+      resume?: boolean | 'last'
+    ) => {
       const c = configRef.current
       if (!c) return
       const preset =
@@ -969,7 +976,12 @@ export function App(): React.JSX.Element {
         c.presets[0]
       if (!preset) return
       if (!terminals) {
-        api.tasks.open({ path, presetId: preset.id, ...(prompt ? { prompt } : {}) })
+        api.tasks.open({
+          path,
+          presetId: preset.id,
+          ...(prompt ? { prompt } : {}),
+          ...(resume ? { resume } : {})
+        })
         return
       }
       if (!background) {
@@ -977,7 +989,15 @@ export function App(): React.JSX.Element {
         setRestorable(null)
       }
       const pane = makePane(preset.id, path)
-      dispatch({ type: 'newTab', pane: prompt ? { ...pane, prompt } : pane, background })
+      dispatch({
+        type: 'newTab',
+        pane: {
+          ...pane,
+          ...(prompt ? { prompt } : {}),
+          ...(resume ? { resume } : {})
+        },
+        background
+      })
     },
     [api, terminals]
   )
@@ -1079,7 +1099,10 @@ export function App(): React.JSX.Element {
 
   const prEnv = useMemo<PrPaneEnv>(() => ({ sessions, tasks, handOff }), [sessions, tasks, handOff])
   useEffect(
-    () => api.tasks.onOpen((req) => openInTask(req.path, req.presetId, req.prompt, req.background)),
+    () =>
+      api.tasks.onOpen((req) =>
+        openInTask(req.path, req.presetId, req.prompt, req.background, req.resume)
+      ),
     [api, openInTask]
   )
   // Main is removing the task these panes are in.
@@ -1102,11 +1125,14 @@ export function App(): React.JSX.Element {
     setPicker(null)
   }, [])
 
-  const restore = useCallback(() => {
-    // Background runs started from the start screen carry on beside the restored tabs.
-    if (restorable) dispatch({ type: 'restore', layout: restorable })
-    setRestorable(null)
-  }, [restorable])
+  const restore = useCallback(
+    (resume: boolean) => {
+      // Background runs started from the start screen carry on beside the restored tabs.
+      if (restorable) dispatch({ type: 'restore', layout: restorable, resume })
+      setRestorable(null)
+    },
+    [restorable]
+  )
 
   /** Start a quick command: out of sight in the background, or in a new tab. */
   const runQuick = useCallback(
@@ -1287,7 +1313,9 @@ export function App(): React.JSX.Element {
             presets={config.presets}
             actions={config.itemActions.runItem}
             onReveal={revealPane}
-            onOpen={(path, presetId) => openInTask(path, presetId)}
+            onOpen={(path, presetId, resume) =>
+              openInTask(path, presetId, undefined, false, resume)
+            }
             onOpenPr={(url, cwd, title) => {
               const pr = prRefFromUrl(url)
               if (pr) openPr({ pr, cwd, title, where: 'tab' })
@@ -1386,6 +1414,18 @@ export function App(): React.JSX.Element {
                     initialPresetId={config.launcher.presetId}
                     projectsDir={config.projectsDir}
                     restoreTabs={restorable ? foregroundTabs(restorable.tabs).length : 0}
+                    canResume={
+                      restorable !== null &&
+                      foregroundTabs(restorable.tabs).some((t) =>
+                        allPanes(t.root).some(
+                          (p) =>
+                            isTerminalPane(p) &&
+                            presetAgent(
+                              config.presets.find((x) => x.id === p.presetId)?.command
+                            ) !== null
+                        )
+                      )
+                    }
                     inputRef={launcherInput}
                     onLaunch={launch}
                     onRestore={restore}

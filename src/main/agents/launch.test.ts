@@ -76,6 +76,34 @@ describe('agentLaunch', () => {
     expect(agentLaunch('htop', files, { resume: true })).toEqual({ command: 'htop', agent: null })
   })
 
+  it('resumes a specific session id or falls back to the latest conversation on auto-resume', () => {
+    expect(
+      agentLaunch('claude --model opus', files, { resume: 'last', sessionId: 'sess-123' }).command
+    ).toBe(`claude --resume sess-123 --settings ${files.claudeSettings} --model opus`)
+    expect(agentLaunch('claude', files, { sessionId: 'sess-123' }).command).toBe(
+      `claude --resume sess-123 --settings ${files.claudeSettings}`
+    )
+    expect(agentLaunch('claude', files, { resume: false, sessionId: 'sess-123' }).command).toBe(
+      `claude --settings ${files.claudeSettings}`
+    )
+    expect(agentLaunch('claude', files, { resume: 'last' }).command).toBe(
+      `claude --continue --settings ${files.claudeSettings}`
+    )
+    // Invalid session ids (e.g. starting with "-" or path traversal) fall back to --continue.
+    expect(agentLaunch('claude', files, { resume: 'last', sessionId: '--bad' }).command).toBe(
+      `claude --continue --settings ${files.claudeSettings}`
+    )
+    expect(agentLaunch('codex --search', files, { resume: 'last' }).command).toBe(
+      'codex resume --last --search'
+    )
+    expect(agentLaunch('agy --model x', files, { resume: 'last' }).command).toBe(
+      'agy --continue --model x'
+    )
+    expect(
+      agentLaunch('claude', files, { resume: 'last', sessionId: 'sess-123', prompt: 'hi' }).prompted
+    ).toBeUndefined()
+  })
+
   it('passes a first prompt last, quoted', () => {
     expect(agentLaunch('claude', files, { prompt: "/start-story sc-12 it's" }).command).toBe(
       `claude --settings ${files.claudeSettings} '/start-story sc-12 it'\\''s'`

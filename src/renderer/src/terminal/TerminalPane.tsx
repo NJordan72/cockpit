@@ -56,7 +56,8 @@ export function TerminalPane({
   const spawnArgs = useRef({
     presetId: pane.presetId,
     cwd: pane.cwd,
-    resume: pane.resume === true,
+    resume: pane.resume,
+    sessionId: pane.sessionId,
     prompt: pane.prompt,
     quick: pane.quick,
     onFocus,
@@ -68,7 +69,8 @@ export function TerminalPane({
     spawnArgs.current = {
       presetId: pane.presetId,
       cwd: pane.cwd,
-      resume: pane.resume === true,
+      resume: pane.resume,
+      sessionId: pane.sessionId,
       prompt: pane.prompt,
       quick: pane.quick,
       onFocus,
@@ -124,7 +126,7 @@ export function TerminalPane({
     const start = (): void => {
       setExit(null)
       fit.fit()
-      const { presetId, cwd, resume, prompt, quick } = spawnArgs.current
+      const { presetId, cwd, resume, sessionId, prompt, quick } = spawnArgs.current
       const run = pending
       pending = undefined
       typing?.dispose()
@@ -142,6 +144,7 @@ export function TerminalPane({
           presetId,
           cwd,
           resume,
+          sessionId,
           prompt,
           quick,
           strictCwd: run?.strictCwd

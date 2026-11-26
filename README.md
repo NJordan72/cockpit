@@ -91,8 +91,13 @@ or `/`. The switch lists every preset with a command (Claude Code, Codex, and
 Antigravity CLI by default).
 
 If the last session left tabs open, **Restore last session** brings them back
-instead. Launching a project starts fresh, and the old layout is gone. Closing
-the last tab returns to the start screen.
+fresh, and when any of those tabs ran an agent, **Restore & resume** brings
+them back with their previous conversations resumed (`claude --resume <id>` for
+Claude Code panes whose session id was captured, `codex resume --last` for
+Codex, and `agy --continue` for Antigravity CLI, falling back cleanly to a
+fresh session if a conversation no longer exists). Launching a project starts
+fresh, and the old layout is gone. Closing the last tab returns to the start
+screen.
 
 ## Tabs, splits, presets
 
@@ -117,10 +122,11 @@ folder is hidden. The tab shortcuts skip hidden tabs, the button counts them,
 and opening a new tab in a hidden folder shows that folder again. Each window
 keeps its own filter.
 
-The layout (tabs, splits, sizes, each pane's preset and directory) is saved to
-`~/.cockpit/config.json` for each window, and the start screen offers to restore it on
+The layout (tabs, splits, sizes, each pane's preset, directory, and last Claude
+Code session id) is saved to `~/.cockpit/config.json` for each window, and the
+start screen offers to restore it fresh or with **Restore & resume** on
 relaunch. Processes and scrollback are not restored; each pane starts its
-preset fresh in the directory it was last in. When a pane's process exits, the
+preset in the directory it was last in. When a pane's process exits, the
 pane shows the exit status; press `Enter` to restart it.
 
 A pane can also show a web page: Cmd+L (or Web in the toolbar) takes a URL, a
@@ -600,7 +606,9 @@ place, and **Remove** once it's finished or cancelled.
 Cockpit saves each run to `~/.cockpit/runs/<id>.json`, so a run survives a
 restart. Agents don't, because each pane starts a new process when Cockpit
 relaunches. An item whose agent was working shows **No agent running**, and
-clicking it opens one in its worktree. While a run has items working or in
+clicking it resumes its last session in that worktree (falling back to a fresh
+session if none exists; right-click for **Resume last session** or **Open fresh
+session**). While a run has items working or in
 review, Cockpit keeps reading their pull requests with no window on screen, so
 a run left going overnight still sees its merges. Nothing starts while kids
 mode is on.

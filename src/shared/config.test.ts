@@ -15,6 +15,7 @@ import {
   readSidebar,
   SIDEBAR_MAX_WIDTH,
   terminalFontStack,
+  validSessionId,
   type ActivitySettings,
   type CockpitConfig,
   type PaneNode,
@@ -288,6 +289,88 @@ describe('migrateConfig', () => {
       { type: 'pane', id: 'p-b', presetId: 'shell', cwd: '~/dev/r' },
       { type: 'pane', id: 'p-c', presetId: 'shell', cwd: '~/dev/r' }
     ])
+  })
+
+  it('keeps valid sessionId on terminal panes and drops invalid or misplaced ones', () => {
+    const c = migrateConfig({
+      windows: [
+        {
+          id: 'main',
+          tabs: [
+            {
+              id: 't1',
+              root: {
+                type: 'pane',
+                id: 'p1',
+                presetId: 'claude',
+                cwd: '~/dev/a',
+                sessionId: '550e8400-e29b-41d4-a716-446655440000'
+              }
+            },
+            {
+              id: 't2',
+              root: {
+                type: 'pane',
+                id: 'p2',
+                presetId: 'claude',
+                cwd: '~/dev/a',
+                sessionId: '--flag'
+              }
+            },
+            {
+              id: 't3',
+              root: {
+                type: 'pane',
+                id: 'p3',
+                presetId: 'claude',
+                cwd: '~/dev/a',
+                sessionId: 'a..b'
+              }
+            },
+            {
+              id: 't4',
+              root: {
+                type: 'pane',
+                id: 'p4',
+                presetId: 'deleted-preset',
+                cwd: '~/dev/a',
+                sessionId: 'sess-ok'
+              }
+            },
+            {
+              id: 't5',
+              root: {
+                type: 'pane',
+                id: 'p5',
+                presetId: 'shell',
+                cwd: '~',
+                url: 'https://example.com/',
+                sessionId: 'sess-web'
+              }
+            }
+          ]
+        }
+      ]
+    })
+    expect(win(c).tabs.map((t) => t.root)).toEqual([
+      {
+        type: 'pane',
+        id: 'p1',
+        presetId: 'claude',
+        cwd: '~/dev/a',
+        sessionId: '550e8400-e29b-41d4-a716-446655440000'
+      },
+      { type: 'pane', id: 'p2', presetId: 'claude', cwd: '~/dev/a' },
+      { type: 'pane', id: 'p3', presetId: 'claude', cwd: '~/dev/a' },
+      { type: 'pane', id: 'p4', presetId: 'shell', cwd: '~/dev/a' },
+      { type: 'pane', id: 'p5', presetId: 'shell', cwd: '~', url: 'https://example.com/' }
+    ])
+    expect(validSessionId('abc_123.def')).toBe(true)
+    expect(validSessionId('')).toBe(false)
+    expect(validSessionId('-x')).toBe(false)
+    expect(validSessionId('a/b')).toBe(false)
+    expect(validSessionId('a..b')).toBe(false)
+    expect(validSessionId('a'.repeat(129))).toBe(false)
   })
 })
 

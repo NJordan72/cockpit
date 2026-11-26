@@ -2,6 +2,7 @@
 // Cockpit. Everything is passed on the command line or in the pane's
 // environment: Cockpit never edits ~/.claude/settings.json,
 // ~/.codex/config.toml, or ~/.gemini. Pure, so it can be tested.
+import { validSessionId } from '@shared/config'
 import type { Effort } from '@shared/quickCommands'
 import type { AgentKind } from '@shared/widgets'
 
@@ -54,8 +55,15 @@ export interface AgentLaunch {
 }
 
 export interface LaunchOptions {
-  /** Open the agent's own picker of past sessions in the directory. */
-  resume?: boolean
+  /**
+   * Resume a past session instead of starting fresh:
+   * - `true` / `'picker'`: open the agent's own picker of past sessions in the directory.
+   * - `'last'`: resume `sessionId` when given (Claude Code), or the directory's latest
+   *   conversation (`claude --continue`, `codex resume --last`, `agy --continue`).
+   */
+  resume?: boolean | 'picker' | 'last'
+  /** Resume a specific Claude Code session (`claude --resume <id>`). */
+  sessionId?: string
   /** The first prompt of a new session. */
   prompt?: string
   /** `--model`, for Claude Code and Codex. */
@@ -75,38 +83,59 @@ function modelFlags(agent: AgentKind, model?: string, effort?: Effort): string[]
   return agent === 'claude' && effort ? [...flags, '--effort', effort] : flags
 }
 
+/** Flags that resume a past conversation for `agent`, or empty for a fresh start. */
+function resumeFlags(
+  agent: AgentKind,
+  resume: LaunchOptions['resume'],
+  sessionId: string | undefined
+): string[] {
+  const validId = validSessionId(sessionId) ? sessionId : undefined
+  const mode =
+    resume === 'last' || (resume === undefined && validId) ? 'last' : resume ? 'picker' : null
+  if (!mode) return []
+  switch (agent) {
+    case 'claude':
+      if (mode === 'last') return validId ? ['--resume', validId] : ['--continue']
+      return ['--resume']
+    case 'codex':
+      return mode === 'last' ? ['resume', '--last'] : ['resume']
+    case 'agy':
+      return ['--continue']
+  }
+}
+
 /**
  * The preset command with the flags its agent needs to report to Cockpit.
  * Codex needs none: it reports over OSC 7501 in any terminal (see codex.ts),
  * and any `-c` would also keep it off its shared background server, so its
- * sessions wouldn't show in `codex agents`. With `resume`, the agent opens
- * its own picker of past sessions in the directory: `claude --resume`
+ * sessions wouldn't show in `codex agents`. With `resume: true` (or `'picker'`),
+ * the agent opens its own picker of past sessions in the directory: `claude --resume`
  * (first, so its optional value can't take the next word) or `codex resume`.
- * `model` and `effort` come after (see modelFlags). agy has no flag for its picker, so it
- * continues the directory's latest conversation with `--continue`. A
- * `prompt` goes last, as the agent's first message (`--prompt-interactive`
- * for agy, whose `--prompt` runs headless). Other commands run as they are.
+ * With `resume: 'last'`, Claude Code resumes `sessionId` (`claude --resume <id>`)
+ * or continues the directory's latest (`claude --continue`), Codex runs
+ * `codex resume --last`, and agy runs `agy --continue`. `model` and `effort`
+ * come after (see modelFlags). A `prompt` goes last, as the agent's first
+ * message (`--prompt-interactive` for agy, whose `--prompt` runs headless).
+ * Other commands run as they are.
  */
 export function agentLaunch(
   command: string | undefined,
   files: { claudeSettings: string },
-  { resume = false, prompt, model, effort }: LaunchOptions = {}
+  { resume, sessionId, prompt, model, effort }: LaunchOptions = {}
 ): AgentLaunch {
   const found = detectAgent(command)
   if (!command || !found) return { command, agent: null }
+  const resuming = resumeFlags(found.agent, resume, sessionId)
   const flags = [
-    ...(found.agent === 'claude'
-      ? [...(resume ? ['--resume'] : []), '--settings', files.claudeSettings]
-      : resume
-        ? [found.agent === 'codex' ? 'resume' : '--continue']
-        : []),
+    ...resuming,
+    ...(found.agent === 'claude' ? ['--settings', files.claudeSettings] : []),
     ...modelFlags(found.agent, model, effort)
   ]
   const inserted = flags.map((f) => ` ${shQuote(f)}`).join('')
   const text = prompt?.trim()
   // Joined to its flag with "=", a prompt that starts with "--" can't pass for another flag.
   const first =
-    text && !resume
+    text && resuming.length === 0
       ? ` ${shQuote(found.agent === 'agy' ? `--prompt-interactive=${text}` : text)}`
       : ''
   return {
