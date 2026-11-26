@@ -32,7 +32,8 @@ const waiting: PaneStatus = {
   message: 'Claude needs permission to use Bash',
   title: 'Fix it',
   tokens: 100,
-  doneMessage: null
+  doneMessage: null,
+  sessionId: null
 }
 
 const story: PaneLabel = {

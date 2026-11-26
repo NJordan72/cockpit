@@ -558,6 +558,7 @@ button.label-row:hover .label-title {
 
 .launcher-controls {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 10px;
   margin-bottom: 10px;
@@ -593,6 +594,12 @@ button.label-row:hover .label-title {
   flex: 1;
 }
 
+.launcher-restore-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .launcher-restore {
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -604,6 +611,16 @@ button.label-row:hover .label-title {
 .launcher-restore:hover {
   color: var(--fg);
   background: var(--bg-hover);
+}
+
+.launcher-restore-resume {
+  color: var(--fg);
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+.launcher-restore-resume:hover {
+  background: color-mix(in srgb, var(--accent) 28%, var(--bg-hover));
 }
 
 .launcher .picker-input {

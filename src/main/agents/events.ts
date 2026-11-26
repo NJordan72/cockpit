@@ -44,6 +44,8 @@ export interface AgentReport {
   /** Claude Code's transcript, where the title and token counts live. */
   transcriptPath: string | null
   title: string | null
+  /** The agent's own conversation id, when reported (Claude Code hooks). */
+  sessionId?: string | null
 }
 
 type Obj = Record<string, unknown>
@@ -113,7 +115,8 @@ export function parseClaudeHook(event: string, payload: unknown): AgentReport {
   const report = (signal: AgentSignal): AgentReport => ({
     signal,
     transcriptPath: str(p.transcript_path),
-    title: str(p.session_title)
+    title: str(p.session_title),
+    sessionId: str(p.session_id)
   })
   const tool = str(p.tool_name)
   const key = toolKey(p.tool_name, p.tool_input)

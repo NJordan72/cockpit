@@ -62,7 +62,7 @@ export function itemMeta(item: RunItemView, run: Pick<RunView, 'mode' | 'paused'
         : `Starts${where} when a slot frees up`
     }
     case 'working':
-      return s.agent ? (AGENT_NOTE[s.agent] ?? 'Agent idle') : 'No agent running. Click to open one'
+      return s.agent ? (AGENT_NOTE[s.agent] ?? 'Agent idle') : 'No agent running. Click to resume'
     case 'review': {
       if (!s.pr) return 'In review'
       const parts = [prChip(s.pr)]
