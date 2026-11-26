@@ -19,6 +19,7 @@ const session = (extra: Partial<PaneSession> = {}): PaneSession => ({
   message: null,
   labels: [],
   background: null,
+  ports: [],
   ...extra
 })
 

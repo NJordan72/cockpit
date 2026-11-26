@@ -47,6 +47,7 @@ describe('actionFor', () => {
     expect(actionFor(keymap, ev('KeyD', { meta: true }))).toBe('splitRight')
     expect(actionFor(keymap, ev('KeyD', { meta: true, shift: true }))).toBe('splitDown')
     expect(actionFor(keymap, ev('Digit3', { meta: true }))).toBe('goToTab3')
+    expect(actionFor(keymap, ev('KeyF', { meta: true }))).toBe('findInPane')
   })
 
   it('keeps Cmd+R and Cmd+Shift+R apart', () => {
@@ -57,6 +58,10 @@ describe('actionFor', () => {
   it('keeps Cmd+P (commandPalette) and Cmd+Shift+P (showPlan) apart', () => {
     expect(actionFor(keymap, ev('KeyP', { meta: true }))).toBe('commandPalette')
     expect(actionFor(keymap, ev('KeyP', { meta: true, shift: true }))).toBe('showPlan')
+  })
+
+  it('matches nextAttention on Cmd+Shift+U', () => {
+    expect(actionFor(keymap, ev('KeyU', { meta: true, shift: true }))).toBe('nextAttention')
   })
 
   it('requires an exact modifier match', () => {

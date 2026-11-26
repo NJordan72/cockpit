@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import {
   activeLayout,
+  isTerminalPane,
   type Action,
   type AppearanceSettings,
   type CockpitConfig,
@@ -31,10 +32,11 @@ import { taskAt, type TaskDraft } from '@shared/tasks'
 import type { SecretPrompt, SessionStatus, WidgetInfo } from '@shared/widgets'
 import { ActivityPanel } from './activity/ActivityPanel'
 import { PlanDialog } from './activity/PlanDialog'
-import { newSessionTarget } from './agentSessions'
+import { newSessionTarget, presetAgent } from './agentSessions'
 import { CommandPalette } from './components/CommandPalette'
 import type { PaletteEffect } from './components/commandPaletteModel'
 import { Launcher } from './components/Launcher'
+import { CompareAgentsDialog } from './components/CompareAgentsDialog'
 import { Picker } from './components/Picker'
 import { QuickCommandDialog } from './components/QuickCommandDialog'
 import { SaveCommandDialog } from './components/SaveCommandDialog'
@@ -43,6 +45,8 @@ import { SessionList } from './components/SessionList'
 import { TabBar } from './components/TabBar'
 import { Toolbar } from './components/Toolbar'
 import { Workspace } from './components/Workspace'
+import { AgentHandoffContext, type AgentHandoffEnv } from './handoff/context'
+import type { AgentHandoffTarget } from './handoff/model'
 import { Clock } from './frame/Clock'
 import { FrameView, type PanelPlace } from './frame/FrameView'
 import { ImagePanel } from './frame/ImagePanel'
@@ -51,14 +55,23 @@ import { Monitor } from './frame/Monitor'
 import { takesPrompts, type PromptRequest } from './itemActions'
 import { KidsMode, type KidsStatus } from './kids/KidsMode'
 import { actionFor, compileKeymap } from './keybindings'
-import { findPane, findPrPane, makePane, makePrPane, makeWebPane } from './layout/model'
+import {
+  allPanes,
+  findPane,
+  findPrPane,
+  findWebPane,
+  makePane,
+  makePrPane,
+  makeWebPane
+} from './layout/model'
 import { CommandsPanel, type RunWhere } from './panels/CommandsPanel'
 import { PrPanel } from './panels/PrPanel'
 import { PrPaneContext, type PrPaneEnv } from './prs/context'
 import type { HandOffTarget } from './prs/model'
 import { activeTab, layoutReducer } from './layout/reducer'
 import { foregroundTabs, shownTabs, tabDirs, tabFolders } from './layout/tabs'
-import { terminals } from './terminal/registry'
+import { nextAttentionTarget } from './sessions'
+import { terminalFinders, terminals } from './terminal/registry'
 import { queueRun } from './terminal/run'
 import { applyTheme } from './theme'
 import { OpenUrlDialog, type OpenWhere } from './web/OpenUrlDialog'
@@ -100,7 +113,13 @@ const SAVE_DELAY_MS = 150
 const tabIds = (tabs: readonly Tab[]): string[] => tabs.map((t) => t.id)
 
 /** Actions a window without terminals still runs itself; it forwards the rest. */
-const OWN_ACTIONS: readonly Action[] = ['toggleSidebar', 'kidsMode', 'showPlan', 'commandPalette']
+const OWN_ACTIONS: readonly Action[] = [
+  'toggleSidebar',
+  'kidsMode',
+  'showPlan',
+  'nextAttention',
+  'commandPalette'
+]
 
 /** Give a pane the keyboard, whether it's a terminal or a web page. */
 function focusPane(paneId: string): void {
@@ -150,6 +169,8 @@ export function App(): React.JSX.Element {
   const [quickInitial, setQuickInitial] = useState<QuickCommand | null>(null)
   /** The unified command palette is up. */
   const [paletteOpen, setPaletteOpen] = useState(false)
+  /** The Compare agents dialog is up. */
+  const [compareOpen, setCompareOpen] = useState(false)
   /** The New task dialog: what it starts with, and the repository it suggests. */
   const [taskDialog, setTaskDialog] = useState<{
     key: number
@@ -269,6 +290,7 @@ export function App(): React.JSX.Element {
   const taskDialogRef = useRef(taskDialog)
   const quickOpenRef = useRef(quickOpen)
   const paletteOpenRef = useRef(paletteOpen)
+  const compareOpenRef = useRef(compareOpen)
   const tasksRef = useRef(tasks)
   useEffect(() => {
     configRef.current = config
@@ -284,6 +306,7 @@ export function App(): React.JSX.Element {
     taskDialogRef.current = taskDialog
     quickOpenRef.current = quickOpen
     paletteOpenRef.current = paletteOpen
+    compareOpenRef.current = compareOpen
     tasksRef.current = tasks
   })
 
@@ -660,6 +683,25 @@ export function App(): React.JSX.Element {
 
   useEffect(() => api.runs.onDraft((d) => void openRunDialog(d)), [api, openRunDialog])
 
+  /** Show a pane of this window and give it the keyboard (a notification or main asked). */
+  const showPane = useCallback((paneId: string) => {
+    setPicker(null)
+    dispatch({ type: 'focusPane', paneId })
+    requestAnimationFrame(() => focusPane(paneId))
+  }, [])
+
+  useEffect(() => api.sessions.onFocusRequest(showPane), [api, showPane])
+
+  /** Show a pane (the session list or attention queue asked); main brings forward another window's. */
+  const revealPane = useCallback(
+    (paneId: string) => {
+      const mine = layoutRef.current.tabs.some((t) => findPane(t.root, paneId))
+      if (mine) showPane(paneId)
+      else api.sessions.reveal(paneId)
+    },
+    [api, showPane]
+  )
+
   const runAction = useCallback(
     (action: Action) => {
       if (!terminals && !OWN_ACTIONS.includes(action)) {
@@ -752,6 +794,18 @@ export function App(): React.JSX.Element {
           setOpeningUrl(false)
           setPaletteOpen(true)
           return
+        case 'nextAttention': {
+          const currentId =
+            sessionsRef.current.find((s) => s.focused)?.id ??
+            activeTab(layoutRef.current)?.activePaneId ??
+            null
+          const target = nextAttentionTarget(sessionsRef.current, currentId)
+          if (target) revealPane(target.id)
+          return
+        }
+        case 'findInPane':
+          if (tab) terminalFinders.get(tab.activePaneId)?.()
+          return
         default: {
           const n = /^goToTab(\d)$/.exec(action)?.[1]
           if (n)
@@ -763,7 +817,7 @@ export function App(): React.JSX.Element {
         }
       }
     },
-    [api, terminals, openPicker, openShell, openTaskDialog, runAppearance, showPlan]
+    [api, terminals, openPicker, openShell, openTaskDialog, runAppearance, showPlan, revealPane]
   )
 
   // A window without terminals passed this one an action.
@@ -782,7 +836,8 @@ export function App(): React.JSX.Element {
         planShownRef.current ||
         taskDialogRef.current ||
         quickOpenRef.current ||
-        paletteOpenRef.current
+        paletteOpenRef.current ||
+        compareOpenRef.current
       )
         return
       const action = actionFor(keymap, e)
@@ -804,7 +859,8 @@ export function App(): React.JSX.Element {
         planShownRef.current ||
         taskDialogRef.current ||
         quickOpenRef.current ||
-        paletteOpenRef.current
+        paletteOpenRef.current ||
+        compareOpenRef.current
       )
         return
       const action = actionFor(keymap, key)
@@ -815,25 +871,6 @@ export function App(): React.JSX.Element {
       offAppKey()
     }
   }, [api, keymap, runAction])
-
-  /** Show a pane of this window and give it the keyboard (a notification or main asked). */
-  const showPane = useCallback((paneId: string) => {
-    setPicker(null)
-    dispatch({ type: 'focusPane', paneId })
-    requestAnimationFrame(() => focusPane(paneId))
-  }, [])
-
-  useEffect(() => api.sessions.onFocusRequest(showPane), [api, showPane])
-
-  /** Show a pane (the session list asked); main brings forward another window's. */
-  const revealPane = useCallback(
-    (paneId: string) => {
-      const mine = layoutRef.current.tabs.some((t) => findPane(t.root, paneId))
-      if (mine) showPane(paneId)
-      else api.sessions.reveal(paneId)
-    },
-    [api, showPane]
-  )
 
   // When the window comes back, Chromium can hand focus to the first button in
   // the page, where a stray Enter would close a tab. Give it to the terminal
@@ -851,7 +888,8 @@ export function App(): React.JSX.Element {
           planShownRef.current ||
           taskDialogRef.current ||
           quickOpenRef.current ||
-          paletteOpenRef.current
+          paletteOpenRef.current ||
+          compareOpenRef.current
         )
           return
         const el = document.activeElement
@@ -882,6 +920,7 @@ export function App(): React.JSX.Element {
         setQuickOpen(false)
         setQuickInitial(null)
         setPaletteOpen(false)
+        setCompareOpen(false)
       } else requestAnimationFrame(focusWorkspace)
     })
     void api.kids.active().then((active) => {
@@ -968,12 +1007,44 @@ export function App(): React.JSX.Element {
     [focused]
   )
 
+  /** Opens (or focuses) a split web pane beside `paneId` at a detected local server URL. */
+  const openPort = useCallback(
+    (paneId: string, url: string) => {
+      const tab = layoutRef.current.tabs.find((t) => findPane(t.root, paneId))
+      if (!tab) {
+        api.web.openPane({ paneId, url })
+        return
+      }
+      const existing = findWebPane(tab.root, url)
+      if (existing) {
+        showPane(existing.id)
+        return
+      }
+      const target = findPane(tab.root, paneId)
+      if (!target) return
+      setPicker(null)
+      setRestorable(null)
+      const webPane = makeWebPane(url, target.cwd)
+      dispatch({ type: 'split', paneId, direction: 'row', pane: webPane })
+      dispatch({ type: 'focusPane', paneId: webPane.id })
+    },
+    [api, showPane]
+  )
+
+  useEffect(() => api.web.onOpenPane(({ paneId, url }) => openPort(paneId, url)), [api, openPort])
+
   /**
    * A new tab in a task's worktree, running the preset (the start screen's
    * agent if none). A window of panels has the terminal window open it.
    */
   const openInTask = useCallback(
-    (path: string, presetId?: string, prompt?: string, background = false) => {
+    (
+      path: string,
+      presetId?: string,
+      prompt?: string,
+      background = false,
+      resume?: boolean | 'last'
+    ) => {
       const c = configRef.current
       if (!c) return
       const preset =
@@ -982,7 +1053,12 @@ export function App(): React.JSX.Element {
         c.presets[0]
       if (!preset) return
       if (!terminals) {
-        api.tasks.open({ path, presetId: preset.id, ...(prompt ? { prompt } : {}) })
+        api.tasks.open({
+          path,
+          presetId: preset.id,
+          ...(prompt ? { prompt } : {}),
+          ...(resume ? { resume } : {})
+        })
         return
       }
       if (!background) {
@@ -990,7 +1066,15 @@ export function App(): React.JSX.Element {
         setRestorable(null)
       }
       const pane = makePane(preset.id, path)
-      dispatch({ type: 'newTab', pane: prompt ? { ...pane, prompt } : pane, background })
+      dispatch({
+        type: 'newTab',
+        pane: {
+          ...pane,
+          ...(prompt ? { prompt } : {}),
+          ...(resume ? { resume } : {})
+        },
+        background
+      })
     },
     [api, terminals]
   )
@@ -1091,8 +1175,75 @@ export function App(): React.JSX.Element {
   )
 
   const prEnv = useMemo<PrPaneEnv>(() => ({ sessions, tasks, handOff }), [sessions, tasks, handOff])
+
+  /** Sends a plan or terminal selection to an existing agent pane, a new split, or a new tab. */
+  const handOffAgent = useCallback(
+    async (prompt: string, target: AgentHandoffTarget): Promise<boolean> => {
+      switch (target.kind) {
+        case 'pane': {
+          const ok = await api.sessions.send(target.paneId, prompt)
+          if (ok) api.sessions.reveal(target.paneId)
+          return ok
+        }
+        case 'split': {
+          if (!terminals) {
+            api.tasks.open({ path: target.cwd, presetId: target.presetId, prompt })
+            return true
+          }
+          setRestorable(null)
+          dispatch({
+            type: 'split',
+            paneId: target.sourcePaneId,
+            direction: 'row',
+            pane: { ...makePane(target.presetId, target.cwd), prompt },
+            fallbackNewTab: true
+          })
+          return true
+        }
+        case 'newTab': {
+          if (!terminals) {
+            api.tasks.open({ path: target.cwd, presetId: target.presetId, prompt })
+            return true
+          }
+          setRestorable(null)
+          dispatch({
+            type: 'newTab',
+            pane: { ...makePane(target.presetId, target.cwd), prompt }
+          })
+          return true
+        }
+      }
+    },
+    [api, terminals]
+  )
+
+  const agentHandoffEnv = useMemo<AgentHandoffEnv>(
+    () => ({ presets: config?.presets ?? [], sessions, handOff: handOffAgent }),
+    [config?.presets, sessions, handOffAgent]
+  )
+
+  const openCompare = useCallback(
+    (leftPresetId: string, rightPresetId: string, cwd: string, prompt: string) => {
+      setCompareOpen(false)
+      setRestorable(null)
+      dispatch({
+        type: 'newSplitTab',
+        left: { ...makePane(leftPresetId, cwd), prompt },
+        right: { ...makePane(rightPresetId, cwd), prompt }
+      })
+    },
+    []
+  )
+
+  const closeCompare = useCallback(() => {
+    setCompareOpen(false)
+    requestAnimationFrame(focusWorkspace)
+  }, [focusWorkspace])
   useEffect(
-    () => api.tasks.onOpen((req) => openInTask(req.path, req.presetId, req.prompt, req.background)),
+    () =>
+      api.tasks.onOpen((req) =>
+        openInTask(req.path, req.presetId, req.prompt, req.background, req.resume)
+      ),
     [api, openInTask]
   )
   // Main is removing the task these panes are in.
@@ -1115,11 +1266,14 @@ export function App(): React.JSX.Element {
     setPicker(null)
   }, [])
 
-  const restore = useCallback(() => {
-    // Background runs started from the start screen carry on beside the restored tabs.
-    if (restorable) dispatch({ type: 'restore', layout: restorable })
-    setRestorable(null)
-  }, [restorable])
+  const restore = useCallback(
+    (resume: boolean) => {
+      // Background runs started from the start screen carry on beside the restored tabs.
+      if (restorable) dispatch({ type: 'restore', layout: restorable, resume })
+      setRestorable(null)
+    },
+    [restorable]
+  )
 
   /** Start a quick command: out of sight in the background, or in a new tab. */
   const runQuick = useCallback(
@@ -1326,6 +1480,7 @@ export function App(): React.JSX.Element {
             collapsed={place.collapsed}
             onToggle={place.canCollapse ? place.toggleCollapsed : undefined}
             onSelect={revealPane}
+            onOpenPort={openPort}
             onDismiss={
               terminals
                 ? (paneId) => {
@@ -1334,6 +1489,14 @@ export function App(): React.JSX.Element {
                   }
                 : undefined
             }
+            onApprove={(paneId) => api.pty.write(paneId, '\r')}
+            onDeny={(paneId) => api.pty.write(paneId, '\x1b')}
+            onReply={(paneId, text) => {
+              const session = sessionsRef.current.find((s) => s.id === paneId)
+              if (session?.agent) void api.sessions.send(paneId, text)
+              else api.pty.write(paneId, `${text}\r`)
+            }}
+            onDone={() => requestAnimationFrame(focusWorkspace)}
             onHidePanels={() => runAppearance({ type: 'togglePanels' })}
           />
         )
@@ -1387,6 +1550,7 @@ export function App(): React.JSX.Element {
             onNew={() => runAction('newTask')}
             onOpen={(task, presetId) => openInTask(task.path, presetId)}
             onReveal={revealPane}
+            onOpenPort={openPort}
             onPrompt={runItemPrompt}
           />
         )
@@ -1398,7 +1562,9 @@ export function App(): React.JSX.Element {
             presets={config.presets}
             actions={config.itemActions.runItem}
             onReveal={revealPane}
-            onOpen={(path, presetId) => openInTask(path, presetId)}
+            onOpen={(path, presetId, resume) =>
+              openInTask(path, presetId, undefined, false, resume)
+            }
             onOpenPr={(url, cwd, title) => {
               const pr = prRefFromUrl(url)
               if (pr) openPr({ pr, cwd, title, where: 'tab' })
@@ -1480,14 +1646,16 @@ export function App(): React.JSX.Element {
                 {layout.tabs.length > 0 && (
                   <div style={{ display: onScreen ? 'contents' : 'none' }}>
                     <PrPaneContext.Provider value={prEnv}>
-                      <Workspace
-                        layout={layout}
-                        presets={config.presets}
-                        settings={config.terminal}
-                        theme={terminalTheme}
-                        labels={labels}
-                        dispatch={dispatch}
-                      />
+                      <AgentHandoffContext.Provider value={agentHandoffEnv}>
+                        <Workspace
+                          layout={layout}
+                          presets={config.presets}
+                          settings={config.terminal}
+                          theme={terminalTheme}
+                          labels={labels}
+                          dispatch={dispatch}
+                        />
+                      </AgentHandoffContext.Provider>
                     </PrPaneContext.Provider>
                   </div>
                 )}
@@ -1497,6 +1665,18 @@ export function App(): React.JSX.Element {
                     initialPresetId={config.launcher.presetId}
                     projectsDir={config.projectsDir}
                     restoreTabs={restorable ? foregroundTabs(restorable.tabs).length : 0}
+                    canResume={
+                      restorable !== null &&
+                      foregroundTabs(restorable.tabs).some((t) =>
+                        allPanes(t.root).some(
+                          (p) =>
+                            isTerminalPane(p) &&
+                            presetAgent(
+                              config.presets.find((x) => x.id === p.presetId)?.command
+                            ) !== null
+                        )
+                      )
+                    }
                     inputRef={launcherInput}
                     onLaunch={launch}
                     onRestore={restore}
@@ -1528,6 +1708,7 @@ export function App(): React.JSX.Element {
         </div>
         <Toolbar
           focused={toolbarPane}
+          sessions={sessions}
           keybindings={config.keybindings}
           layouts={layoutChoices(config.appearance)}
           layout={view.layout}
@@ -1541,6 +1722,16 @@ export function App(): React.JSX.Element {
           onShowPlan={() => {
             if (toolbarPane) showPlan(toolbarPane, null)
           }}
+          onCompare={
+            terminals
+              ? () => {
+                  setPicker(null)
+                  setCompareOpen(true)
+                }
+              : undefined
+          }
+          onOpenPort={openPort}
+          waitingCount={sessions.filter((s) => s.status === 'needs-input').length}
         />
         {picker && (
           <Picker
@@ -1608,11 +1799,26 @@ export function App(): React.JSX.Element {
             onAnswer={(value) => answerPrompt(prompt, value)}
           />
         )}
+        {compareOpen && (
+          <CompareAgentsDialog
+            presets={config.presets}
+            focusedPresetId={toolbarPane?.presetId ?? null}
+            initialDir={toolbarPane?.cwd ?? config.projectsDir}
+            onCompare={openCompare}
+            onCancel={closeCompare}
+          />
+        )}
         {planShown && (
           <PlanDialog
             paneId={planShown.paneId}
             chosen={planShown.key}
             label={planShown.label}
+            presets={config.presets}
+            sessions={sessions}
+            canSplit={
+              terminals && layout.tabs.some((t) => findPane(t.root, planShown.paneId) !== null)
+            }
+            onHandOff={handOffAgent}
             onChoose={(key) => {
               setPlanShown({ ...planShown, key })
             }}

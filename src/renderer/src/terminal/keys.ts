@@ -9,6 +9,8 @@ export type KeyAction =
   | { kind: 'copy' }
   | { kind: 'paste' }
   | { kind: 'clear' }
+  | { kind: 'findNext' }
+  | { kind: 'findPrev' }
 
 /** ESC CR: what Option+Enter sends with Option-as-Meta. Claude Code, Codex and zsh all read it as "insert newline". */
 export const NEWLINE_SEQUENCE = '\x1b\r'
@@ -39,6 +41,8 @@ export function classifyKey(e: KeyLike): KeyAction {
         return e.shiftKey ? { kind: 'ignore' } : { kind: 'paste' }
       case 'k':
         return { kind: 'clear' }
+      case 'g':
+        return e.shiftKey ? { kind: 'findPrev' } : { kind: 'findNext' }
       default:
         // Every other Cmd shortcut belongs to the app, not the shell.
         return { kind: 'ignore' }

@@ -15,6 +15,8 @@ export interface PaneStatus {
   tokens: number | null
   /** The last thing the agent said it finished with; not shared with widgets. */
   doneMessage: string | null
+  /** The agent's conversation id, for resuming on restore; not shared with widgets. */
+  sessionId: string | null
 }
 
 export interface TrackerTimings {
@@ -108,7 +110,8 @@ export class StatusTracker {
         message: null,
         title: null,
         tokens: null,
-        doneMessage: null
+        doneMessage: null,
+        sessionId: null
       },
       hooked: false,
       pending: new Map(),
@@ -202,6 +205,7 @@ export class StatusTracker {
     pane.hooked = true
     const extra: Partial<PaneStatus> = {}
     if (report.title) extra.title = report.title
+    if (report.sessionId) extra.sessionId = report.sessionId
     const { signal } = report
     switch (signal.kind) {
       case 'idle':
@@ -210,6 +214,7 @@ export class StatusTracker {
         if (signal.fresh) {
           extra.title = report.title
           extra.tokens = null
+          extra.sessionId = report.sessionId ?? null
         }
         if (signal.keepDone && pane.state.status === 'done') this.update(pane, extra)
         else this.set(pane, 'idle', extra)

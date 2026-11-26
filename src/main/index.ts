@@ -30,6 +30,7 @@ import {
   MAX_WINDOWS,
   isTerminalPane,
   paneIds,
+  validSessionId,
   type AppearanceSettings,
   type BackgroundRun,
   type LauncherSettings,
@@ -86,6 +87,8 @@ import {
 } from '@shared/runs'
 import { resolveTheme, type ResolvedTheme } from '@shared/theme'
 import { canOpenExternally, isWebUrl, WEB_PARTITION } from '@shared/web'
+import { hasAgentSession } from './agents/history'
+import { detectAgent } from './agents/launch'
 import { AgentMonitor } from './agents/monitor'
 import { copyCommand, remoteTarget } from './agents/remote'
 import { serveAssets } from './assets'
@@ -101,6 +104,7 @@ import { listCharacters } from './kids'
 import { buildKidsMenu, buildMenu, menuTemplate } from './menu'
 import { abbreviateHome, agyHome, claudeHome, cockpitHome, codexHome, expandHome } from './paths'
 import { actOnPr, checkLog, listPrs, readPr, readPrAct } from './prs'
+import { PortTracker } from './ports'
 import { PtyManager } from './pty'
 import { runRequests, RunStore } from './runs'
 import { registerSchemes } from './schemes'
@@ -115,12 +119,22 @@ import { autoUpdater } from 'electron-updater'
 import { listSessions, widgetSession } from './widgets/sessions'
 
 // PTYs only start once the app is ready, by which time agents exists.
+const ports = new PortTracker(() => sessionsChanged())
 const ptys = new PtyManager({
-  output: (id, data) => agents.output(id, data),
+  output: (id, data) => {
+    agents.output(id, data)
+    ports.output(id, data)
+  },
   input: (id, data) => agents.input(id, data),
   resized: (id) => agents.resized(id),
-  exited: (id) => agents.exited(id),
-  killed: (id) => agents.killed(id)
+  exited: (id) => {
+    ports.clear(id)
+    agents.exited(id)
+  },
+  killed: (id) => {
+    ports.clear(id)
+    agents.killed(id)
+  }
 })
 let config: ConfigStore
 let themes: ThemeStore
@@ -259,7 +273,8 @@ function sessions(): PaneSession[] {
     {
       status: (id) => agents.status(id),
       branch: (id) => branches.get(id),
-      labels: (id) => widgets.labels.of(id)
+      labels: (id) => widgets.labels.of(id),
+      ports: (id) => ports.get(id)
     },
     focusedPaneId()
   )
@@ -817,18 +832,48 @@ function setKids(active: boolean, from: CockpitWindow | null = null): void {
   if (target) send(target, IPC.kidsChanged, active)
 }
 
-/** Record where each live pane's process is now, so a relaunch reopens it there. */
+/** Attach live agent session ids onto terminal panes so config.json keeps them across restarts. */
+function stampSessionIds(node: LayoutNode): LayoutNode {
+  if (node.type === 'split') return { ...node, children: node.children.map(stampSessionIds) }
+  if (!isTerminalPane(node)) return node
+  const live = agents.status(node.id)?.sessionId
+  return live && validSessionId(live) ? { ...node, sessionId: live } : node
+}
+
+/** Persist a pane's newly reported agent session id into its saved WindowState. */
+function persistSessionId(paneId: string): void {
+  const live = agents.status(paneId)?.sessionId
+  if (!live || !validSessionId(live)) return
+  const w = windowOfPane(paneId)
+  if (!w) return
+  const pane = findPaneNode(paneId)
+  if (!pane || pane.sessionId === live) return
+  const patch = (n: LayoutNode): LayoutNode =>
+    n.type === 'split'
+      ? { ...n, children: n.children.map(patch) }
+      : n.id === paneId
+        ? { ...n, sessionId: live }
+        : n
+  config.updateWindow(w.id, (s) => ({
+    ...s,
+    tabs: s.tabs.map((t) => ({ ...t, root: patch(t.root) }))
+  }))
+}
+
+/** Record where each live pane's process is now, and its agent session id, for relaunch. */
 function captureCwds(only?: CockpitWindow): void {
   const pids = ptys.pids()
-  if (pids.size === 0) return
   const update = (n: LayoutNode): LayoutNode => {
     if (n.type === 'split') return { ...n, children: n.children.map(update) }
     const pid = pids.get(n.id)
     // A remote pane's local process is ssh, wherever it started.
     const cwd = pid === undefined || paneHost(n) ? null : processCwdSync(pid)
-    return cwd ? { ...n, cwd: abbreviateHome(cwd) } : n
+    const live = isTerminalPane(n) ? agents.status(n.id)?.sessionId : null
+    const next: PaneNode = cwd ? { ...n, cwd: abbreviateHome(cwd) } : n
+    return live && validSessionId(live) ? { ...next, sessionId: live } : next
   }
   const live = new Set(windows.filter((w) => w.shown && (!only || w === only)).map((w) => w.id))
+  if (live.size === 0) return
   config.setWindows(
     config
       .get()
@@ -1077,10 +1122,30 @@ function registerIpc(): void {
       typeof opts.quick === 'string'
         ? config.get().quickCommands.find((q) => q.id === opts.quick && q.preset === preset.id)
         : undefined
+    let resume: boolean | 'last' = opts.resume === 'last' ? 'last' : opts.resume === true
+    let sessionId = validSessionId(opts.sessionId) ? opts.sessionId : undefined
+    // When auto-resuming a local agent pane, verify the saved session still exists
+    // so a deleted or missing conversation falls back cleanly to a fresh session.
+    if (resume === 'last' && !host) {
+      const detected = detectAgent(preset.command)?.agent
+      if (detected) {
+        const exists = await hasAgentSession(
+          detected,
+          cwd,
+          { claude: claudeHome(), codex: codexHome(), agy: agyHome() },
+          detected === 'claude' ? sessionId : undefined
+        )
+        if (!exists) {
+          resume = false
+          sessionId = undefined
+        }
+      }
+    }
     const launch = agents.launch(
       preset.command,
       {
-        resume: opts.resume === true,
+        resume,
+        sessionId: resume === 'last' ? sessionId : undefined,
         prompt: opts.prompt,
         model: quick?.model,
         effort: quick?.effort
@@ -1088,6 +1153,7 @@ function registerIpc(): void {
       host !== undefined
     )
     const env = agents.spawn(opts.id, launch.agent, host !== undefined, launch.prompted)
+    ports.clear(opts.id)
     // A new task's worktree runs its repository's setup first, once.
     const setup = host ? null : tasks.takeSetup(cwd)
     const command =
@@ -1152,8 +1218,11 @@ function registerIpc(): void {
     const w = windowFor(e.sender)
     if (!trusted(e) || !w || typeof layout !== 'object' || layout === null) return
     const { tabs, activeTabId } = layout as Partial<Layout>
+    const stamped = Array.isArray(tabs)
+      ? tabs.map((t) => ({ ...t, root: stampSessionIds(t.root) }))
+      : []
     // The store runs it through migration, so a bad layout can't corrupt the file.
-    config.updateWindow(w.id, (s) => ({ ...s, tabs: tabs ?? [], activeTabId: activeTabId ?? null }))
+    config.updateWindow(w.id, (s) => ({ ...s, tabs: stamped, activeTabId: activeTabId ?? null }))
     w.shown = true
     updateFocus()
     sessionsChanged()
@@ -1312,7 +1381,7 @@ function registerIpc(): void {
   ipcMain.on(IPC.tasksOpen, (e, req: unknown) => {
     const target = terminalWindow()
     if (!trusted(e) || !target || typeof req !== 'object' || req === null) return
-    const { path, presetId, prompt } = req as Record<string, unknown>
+    const { path, presetId, prompt, resume } = req as Record<string, unknown>
     if (typeof path !== 'string' || !tasks.list().some((t) => t.path === path)) return
     raise(target)
     send(target, IPC.tasksOpen, {
@@ -1320,7 +1389,8 @@ function registerIpc(): void {
       ...(typeof presetId === 'string' ? { presetId } : {}),
       ...(typeof prompt === 'string' && prompt.trim() && prompt.length <= MAX_PROMPT
         ? { prompt }
-        : {})
+        : {}),
+      ...(resume === true || resume === 'last' ? { resume } : {})
     })
   })
   ipcMain.handle(IPC.runsList, (e): RunView[] => {
@@ -1331,12 +1401,13 @@ function registerIpc(): void {
     if (!trusted(e) || !runs || typeof req !== 'object' || req === null) {
       return { ok: false, error: 'untrusted sender' }
     }
-    const { id, mode, maxParallel, presetId, repo } = req as Record<string, unknown>
+    const { id, mode, maxParallel, autoFixCi, presetId, repo } = req as Record<string, unknown>
     if (
       typeof id !== 'string' ||
       !RUN_MODES.includes(mode as RunMode) ||
       typeof maxParallel !== 'number' ||
       maxParallel > MAX_PARALLEL ||
+      (autoFixCi !== undefined && typeof autoFixCi !== 'boolean') ||
       typeof presetId !== 'string' ||
       !config.get().presets.some((p) => p.id === presetId) ||
       (repo !== undefined && (typeof repo !== 'string' || repo.length > 1024))
@@ -1347,6 +1418,7 @@ function registerIpc(): void {
       id,
       mode: mode as RunMode,
       maxParallel,
+      ...(typeof autoFixCi === 'boolean' ? { autoFixCi } : {}),
       presetId,
       ...(typeof repo === 'string' ? { repo } : {})
     })
@@ -1481,6 +1553,15 @@ function registerIpc(): void {
   ipcMain.handle(IPC.webRecent, (e): RecentPage[] => {
     if (!trusted(e)) throw new Error('untrusted sender')
     return config.get().recentPages
+  })
+  ipcMain.on(IPC.webOpenPane, (e, req: unknown) => {
+    if (!trusted(e) || typeof req !== 'object' || req === null) return
+    const { paneId, url } = req as Record<string, unknown>
+    if (typeof paneId !== 'string' || typeof url !== 'string' || !isWebUrl(url)) return
+    const target = windowOfPane(paneId) ?? terminalWindow()
+    if (!target) return
+    raise(target)
+    send(target, IPC.webOpenPane, { paneId, url })
   })
 }
 
@@ -1649,6 +1730,13 @@ async function startup(): Promise<void> {
     },
     defaultBranch,
     agentIn,
+    sendToWorktree: (dir, prompt) => {
+      const pane = panesIn(dir).find((id) => {
+        const s = agents.status(id)
+        return s?.agent !== null && s?.status !== 'exited'
+      })
+      return pane ? sendPrompt(pane, prompt) : false
+    },
     open: openRunItem,
     canStart: () => !kidsActive && terminalWindow() !== null,
     confirm: openRunDraft,
@@ -1656,6 +1744,17 @@ async function startup(): Promise<void> {
       const ref = prRefFromUrl(url)
       const res = ref ? await readPr(ref) : null
       return res?.ok ? res.pr.state : null
+    },
+    readPrDetail: async (url) => {
+      const ref = prRefFromUrl(url)
+      const res = ref ? await readPr(ref) : null
+      return res?.ok ? res.pr : null
+    },
+    readCheckLog: async (url, jobId) => {
+      const ref = prRefFromUrl(url)
+      if (!ref) return null
+      const res = await checkLog(ref, jobId)
+      return res.ok ? res.log : null
     },
     notify: runNotice,
     onChange: (list) => broadcast(IPC.runsChanged, list)
@@ -1673,6 +1772,7 @@ async function startup(): Promise<void> {
   agents = new AgentMonitor({
     home: cockpitHome(),
     onChange: (paneId) => {
+      persistSessionId(paneId)
       sessionsChanged()
       void branches.refresh([paneId])
     },

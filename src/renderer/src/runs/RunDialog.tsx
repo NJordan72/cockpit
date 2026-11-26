@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Preset } from '@shared/config'
 import {
+  MAX_CI_FIX_ATTEMPTS,
   MAX_PARALLEL,
   prLine,
   type ExternalItem,
@@ -9,6 +10,7 @@ import {
   type TaskItem
 } from '@shared/runs'
 import { RepoField } from '../tasks/RepoField'
+import { RunDag } from './RunDag'
 
 interface Props {
   draft: RunDraft
@@ -46,6 +48,8 @@ export function RunDialog({
 }: Props): React.JSX.Element {
   const [mode, setMode] = useState<RunMode>(draft.mode)
   const [maxParallel, setMaxParallel] = useState(draft.maxParallel)
+  const [autoFixCi, setAutoFixCi] = useState(draft.autoFixCi)
+  const [view, setView] = useState<'list' | 'graph'>('list')
   const [presetId, setPresetId] = useState(
     () =>
       (
@@ -88,6 +92,7 @@ export function RunDialog({
         id: draft.id,
         mode,
         maxParallel,
+        autoFixCi,
         presetId,
         ...(needsRepo ? { repo: repo.trim() } : {})
       })
@@ -183,6 +188,41 @@ export function RunDialog({
         </div>
         <p className="secret-hint">{MODES.find((m) => m.mode === mode)?.hint}</p>
 
+        <div className="run-dialog-bar">
+          <label
+            className="run-autofix"
+            title={`When an item in review has a failing check, send its failed log tail to the item's worktree agent (at most ${String(MAX_CI_FIX_ATTEMPTS)} attempts per commit).`}
+          >
+            <input
+              type="checkbox"
+              checked={autoFixCi}
+              disabled={busy}
+              onChange={(e) => setAutoFixCi(e.target.checked)}
+            />
+            Auto-fix failing CI (max {MAX_CI_FIX_ATTEMPTS}× per commit)
+          </label>
+          <div className="picker-presets" role="radiogroup" aria-label="Items view">
+            <button
+              type="button"
+              role="radio"
+              aria-checked={view === 'list'}
+              className={view === 'list' ? 'on' : ''}
+              onClick={() => setView('list')}
+            >
+              List
+            </button>
+            <button
+              type="button"
+              role="radio"
+              aria-checked={view === 'graph'}
+              className={view === 'graph' ? 'on' : ''}
+              onClick={() => setView('graph')}
+            >
+              Graph
+            </button>
+          </div>
+        </div>
+
         {needsRepo && (
           <>
             <label className="secret-label" htmlFor="run-repo">
@@ -200,44 +240,50 @@ export function RunDialog({
           </>
         )}
 
-        <ol className="run-dialog-items">
-          {tasks.map((item) => (
-            <li key={item.id}>
-              <div className="run-dialog-item">
-                <span className="prs-title">{item.title}</span>
-                <span className="prs-number">{item.id}</span>
-              </div>
-              <div className="prs-meta">
-                {item.after.length > 0 ? `Waits on ${item.after.join(', ')}` : 'Waits on nothing'}
-                {' · '}
-                {item.repo ?? runRepo}
-                {' · '}
-                {presetName(item.presetId ?? presetId)}
-              </div>
-              <div className="prs-meta">⎇ {item.branch}</div>
-              <details>
-                <summary>Prompt</summary>
-                <pre className="run-prompt">
-                  {item.prompt}
-                  {'\n\n'}
-                  {prLine(baseFor(item.after))}
-                </pre>
-              </details>
-            </li>
-          ))}
-          {outside.map((item) => (
-            <li key={item.id}>
-              <div className="run-dialog-item">
-                <span className="prs-title">{item.title}</span>
-                <span className="prs-number">{item.id}</span>
-              </div>
-              <div className="prs-meta">
-                Outside the run. Cockpit waits on it and never starts it, until{' '}
-                {item.pr ? 'its pull request merges' : 'it is marked done'}.
-              </div>
-            </li>
-          ))}
-        </ol>
+        {view === 'graph' ? (
+          <div className="run-dialog-graph">
+            <RunDag items={draft.items} />
+          </div>
+        ) : (
+          <ol className="run-dialog-items">
+            {tasks.map((item) => (
+              <li key={item.id}>
+                <div className="run-dialog-item">
+                  <span className="prs-title">{item.title}</span>
+                  <span className="prs-number">{item.id}</span>
+                </div>
+                <div className="prs-meta">
+                  {item.after.length > 0 ? `Waits on ${item.after.join(', ')}` : 'Waits on nothing'}
+                  {' · '}
+                  {item.repo ?? runRepo}
+                  {' · '}
+                  {presetName(item.presetId ?? presetId)}
+                </div>
+                <div className="prs-meta">⎇ {item.branch}</div>
+                <details>
+                  <summary>Prompt</summary>
+                  <pre className="run-prompt">
+                    {item.prompt}
+                    {'\n\n'}
+                    {prLine(baseFor(item.after))}
+                  </pre>
+                </details>
+              </li>
+            ))}
+            {outside.map((item) => (
+              <li key={item.id}>
+                <div className="run-dialog-item">
+                  <span className="prs-title">{item.title}</span>
+                  <span className="prs-number">{item.id}</span>
+                </div>
+                <div className="prs-meta">
+                  Outside the run. Cockpit waits on it and never starts it, until{' '}
+                  {item.pr ? 'its pull request merges' : 'it is marked done'}.
+                </div>
+              </li>
+            ))}
+          </ol>
+        )}
 
         <p className="secret-hint">
           {error ? (

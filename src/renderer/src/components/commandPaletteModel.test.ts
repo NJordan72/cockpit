@@ -31,6 +31,7 @@ function makeSession(overrides: Partial<PaneSession> = {}): PaneSession {
     message: null,
     labels: [],
     background: null,
+    ports: [],
     ...overrides
   }
 }
@@ -92,6 +93,7 @@ function makeSource(overrides: Partial<PaletteSource> = {}): PaletteSource {
       maxParallel: 2,
       presetId: 'claude',
       paused: false,
+      autoFixCi: false,
       cancelled: false,
       finished: false,
       done: 0,
@@ -113,7 +115,8 @@ function makeSource(overrides: Partial<PaletteSource> = {}): PaletteSource {
             pr: null,
             mergedInto: null,
             baseMerged: false,
-            reason: null
+            reason: null,
+            ciFix: null
           }
         }
       ]

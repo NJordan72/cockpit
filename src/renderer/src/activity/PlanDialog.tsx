@@ -1,9 +1,17 @@
 // The plan Claude Code proposed, at reading size over the window. The
 // toolbar's Plan button, Cmd+Shift+P, and an ExitPlanMode row in the
 // Activity log open it.
-import { useCallback, useEffect, useLayoutEffect, useRef } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react'
 import type { AgentPlan } from '@shared/activity'
-import type { MenuItem } from '@shared/ipc'
+import type { Preset } from '@shared/config'
+import type { MenuItem, PaneSession } from '@shared/ipc'
+import {
+  handoffChoices,
+  handoffMenuItems,
+  planReviewPrompt,
+  type AgentHandoffChoice,
+  type AgentHandoffTarget
+} from '../handoff/model'
 import { Markdown } from './Markdown'
 import { formatClock } from './model'
 import { usePanePlans } from './useActivity'
@@ -32,24 +40,37 @@ export function planStatus(plan: AgentPlan): { label: string; when: string; titl
   return { label, when: formatClock(plan.at) + rounds, title }
 }
 
-async function planMenu(plan: AgentPlan, selection: string): Promise<void> {
+async function planMenu(
+  plan: AgentPlan,
+  selection: string,
+  groups: readonly AgentHandoffChoice[][],
+  onSend: (target: AgentHandoffTarget) => Promise<void>
+): Promise<void> {
   const api = window.cockpit
   const { file } = plan
+  const handoff = groups.length > 0 ? handoffMenuItems(groups, 'ask') : null
   const items: MenuItem[] = [
     ...(selection ? [{ id: 'selection', label: 'Copy' }, { type: 'separator' } as const] : []),
     { id: 'copy', label: 'Copy plan' },
+    ...(handoff ? [{ label: 'Ask another agent…', submenu: handoff.items }] : []),
     ...(file
       ? [
+          { type: 'separator' } as const,
           { id: 'edit', label: 'Open in editor' },
           { id: 'path', label: 'Copy path' }
         ]
       : [])
   ]
   const chosen = await api.menu(items)
+  if (chosen === null) return
   if (chosen === 'selection') api.clipboard.writeText(selection)
   else if (chosen === 'copy') api.clipboard.writeText(plan.text)
   else if (chosen === 'edit' && file) api.editor.openFile(file)
   else if (chosen === 'path' && file) api.clipboard.writeText(file)
+  else {
+    const target = handoff?.targets.get(chosen)
+    if (target) await onSend(target)
+  }
 }
 
 async function choosePlan(
@@ -74,6 +95,11 @@ interface Props {
   chosen: string | null
   /** Which pane it's from, under the title. */
   label: string
+  presets: readonly Preset[]
+  sessions: readonly PaneSession[]
+  /** True when a new split can open beside the source pane in this window. */
+  canSplit: boolean
+  onHandOff: (prompt: string, target: AgentHandoffTarget) => Promise<boolean>
   onChoose: (key: string) => void
   onClose: () => void
 }
@@ -87,6 +113,10 @@ export function PlanDialog({
   paneId,
   chosen,
   label,
+  presets,
+  sessions,
+  canSplit,
+  onHandOff,
   onChoose,
   onClose
 }: Props): React.JSX.Element | null {
@@ -96,6 +126,20 @@ export function PlanDialog({
   const scrollRef = useRef<HTMLDivElement>(null)
   // A new version of the plan starts at the top.
   const place = plan ? `${paneId}:${planKey(plan)}:${String(plan.at)}` : ''
+
+  const source = sessions.find((s) => s.id === paneId)
+  const groups = useMemo(
+    () =>
+      handoffChoices({
+        sourcePaneId: paneId,
+        sourceCwd: source?.cwd ?? '~',
+        sourcePresetId: source?.presetId ?? null,
+        sessions,
+        presets,
+        canSplit
+      }),
+    [paneId, source?.cwd, source?.presetId, sessions, presets, canSplit]
+  )
 
   useEffect(() => {
     if (missing) onClose()
@@ -127,6 +171,19 @@ export function PlanDialog({
   if (!plans || !plan) return null
   const status = planStatus(plan)
   const { file } = plan
+
+  const sendPlanTo = async (target: AgentHandoffTarget): Promise<void> => {
+    if (await onHandOff(planReviewPrompt(plan), target)) onClose()
+  }
+
+  const askAnotherAgent = async (): Promise<void> => {
+    if (groups.length === 0) return
+    const { items, targets } = handoffMenuItems(groups, 'ask')
+    const picked = await window.cockpit.menu(items)
+    const target = picked === null ? undefined : targets.get(picked)
+    if (target) await sendPlanTo(target)
+  }
+
   return (
     <div
       className="picker-backdrop plan-backdrop"
@@ -169,6 +226,17 @@ export function PlanDialog({
             </button>
           )}
           <span className="plan-actions">
+            {groups.length > 0 && (
+              <button
+                type="button"
+                tabIndex={-1}
+                className="activity-chip"
+                title="Send this plan to another agent for a second opinion"
+                onClick={() => void askAnotherAgent()}
+              >
+                Ask another agent…
+              </button>
+            )}
             {file && (
               <button
                 type="button"
@@ -207,7 +275,7 @@ export function PlanDialog({
           onScroll={onScroll}
           onContextMenu={(e) => {
             e.preventDefault()
-            void planMenu(plan, window.getSelection()?.toString() ?? '')
+            void planMenu(plan, window.getSelection()?.toString() ?? '', groups, sendPlanTo)
           }}
         >
           <article className="plan">

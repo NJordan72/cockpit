@@ -1,7 +1,9 @@
 import {
+  isTerminalPane,
   MAX_TAB_NAME,
   type BackgroundRun,
   type Layout,
+  type LayoutNode,
   type PaneNode,
   type Tab,
   type TabColor
@@ -28,9 +30,17 @@ import {
 export type LayoutAction =
   | { type: 'replace'; layout: Layout }
   | { type: 'newTab'; pane: PaneNode; background?: boolean }
+  | { type: 'newSplitTab'; left: PaneNode; right: PaneNode; direction?: 'row' | 'column' }
   | { type: 'newRun'; pane: PaneNode; run: BackgroundRun }
-  | { type: 'restore'; layout: Layout }
-  | { type: 'split'; paneId: string; direction: 'row' | 'column'; pane: PaneNode }
+  | { type: 'restore'; layout: Layout; resume?: boolean }
+  | {
+      type: 'split'
+      paneId: string
+      direction: 'row' | 'column'
+      pane: PaneNode
+      /** Open as a new tab if `paneId` is no longer in this window. */
+      fallbackNewTab?: boolean
+    }
   | { type: 'closePane'; paneId: string; shown?: readonly string[] }
   | { type: 'clearPane'; paneId: string; resume?: boolean }
   | { type: 'closeTab'; tabId: string; shown?: readonly string[] }
@@ -91,6 +101,25 @@ export function layoutReducer(layout: Layout, action: LayoutAction): Layout {
       return { ...layout, tabs, activeTabId: keep ? layout.activeTabId : tab.id }
     }
 
+    case 'newSplitTab': {
+      // Two panes side by side in a new tab, placed after the active tab.
+      const tab: Tab = {
+        id: newId('tab'),
+        root: {
+          type: 'split',
+          id: newId('split'),
+          direction: action.direction ?? 'row',
+          children: [action.left, action.right],
+          sizes: [0.5, 0.5]
+        },
+        activePaneId: action.left.id
+      }
+      const idx = layout.tabs.findIndex((t) => t.id === layout.activeTabId && !t.pinned)
+      const tabs = [...layout.tabs]
+      tabs.splice(idx === -1 ? unpinnedCount(tabs) : idx + 1, 0, tab)
+      return { ...layout, tabs, activeTabId: tab.id }
+    }
+
     case 'newRun': {
       // Out of sight: never selected, and kept before the pinned tabs.
       const tab: Tab = {
@@ -108,7 +137,14 @@ export function layoutReducer(layout: Layout, action: LayoutAction): Layout {
     case 'restore': {
       // The saved tabs come back; background runs going now carry on.
       const running = layout.tabs.filter((t) => t.background)
-      const saved = action.layout.tabs.filter((t) => !t.background)
+      const markResume = (node: LayoutNode): LayoutNode => {
+        if (node.type === 'split') return { ...node, children: node.children.map(markResume) }
+        if (!isTerminalPane(node)) return node
+        return action.resume ? { ...node, resume: 'last' } : node
+      }
+      const saved = action.layout.tabs
+        .filter((t) => !t.background)
+        .map((t) => (action.resume ? { ...t, root: markResume(t.root) } : t))
       return {
         tabs: pinnedLast([...saved, ...running]),
         activeTabId: saved.some((t) => t.id === action.layout.activeTabId)
@@ -119,7 +155,11 @@ export function layoutReducer(layout: Layout, action: LayoutAction): Layout {
 
     case 'split': {
       const tab = tabOfPane(layout, action.paneId)
-      if (!tab) return layout
+      if (!tab) {
+        return action.fallbackNewTab
+          ? layoutReducer(layout, { type: 'newTab', pane: action.pane })
+          : layout
+      }
       return mapTab(layout, tab.id, (t) => ({
         ...t,
         root: splitPane(t.root, action.paneId, action.direction, action.pane),
@@ -152,10 +192,13 @@ export function layoutReducer(layout: Layout, action: LayoutAction): Layout {
       const tab = tabOfPane(layout, action.paneId)
       if (!tab) return layout
       const id = newId('pane')
-      const root = renamePane(tab.root, action.paneId, id)
+      const root = updatePane(renamePane(tab.root, action.paneId, id), id, {
+        resume: action.resume ? true : undefined,
+        sessionId: undefined
+      })
       return mapTab(layout, tab.id, (t) => ({
         ...t,
-        root: action.resume ? updatePane(root, id, { resume: true }) : root,
+        root,
         activePaneId: t.activePaneId === action.paneId ? id : t.activePaneId
       }))
     }
@@ -274,13 +317,20 @@ export function layoutReducer(layout: Layout, action: LayoutAction): Layout {
       // The pane has started, so a restart from here opens a new session.
       const tab = tabOfPane(layout, action.paneId)
       const pane = tab && findPane(tab.root, action.paneId)
-      if (!tab || !pane || (pane.cwd === action.cwd && !pane.resume && !pane.prompt)) return layout
+      if (
+        !tab ||
+        !pane ||
+        (pane.cwd === action.cwd && !pane.resume && !pane.prompt && !pane.sessionId)
+      ) {
+        return layout
+      }
       return mapTab(layout, tab.id, (t) => ({
         ...t,
         root: updatePane(t.root, action.paneId, {
           cwd: action.cwd,
           resume: undefined,
-          prompt: undefined
+          prompt: undefined,
+          sessionId: undefined
         })
       }))
     }

@@ -6,6 +6,7 @@ import {
   type Preset
 } from '@shared/config'
 import type { PaneSession } from '@shared/ipc'
+import type { LocalServer } from '@shared/ports'
 import type { PaneLabel, SessionInfo } from '@shared/widgets'
 import type { PaneStatus } from '../agents/tracker'
 
@@ -13,11 +14,12 @@ function panes(node: LayoutNode): PaneNode[] {
   return node.type === 'pane' ? [node] : node.children.flatMap(panes)
 }
 
-/** What widgets may see of a session: not what an agent waits for, nor other widgets' labels. */
+/** What widgets may see of a session: not what an agent waits for, labels, nor detected ports. */
 export function widgetSession({
   message: _message,
   labels: _labels,
   background: _background,
+  ports: _ports,
   ...info
 }: PaneSession): SessionInfo {
   return info
@@ -28,6 +30,7 @@ export interface PaneLookup {
   status: (paneId: string) => PaneStatus | null
   branch: (paneId: string) => string | null
   labels: (paneId: string) => PaneLabel[]
+  ports?: (paneId: string) => LocalServer[]
 }
 
 /** The active tab's focused pane. */
@@ -67,7 +70,8 @@ export function listSessions(
           tokens: s?.tokens ?? null,
           focused: p.id === focused,
           labels: lookup.labels(p.id),
-          background: tab.background ?? null
+          background: tab.background ?? null,
+          ports: lookup.ports?.(p.id) ?? []
         }
       })
   )

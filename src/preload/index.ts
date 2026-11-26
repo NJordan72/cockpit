@@ -13,6 +13,7 @@ import {
   type PtyCreateOptions,
   type PtyExitInfo,
   type SystemSample,
+  type WebPaneRequest,
   type WindowInfo
 } from '@shared/ipc'
 import type { RunDraft, RunView } from '@shared/runs'
@@ -78,6 +79,7 @@ const onTaskDraft: Subscribe<[TaskDraft]> = channel(IPC.tasksDraft)
 const onRunsChanged: Subscribe<[RunView[]]> = channel(IPC.runsChanged)
 const onRunDraft: Subscribe<[RunDraft]> = channel(IPC.runsDraft)
 const onPrPane: Subscribe<[PrPaneRequest]> = channel(IPC.prsPane)
+const onWebOpenPane: Subscribe<[WebPaneRequest]> = channel(IPC.webOpenPane)
 
 function subscribe<T>(map: Map<string, Set<T>>, id: string, cb: T): () => void {
   let set = map.get(id)
@@ -202,7 +204,9 @@ const api: CockpitApi = {
   },
   web: {
     openExternal: (url) => ipcRenderer.send(IPC.openWeb, url),
-    recent: () => ipcRenderer.invoke(IPC.webRecent)
+    recent: () => ipcRenderer.invoke(IPC.webRecent),
+    openPane: (req) => ipcRenderer.send(IPC.webOpenPane, req),
+    onOpenPane: onWebOpenPane
   },
   menu: (items) => ipcRenderer.invoke(IPC.menuPopup, items),
   activity: {

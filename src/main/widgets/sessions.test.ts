@@ -32,7 +32,8 @@ const waiting: PaneStatus = {
   message: 'Claude needs permission to use Bash',
   title: 'Fix it',
   tokens: 100,
-  doneMessage: null
+  doneMessage: null,
+  sessionId: null
 }
 
 const story: PaneLabel = {
@@ -48,7 +49,8 @@ const story: PaneLabel = {
 const lookup: PaneLookup = {
   status: (id) => (id === 'pane-a' ? waiting : null),
   branch: (id) => (id === 'pane-a' ? 'nick/sc-1234/fix-login' : null),
-  labels: (id) => (id === 'pane-a' ? [story] : [])
+  labels: (id) => (id === 'pane-a' ? [story] : []),
+  ports: (id) => (id === 'pane-a' ? [{ url: 'http://localhost:5173', port: 5173 }] : [])
 }
 
 describe('listSessions', () => {
@@ -70,7 +72,8 @@ describe('listSessions', () => {
         tokens: 100,
         focused: true,
         labels: [story],
-        background: null
+        background: null,
+        ports: [{ url: 'http://localhost:5173', port: 5173 }]
       },
       {
         id: 'pane-b',
@@ -87,7 +90,8 @@ describe('listSessions', () => {
         tokens: null,
         focused: false,
         labels: [],
-        background: null
+        background: null,
+        ports: []
       }
     ])
   })
@@ -99,6 +103,7 @@ describe('listSessions', () => {
     expect('message' in shared).toBe(false)
     expect('labels' in shared).toBe(false)
     expect('background' in shared).toBe(false)
+    expect('ports' in shared).toBe(false)
     expect(shared.status).toBe('needs-input')
     expect(shared.branch).toBe('nick/sc-1234/fix-login')
   })
