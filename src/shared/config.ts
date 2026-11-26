@@ -67,6 +67,7 @@ export type Action =
   | 'toggleSidebar'
   | 'kidsMode'
   | 'quickCommand'
+  | 'commandPalette'
 
 export type Keybindings = Record<Action, string>
 
@@ -336,7 +337,8 @@ export const DEFAULT_KEYBINDINGS: Keybindings = {
   goToTab9: 'Cmd+9',
   toggleSidebar: 'Cmd+B',
   kidsMode: 'Cmd+Shift+K',
-  quickCommand: 'Cmd+Shift+J'
+  quickCommand: 'Cmd+Shift+J',
+  commandPalette: 'Cmd+P'
 }
 
 export const DEFAULT_TERMINAL: TerminalSettings = {

@@ -54,6 +54,11 @@ describe('actionFor', () => {
     expect(actionFor(keymap, ev('KeyR', { meta: true, shift: true }))).toBe('resumePane')
   })
 
+  it('keeps Cmd+P (commandPalette) and Cmd+Shift+P (showPlan) apart', () => {
+    expect(actionFor(keymap, ev('KeyP', { meta: true }))).toBe('commandPalette')
+    expect(actionFor(keymap, ev('KeyP', { meta: true, shift: true }))).toBe('showPlan')
+  })
+
   it('requires an exact modifier match', () => {
     expect(actionFor(keymap, ev('KeyT', { meta: true, alt: true }))).toBeNull()
     expect(actionFor(keymap, ev('KeyT'))).toBeNull()
