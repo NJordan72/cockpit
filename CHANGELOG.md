@@ -1,5 +1,29 @@
 # cockpit
 
+## 0.8.0
+
+### Minor Changes
+
+- Attention queue and quick triage: press Cmd+Shift+U (`nextAttention`) or click the **N waiting** badge in the toolbar to jump to the oldest pane waiting for input across windows and background runs, then done panes, cycling on repeated presses. Waiting panes in the Sessions panel also show inline Approve (Enter), Deny (Esc), Reply, and Focus actions (plus a context menu) so simple prompts can be answered without switching tabs. ([#92](https://github.com/NJordan72/cockpit/pull/92))
+
+- Unified command palette: press `Cmd+P` (or click **⌕ Palette** in the toolbar) to fuzzy-search and jump to any open session, task, run, quick command, slash command, layout, theme, or core app action. Searches everything by default, with optional `>` (commands/actions) and `@` (sessions) prefixes or `Tab` scope cycling. ([#94](https://github.com/NJordan72/cockpit/pull/94))
+
+- Context-window pressure bar and session/task telemetry: the Sessions panel and bottom toolbar now show a compact context-window pressure bar beside token counts (amber at 70%, red at 85% against a 200k default context limit) with one-click **Compact** (`/compact`) and **Fresh** pane actions when pressure is elevated or from the right-click menu. Cockpit also tracks cumulative active working time and tool-call counts per session and rolls them up alongside token counts on Tasks and Runs rows. ([#101](https://github.com/NJordan72/cockpit/pull/101))
+
+- Add cross-agent handoff and side-by-side comparison: ask another agent to review a plan from the plan dialog, right-click selected terminal output to send it to another agent pane or a new split, and compare two agent presets side by side with the same prompt from the toolbar. ([#96](https://github.com/NJordan72/cockpit/pull/96))
+
+- Dev-server and port awareness: Cockpit scans terminal output for local server URLs (`http(s)://localhost:<port>`, `127.0.0.1:<port>`, `[::1]:<port>`) and shows clickable `:port` pills in the toolbar, Sessions, and Tasks panels. Clicking a pill opens (or focuses) a split web pane beside that terminal, and ports shared across different panes or worktrees are highlighted with a collision warning. ([#95](https://github.com/NJordan72/cockpit/pull/95))
+
+- Diff review pane: open a `review` pane from a Tasks row's right-click menu, the Activity panel's Git or Files tabs, or the toolbar (**± Diff** / `Cmd+Shift+G`). It shows the branch's changes since its merge-base with the remote's default branch plus uncommitted and untracked files, collapses large or binary files, lets you click lines (or Shift+click a range) to collect draft comments, and sends all comments to the task's agent (or a chosen agent pane) as one prompt — waiting until idle if the agent is working, and refreshing as files change. ([#100](https://github.com/NJordan72/cockpit/pull/100))
+
+- Autonomous Runs: add an optional `autoFixCi` flag on Runs (off by default, toggleable in the Run confirmation dialog and run menu, persisted in `~/.cockpit/runs/<id>.json`) that fetches failing GitHub Actions log tails for `In review` items and sends them to the item's worktree agent (capped at 2 attempts per PR head commit SHA), plus a compact **List** / **Graph** dependency DAG toggle in `RunDialog` and `RunsPanel` with topological tiers, dependency edges, and live phase colors. ([#99](https://github.com/NJordan72/cockpit/pull/99))
+
+- Smart session continuity: Cockpit now captures each Claude Code pane's `session_id` from hooks and persists it on the pane in `config.json`. On the start screen, **Restore & resume** appears next to **Restore last session** whenever saved agent panes exist, resuming each agent's previous conversation (`claude --resume <id>`, `codex resume --last`, `agy --continue`) and falling back cleanly to a fresh session if a conversation no longer exists. In the Runs panel, clicking a **No agent running** item resumes its last session in that worktree (and the right-click menu offers both **Resume last session** and **Open fresh session**). ([#98](https://github.com/NJordan72/cockpit/pull/98))
+
+- Add an in-app Settings dialog (`Cmd+,` or **Cockpit > Settings…**) for editing General/Editor/Terminal settings, Presets, Quick Commands, Item Actions, per-repo Tasks setup, and Keybindings, plus auto-detection of untracked `.env*` files and package lockfiles when creating a task in a repository without a `tasks` entry yet. ([#97](https://github.com/NJordan72/cockpit/pull/97))
+
+- Terminal search and Activity log filtering: press Cmd+F (configurable as `findInPane`) to open a floating find bar in any terminal pane with Enter/Cmd+G for next match, Shift+Enter/Cmd+Shift+G for previous match, Esc to close, case-sensitive and regex toggles, and a live match counter. The Activity panel's Log tab now includes a compact text filter alongside the Events and Tools chips to filter entries by tool name, command, file path, or text. ([#93](https://github.com/NJordan72/cockpit/pull/93))
+
 ## 0.7.0
 
 ### Minor Changes
