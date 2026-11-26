@@ -68,6 +68,12 @@ bun run start   # run the production build
 Panes run their commands through a login shell (`$SHELL -l`), so `claude`,
 `codex`, `agy`, and anything else on your login PATH work as usual.
 
+Each pane's environment sets `TERM=xterm-256color`, `COLORTERM=truecolor`,
+and `TERM_PROGRAM=Cockpit`. It also sets `CLAUDE_CODE_FORCE_SYNC_OUTPUT=1`:
+Claude Code doesn't recognize Cockpit, so without it Claude redraws without
+synchronized output and flickers. Only Claude Code reads it, so shell panes
+get it too, and a `claude` started by hand there redraws the same way.
+
 ## Start screen
 
 Cockpit opens on a list of your projects: the folders in `~/dev`, plus recent
@@ -245,6 +251,9 @@ in that shell but not `~/.zshrc`, so if `claude` is only on the PATH from
   runs anyway, with status but no Activity.
 - **Codex** and **Antigravity CLI** get the same flags and environment as a
   local pane, and report through the terminal the same way.
+- Every remote pane, shell panes included, gets `CLAUDE_CODE_FORCE_SYNC_OUTPUT=1`
+  in the ssh command, since the remote shell doesn't inherit the local
+  environment. `TERM` crosses with ssh; `COLORTERM` and `TERM_PROGRAM` don't.
 
 A remote pane has no branch, PR pane, tasks, commands list, or file links,
 since its directory is on the other machine, and no title or token count from

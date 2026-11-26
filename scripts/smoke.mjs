@@ -105,9 +105,10 @@ fs.writeFileSync(
 )
 
 // The shell computes this, so it only appears once the command has run: the
-// typed command line shows `$((6 * 7))`, not 42.
-const COMMAND = 'echo cockpit-smoke-$((6 * 7))'
-const EXPECTED = 'cockpit-smoke-42'
+// typed command line shows `$((6 * 7))`, not 42. The 1 at the end is the
+// pane's CLAUDE_CODE_FORCE_SYNC_OUTPUT.
+const COMMAND = 'echo cockpit-smoke-$((6 * 7))-$CLAUDE_CODE_FORCE_SYNC_OUTPUT'
+const EXPECTED = 'cockpit-smoke-42-1'
 
 const errors = []
 const step = (msg) => console.log(`smoke: ${msg}`)
@@ -217,7 +218,7 @@ try {
   await page.keyboard.type(COMMAND, { delay: 10 })
   await page.keyboard.press('Enter')
   await waitForScreen(EXPECTED, 'the terminal')
-  step('the shell ran a command and the terminal showed its output')
+  step('the shell ran a command, with the pane env, and the terminal showed its output')
 
   // A task, through the New task dialog, running a Shell so no agent needs to
   // be installed. Its first terminal runs the repository's setup.

@@ -97,6 +97,14 @@ describe('AgentMonitor', () => {
     expect(cmd).not.toContain('COCKPIT_SESSION_ID')
   })
 
+  it('passes synchronized output to every remote pane, since ssh leaves the local env behind', () => {
+    const shell = monitor.launch(undefined, {}, true)
+    const env = monitor.spawn('p3', null, true)
+    expect(monitor.remoteCommand('box', '~', shell, env)).toContain(
+      'CLAUDE_CODE_FORCE_SYNC_OUTPUT=1'
+    )
+  })
+
   it('writes the hook script and settings, and launches Claude with them', () => {
     expect(fs.statSync(monitor.files.hook).mode & 0o777).toBe(0o755)
     expect(fs.statSync(monitor.files.run).mode & 0o777).toBe(0o755)
