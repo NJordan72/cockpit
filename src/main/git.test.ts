@@ -1,9 +1,8 @@
-import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
-import { gitStatus, parseLog, parseStatus } from './git'
+import { gitStatus, parseLog, parseStatus, runGit } from './git'
 
 describe('parseStatus', () => {
   it('reads branch, upstream, and every kind of entry', () => {
@@ -59,6 +58,28 @@ describe('parseLog', () => {
   })
 })
 
+describe('runGit', () => {
+  it('resolves with -1 at timeoutMs even when the child ignores SIGTERM', async () => {
+    const start = Date.now()
+    const r = await runGit(
+      os.tmpdir(),
+      ['-c', 'alias.hang=!sh -c \'trap "" TERM; sleep 5\'', 'hang'],
+      { timeoutMs: 150 }
+    )
+    expect(r.code).toBe(-1)
+    expect(Date.now() - start).toBeLessThan(1500)
+  })
+
+  it('resolves with -1 at timeoutMs when a grandchild keeps stdout open', async () => {
+    const start = Date.now()
+    const r = await runGit(os.tmpdir(), ['-c', "alias.bg=!sh -c 'sleep 2 &'", 'bg'], {
+      timeoutMs: 150
+    })
+    expect(r.code).toBe(-1)
+    expect(Date.now() - start).toBeLessThan(1500)
+  })
+})
+
 describe('gitStatus', () => {
   // A dozen or more real git processes, which can take longer than bun's
   // default 5 s when CI runs the test files in parallel on a small runner.
@@ -66,13 +87,24 @@ describe('gitStatus', () => {
     const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'ck-git-')))
     try {
       expect(await gitStatus(dir)).toBeNull()
-      const run = (...args: string[]): void => {
-        execFileSync('git', ['-C', dir, ...args], { stdio: 'ignore' })
+      const run = async (...args: string[]): Promise<void> => {
+        const r = await runGit(dir, args)
+        expect(r.code).toBe(0)
       }
-      run('init', '-q', '-b', 'main')
+      await run('init', '-q', '-b', 'main')
       fs.writeFileSync(path.join(dir, 'a.txt'), 'a\n')
-      run('add', '.')
-      run('-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qm', 'first')
+      await run('add', '.')
+      await run(
+        '-c',
+        'user.email=t@t',
+        '-c',
+        'user.name=t',
+        '-c',
+        'commit.gpgsign=false',
+        'commit',
+        '-qm',
+        'first'
+      )
       fs.writeFileSync(path.join(dir, 'a.txt'), 'b\n')
       fs.mkdirSync(path.join(dir, 'sub'))
       fs.writeFileSync(path.join(dir, 'sub', 'new.txt'), 'n\n')
@@ -92,7 +124,7 @@ describe('gitStatus', () => {
 
       // Nor run a program the repository's own config names.
       const marker = path.join(dir, 'fsmonitor-ran')
-      run('config', 'core.fsmonitor', `touch '${marker}'; false`)
+      await run('config', 'core.fsmonitor', `touch '${marker}'; false`)
       expect(await gitStatus(dir)).toMatchObject({ branch: 'main' })
       expect(fs.existsSync(marker)).toBe(false)
     } finally {
