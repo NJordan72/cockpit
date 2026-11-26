@@ -58,6 +58,7 @@ const session = (id: string, cwd: string, extra: Partial<PaneSession> = {}): Pan
   background: null,
   activeMs: 0,
   toolCalls: 0,
+  model: null,
   ports: [],
   ...extra
 })

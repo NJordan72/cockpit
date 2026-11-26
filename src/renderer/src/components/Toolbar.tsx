@@ -4,6 +4,7 @@ import { planStatus } from '../activity/PlanDialog'
 import { useGit, usePanePlans } from '../activity/useActivity'
 import { chordLabel } from '../keybindings'
 import {
+  contextLimit,
   contextPressure,
   formatDuration,
   formatTokens,
@@ -263,7 +264,7 @@ function FocusedPane({
   // Read git again when the agent finishes something; it may have committed.
   const git = useGit(session.id, active, `${session.status}:${String(session.since)}`)
   const label = STATUS_LABEL[session.status]
-  const pressure = contextPressure(session.tokens)
+  const pressure = contextPressure(session.tokens, contextLimit(session.model, session.tokens))
   const canCompact = session.agent !== null && session.status !== 'exited'
   const keepFocus = (e: React.MouseEvent): void => {
     e.preventDefault()
@@ -284,6 +285,7 @@ function FocusedPane({
     const lines = [
       `Context: ${formatTokens(pressure.tokens)} / ${formatTokens(pressure.limit)} (${String(pressure.percent)}%)`
     ]
+    if (session.model) lines.push(session.model)
     const activeMs = sessionActiveMs(session)
     const stats: string[] = []
     if (activeMs >= 1000) stats.push(`Active ${formatDuration(activeMs)}`)

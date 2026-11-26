@@ -5,14 +5,19 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { parseTranscriptTail, readTranscript } from './transcript'
 
 const line = (v: unknown): string => JSON.stringify(v)
-const assistant = (usage: object, extra: object = {}): string =>
-  line({ type: 'assistant', isSidechain: false, message: { role: 'assistant', usage }, ...extra })
+const assistant = (usage: object, extra: object = {}, model = 'claude-opus-5-5'): string =>
+  line({
+    type: 'assistant',
+    isSidechain: false,
+    message: { role: 'assistant', model, usage },
+    ...extra
+  })
 
 describe('parseTranscriptTail', () => {
   it('takes the newest title and the last main-thread usage', () => {
     const text = [
       line({ type: 'ai-title', aiTitle: 'Old title', sessionId: 's' }),
-      assistant({ input_tokens: 1, output_tokens: 1 }),
+      assistant({ input_tokens: 1, output_tokens: 1 }, {}, 'claude-sonnet-4-5-20250929'),
       line({ type: 'ai-title', aiTitle: 'New title', sessionId: 's' }),
       assistant({
         input_tokens: 10,
@@ -24,11 +29,27 @@ describe('parseTranscriptTail', () => {
       assistant({ input_tokens: 999_999 }, { isSidechain: true }),
       line({ type: 'last-prompt' })
     ].join('\n')
-    expect(parseTranscriptTail(text)).toEqual({ title: 'New title', tokens: 3250 })
+    expect(parseTranscriptTail(text)).toEqual({
+      title: 'New title',
+      tokens: 3250,
+      model: 'claude-opus-5-5'
+    })
+  })
+
+  it('skips the zero-usage entries Claude Code writes for an error', () => {
+    const text = [
+      assistant({ input_tokens: 400_000, output_tokens: 1000 }, {}, 'claude-fable-5-2'),
+      assistant({ input_tokens: 0, output_tokens: 0 }, {}, '<synthetic>')
+    ].join('\n')
+    expect(parseTranscriptTail(text)).toMatchObject({ tokens: 401_000, model: 'claude-fable-5-2' })
   })
 
   it('skips cut-off and malformed lines', () => {
-    expect(parseTranscriptTail('tle":"x"}\n{not json\n\n')).toEqual({ title: null, tokens: null })
+    expect(parseTranscriptTail('tle":"x"}\n{not json\n\n')).toEqual({
+      title: null,
+      tokens: null,
+      model: null
+    })
   })
 })
 
@@ -49,7 +70,11 @@ describe('readTranscript', () => {
     for (let i = 0; i < 1500; i++) lines.push(filler)
     lines.push(assistant({ input_tokens: 5, output_tokens: 5 }))
     fs.writeFileSync(file, lines.join('\n') + '\n')
-    expect(await readTranscript(file, root)).toEqual({ title: null, tokens: 10 })
+    expect(await readTranscript(file, root)).toEqual({
+      title: null,
+      tokens: 10,
+      model: 'claude-opus-5-5'
+    })
   })
 
   it('refuses files outside the Claude directory', async () => {

@@ -1,8 +1,46 @@
 import type { PaneSession } from '@shared/ipc'
 import type { SessionStatus } from '@shared/widgets'
 
-/** Default context-window limit (tokens) used when estimating fill percentage. */
+/** The context window of a model Cockpit can't place, and of older Claude models. */
 export const DEFAULT_CONTEXT_LIMIT = 200_000
+/** The context window of Fable, Mythos, Opus 4.6+, Sonnet 4.6+, and Haiku 5+. */
+export const LARGE_CONTEXT_LIMIT = 1_000_000
+
+/**
+ * The family and version in a Claude model id: `claude-opus-5-5`,
+ * `claude-sonnet-4-5-20250929`, `us.anthropic.claude-haiku-4-5-20251001-v1:0`.
+ * A one- or two-digit part after the major version is the minor version;
+ * a date is not.
+ */
+const CLAUDE_MODEL = /claude-(fable|mythos|opus|sonnet|haiku)-(\d+)(?:-(\d{1,2}))?(?!\d)/
+
+/** The first major.minor version of each family that has a 1M window. */
+const LARGE_FROM: Record<string, [number, number]> = {
+  fable: [0, 0],
+  mythos: [0, 0],
+  opus: [4, 6],
+  sonnet: [4, 6],
+  haiku: [5, 0]
+}
+
+/**
+ * The context window, in tokens, of the model a session last ran on. When
+ * the tokens already exceed the model's usual window, the session runs the
+ * 1M variant (`sonnet[1m]` on an older Sonnet), which the transcript's model
+ * id doesn't name.
+ */
+export function contextLimit(model: string | null, tokens: number | null = null): number {
+  const m = model ? CLAUDE_MODEL.exec(model) : null
+  let limit = DEFAULT_CONTEXT_LIMIT
+  if (m?.[1] && m[2]) {
+    const [major, minor] = [Number(m[2]), Number(m[3] ?? 0)]
+    const [fromMajor, fromMinor] = LARGE_FROM[m[1]] ?? [Infinity, 0]
+    if (major > fromMajor || (major === fromMajor && minor >= fromMinor)) {
+      limit = LARGE_CONTEXT_LIMIT
+    }
+  }
+  return tokens !== null && tokens > limit ? Math.max(limit, LARGE_CONTEXT_LIMIT) : limit
+}
 /** Context fill percentage thresholds for amber (warn) and red (high) states. */
 export const PRESSURE_WARN = 70
 export const PRESSURE_HIGH = 85
