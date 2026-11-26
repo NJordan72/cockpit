@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import {
   activeLayout,
+  isTerminalPane,
   type Action,
   type AppearanceSettings,
   type CockpitConfig,
@@ -31,7 +32,7 @@ import { taskAt, type TaskDraft } from '@shared/tasks'
 import type { SecretPrompt, SessionStatus, WidgetInfo } from '@shared/widgets'
 import { ActivityPanel } from './activity/ActivityPanel'
 import { PlanDialog } from './activity/PlanDialog'
-import { newSessionTarget } from './agentSessions'
+import { newSessionTarget, presetAgent } from './agentSessions'
 import { Launcher } from './components/Launcher'
 import { Picker } from './components/Picker'
 import { QuickCommandDialog } from './components/QuickCommandDialog'
@@ -50,6 +51,7 @@ import { takesPrompts, type PromptRequest } from './itemActions'
 import { KidsMode, type KidsStatus } from './kids/KidsMode'
 import { actionFor, compileKeymap } from './keybindings'
 import {
+  allPanes,
   findPane,
   findPrPane,
   findWebPane,
@@ -63,7 +65,8 @@ import { PrPaneContext, type PrPaneEnv } from './prs/context'
 import type { HandOffTarget } from './prs/model'
 import { activeTab, layoutReducer } from './layout/reducer'
 import { foregroundTabs, shownTabs, tabDirs, tabFolders } from './layout/tabs'
-import { terminals } from './terminal/registry'
+import { nextAttentionTarget } from './sessions'
+import { terminalFinders, terminals } from './terminal/registry'
 import { queueRun } from './terminal/run'
 import { applyTheme } from './theme'
 import { OpenUrlDialog, type OpenWhere } from './web/OpenUrlDialog'
@@ -104,7 +107,7 @@ const SAVE_DELAY_MS = 150
 const tabIds = (tabs: readonly Tab[]): string[] => tabs.map((t) => t.id)
 
 /** Actions a window without terminals still runs itself; it forwards the rest. */
-const OWN_ACTIONS: readonly Action[] = ['toggleSidebar', 'kidsMode', 'showPlan']
+const OWN_ACTIONS: readonly Action[] = ['toggleSidebar', 'kidsMode', 'showPlan', 'nextAttention']
 
 /** Give a pane the keyboard, whether it's a terminal or a web page. */
 function focusPane(paneId: string): void {
@@ -658,6 +661,25 @@ export function App(): React.JSX.Element {
 
   useEffect(() => api.runs.onDraft((d) => void openRunDialog(d)), [api, openRunDialog])
 
+  /** Show a pane of this window and give it the keyboard (a notification or main asked). */
+  const showPane = useCallback((paneId: string) => {
+    setPicker(null)
+    dispatch({ type: 'focusPane', paneId })
+    requestAnimationFrame(() => focusPane(paneId))
+  }, [])
+
+  useEffect(() => api.sessions.onFocusRequest(showPane), [api, showPane])
+
+  /** Show a pane (the session list or attention queue asked); main brings forward another window's. */
+  const revealPane = useCallback(
+    (paneId: string) => {
+      const mine = layoutRef.current.tabs.some((t) => findPane(t.root, paneId))
+      if (mine) showPane(paneId)
+      else api.sessions.reveal(paneId)
+    },
+    [api, showPane]
+  )
+
   const runAction = useCallback(
     (action: Action) => {
       if (!terminals && !OWN_ACTIONS.includes(action)) {
@@ -741,6 +763,18 @@ export function App(): React.JSX.Element {
           setPicker(null)
           setQuickOpen(true)
           return
+        case 'nextAttention': {
+          const currentId =
+            sessionsRef.current.find((s) => s.focused)?.id ??
+            activeTab(layoutRef.current)?.activePaneId ??
+            null
+          const target = nextAttentionTarget(sessionsRef.current, currentId)
+          if (target) revealPane(target.id)
+          return
+        }
+        case 'findInPane':
+          if (tab) terminalFinders.get(tab.activePaneId)?.()
+          return
         default: {
           const n = /^goToTab(\d)$/.exec(action)?.[1]
           if (n)
@@ -752,7 +786,7 @@ export function App(): React.JSX.Element {
         }
       }
     },
-    [api, terminals, openPicker, openShell, openTaskDialog, runAppearance, showPlan]
+    [api, terminals, openPicker, openShell, openTaskDialog, runAppearance, showPlan, revealPane]
   )
 
   // A window without terminals passed this one an action.
@@ -802,25 +836,6 @@ export function App(): React.JSX.Element {
       offAppKey()
     }
   }, [api, keymap, runAction])
-
-  /** Show a pane of this window and give it the keyboard (a notification or main asked). */
-  const showPane = useCallback((paneId: string) => {
-    setPicker(null)
-    dispatch({ type: 'focusPane', paneId })
-    requestAnimationFrame(() => focusPane(paneId))
-  }, [])
-
-  useEffect(() => api.sessions.onFocusRequest(showPane), [api, showPane])
-
-  /** Show a pane (the session list asked); main brings forward another window's. */
-  const revealPane = useCallback(
-    (paneId: string) => {
-      const mine = layoutRef.current.tabs.some((t) => findPane(t.root, paneId))
-      if (mine) showPane(paneId)
-      else api.sessions.reveal(paneId)
-    },
-    [api, showPane]
-  )
 
   // When the window comes back, Chromium can hand focus to the first button in
   // the page, where a stray Enter would close a tab. Give it to the terminal
@@ -983,7 +998,13 @@ export function App(): React.JSX.Element {
    * agent if none). A window of panels has the terminal window open it.
    */
   const openInTask = useCallback(
-    (path: string, presetId?: string, prompt?: string, background = false) => {
+    (
+      path: string,
+      presetId?: string,
+      prompt?: string,
+      background = false,
+      resume?: boolean | 'last'
+    ) => {
       const c = configRef.current
       if (!c) return
       const preset =
@@ -992,7 +1013,12 @@ export function App(): React.JSX.Element {
         c.presets[0]
       if (!preset) return
       if (!terminals) {
-        api.tasks.open({ path, presetId: preset.id, ...(prompt ? { prompt } : {}) })
+        api.tasks.open({
+          path,
+          presetId: preset.id,
+          ...(prompt ? { prompt } : {}),
+          ...(resume ? { resume } : {})
+        })
         return
       }
       if (!background) {
@@ -1000,7 +1026,15 @@ export function App(): React.JSX.Element {
         setRestorable(null)
       }
       const pane = makePane(preset.id, path)
-      dispatch({ type: 'newTab', pane: prompt ? { ...pane, prompt } : pane, background })
+      dispatch({
+        type: 'newTab',
+        pane: {
+          ...pane,
+          ...(prompt ? { prompt } : {}),
+          ...(resume ? { resume } : {})
+        },
+        background
+      })
     },
     [api, terminals]
   )
@@ -1102,7 +1136,10 @@ export function App(): React.JSX.Element {
 
   const prEnv = useMemo<PrPaneEnv>(() => ({ sessions, tasks, handOff }), [sessions, tasks, handOff])
   useEffect(
-    () => api.tasks.onOpen((req) => openInTask(req.path, req.presetId, req.prompt, req.background)),
+    () =>
+      api.tasks.onOpen((req) =>
+        openInTask(req.path, req.presetId, req.prompt, req.background, req.resume)
+      ),
     [api, openInTask]
   )
   // Main is removing the task these panes are in.
@@ -1125,11 +1162,14 @@ export function App(): React.JSX.Element {
     setPicker(null)
   }, [])
 
-  const restore = useCallback(() => {
-    // Background runs started from the start screen carry on beside the restored tabs.
-    if (restorable) dispatch({ type: 'restore', layout: restorable })
-    setRestorable(null)
-  }, [restorable])
+  const restore = useCallback(
+    (resume: boolean) => {
+      // Background runs started from the start screen carry on beside the restored tabs.
+      if (restorable) dispatch({ type: 'restore', layout: restorable, resume })
+      setRestorable(null)
+    },
+    [restorable]
+  )
 
   /** Start a quick command: out of sight in the background, or in a new tab. */
   const runQuick = useCallback(
@@ -1239,6 +1279,14 @@ export function App(): React.JSX.Element {
                   }
                 : undefined
             }
+            onApprove={(paneId) => api.pty.write(paneId, '\r')}
+            onDeny={(paneId) => api.pty.write(paneId, '\x1b')}
+            onReply={(paneId, text) => {
+              const session = sessionsRef.current.find((s) => s.id === paneId)
+              if (session?.agent) void api.sessions.send(paneId, text)
+              else api.pty.write(paneId, `${text}\r`)
+            }}
+            onDone={() => requestAnimationFrame(focusWorkspace)}
             onHidePanels={() => runAppearance({ type: 'togglePanels' })}
           />
         )
@@ -1304,7 +1352,9 @@ export function App(): React.JSX.Element {
             presets={config.presets}
             actions={config.itemActions.runItem}
             onReveal={revealPane}
-            onOpen={(path, presetId) => openInTask(path, presetId)}
+            onOpen={(path, presetId, resume) =>
+              openInTask(path, presetId, undefined, false, resume)
+            }
             onOpenPr={(url, cwd, title) => {
               const pr = prRefFromUrl(url)
               if (pr) openPr({ pr, cwd, title, where: 'tab' })
@@ -1403,6 +1453,18 @@ export function App(): React.JSX.Element {
                     initialPresetId={config.launcher.presetId}
                     projectsDir={config.projectsDir}
                     restoreTabs={restorable ? foregroundTabs(restorable.tabs).length : 0}
+                    canResume={
+                      restorable !== null &&
+                      foregroundTabs(restorable.tabs).some((t) =>
+                        allPanes(t.root).some(
+                          (p) =>
+                            isTerminalPane(p) &&
+                            presetAgent(
+                              config.presets.find((x) => x.id === p.presetId)?.command
+                            ) !== null
+                        )
+                      )
+                    }
                     inputRef={launcherInput}
                     onLaunch={launch}
                     onRestore={restore}
@@ -1449,6 +1511,7 @@ export function App(): React.JSX.Element {
             if (toolbarPane) showPlan(toolbarPane, null)
           }}
           onOpenPort={openPort}
+          waitingCount={sessions.filter((s) => s.status === 'needs-input').length}
         />
         {picker && (
           <Picker

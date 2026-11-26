@@ -18,6 +18,9 @@ export const RUN_MODES: readonly RunMode[] = ['merge', 'stack']
 export const MAX_ITEMS = 100
 export const MAX_PARALLEL = 10
 export const DEFAULT_PARALLEL = 3
+export const MAX_CI_FIX_ATTEMPTS = 2
+/** Minimum wait between CI auto-fix attempts on the same commit SHA, in ms. */
+export const CI_FIX_COOLDOWN_MS = 5 * 60_000
 export const MAX_PROMPT = 20_000
 /** The most a submitted graph can be, as JSON. */
 export const MAX_GRAPH_BYTES = 1024 * 1024
@@ -62,6 +65,7 @@ export interface RunGraph {
   presetId?: string
   mode?: RunMode
   maxParallel?: number
+  autoFixCi?: boolean
   items: RunItem[]
 }
 
@@ -205,6 +209,10 @@ export function checkGraph(raw: unknown): Checked<RunGraph> {
     }
     graph.maxParallel = n
   }
+  if (raw.autoFixCi !== undefined) {
+    if (typeof raw.autoFixCi !== 'boolean') return fail('autoFixCi is true or false')
+    graph.autoFixCi = raw.autoFixCi
+  }
 
   const ids = new Set<string>()
   for (const [n, r] of raw.items.entries()) {
@@ -264,6 +272,8 @@ export interface Run {
   title: string
   mode: RunMode
   maxParallel: number
+  /** Automatically feed failing PR CI logs back to the item's worktree agent. */
+  autoFixCi: boolean
   /** The agent for items that don't name their own. */
   presetId: string
   /** Each task item's `repo` is its repository's main checkout, with ~ for home. */
@@ -277,6 +287,16 @@ export interface Run {
 
 /** Who submitted a run. A widget sees only the runs it submitted. */
 export type RunSource = { kind: 'widget'; widgetId: string } | { kind: 'script' }
+
+/** CI auto-fix attempts recorded for one PR head commit SHA. */
+export interface CiFixRecord {
+  /** The PR head commit SHA these attempts were made against. */
+  sha: string
+  /** How many times Cockpit has sent a failing check for this SHA. */
+  attempts: number
+  /** When the last auto-fix prompt was sent, in ms since the epoch. */
+  lastAt?: number
+}
 
 /** What Cockpit can't read back from git, gh, or the panes about one item. */
 export interface ItemRecord {
@@ -293,6 +313,8 @@ export interface ItemRecord {
   ignoredPr?: number
   /** Why making the item's task failed. */
   error?: string
+  /** Auto-fix CI attempts against the PR's head commit SHA. */
+  ciFix?: CiFixRecord
 }
 
 /**
@@ -321,6 +343,8 @@ export interface ItemState {
   baseMerged: boolean
   /** stuck: why. */
   reason: string | null
+  /** Auto-fix CI attempts for the current PR head commit, when any. */
+  ciFix: CiFixRecord | null
 }
 
 /** What Cockpit reads back about one item, from git, gh, and the panes. */
@@ -347,6 +371,7 @@ function state(phase: ItemPhase, extra: Partial<ItemState> = {}): ItemState {
     mergedInto: null,
     baseMerged: false,
     reason: null,
+    ciFix: null,
     ...extra
   }
 }
@@ -394,10 +419,12 @@ export function itemStates(
     const pr = raw && raw.number === rec.ignoredPr ? null : raw
     const below = rec.stackedOn ? byId.get(rec.stackedOn) : undefined
     const onBelow = below && !below.external && pr?.base === below.branch
+    const ciFix = rec.ciFix && pr?.head && rec.ciFix.sha === pr.head ? rec.ciFix : null
     const common = {
       path: f.task?.path ?? null,
       pr,
-      baseMerged: !!below && isDone(below.id) && pr?.state !== 'merged'
+      baseMerged: !!below && isDone(below.id) && pr?.state !== 'merged',
+      ciFix
     }
     if (pr?.state === 'merged') {
       out[item.id] =
@@ -414,7 +441,7 @@ export function itemStates(
           ...common,
           reason: rec.error ?? 'Its worktree is gone'
         })
-      } else if (pr?.state === 'open') out[item.id] = state('review', common)
+      } else if (pr?.state === 'open') out[item.id] = state('review', { ...common, agent: f.agent })
       else if (pr?.state === 'closed') {
         out[item.id] = state('stuck', {
           ...common,
@@ -469,6 +496,34 @@ export function nextToStart(run: Run, states: Readonly<Record<string, ItemState>
     .map((i) => ({ id: i.id, stackedOn: states[i.id]?.startsOn ?? null }))
 }
 
+/**
+ * In-review items eligible for CI auto-fix now, in start order.
+ * Skips items when autoFixCi is off, the run is paused/cancelled, an agent is
+ * already working or waiting for input in the worktree, the PR head commit has
+ * reached MAX_CI_FIX_ATTEMPTS, or a retry on the same SHA is still in cooldown.
+ */
+export function nextToFixCi(
+  run: Run,
+  states: Readonly<Record<string, ItemState>>,
+  now: number,
+  cooldownMs = CI_FIX_COOLDOWN_MS
+): TaskItem[] {
+  if (!run.autoFixCi || run.paused || run.cancelled) return []
+  return startOrder(run.items).filter((item): item is TaskItem => {
+    if (item.external) return false
+    const s = states[item.id]
+    if (s?.phase !== 'review' || !s.path) return false
+    if (s.pr?.state !== 'open' || s.pr.checks !== 'failing' || !s.pr.head) return false
+    if (s.agent === 'working' || s.agent === 'needs-input') return false
+    const prev = run.records[item.id]?.ciFix
+    if (prev?.sha === s.pr.head) {
+      if (prev.attempts >= MAX_CI_FIX_ATTEMPTS) return false
+      if (prev.lastAt !== undefined && now - prev.lastAt < cooldownMs) return false
+    }
+    return true
+  })
+}
+
 /** How many of the run's items are done, out of how many. */
 export function progress(states: Readonly<Record<string, ItemState>>): {
   done: number
@@ -508,6 +563,21 @@ function readRecord(raw: unknown): ItemRecord {
     rec.ignoredPr = raw.ignoredPr
   }
   if (typeof raw.error === 'string' && raw.error) rec.error = raw.error.slice(0, 500)
+  if (isObj(raw.ciFix)) {
+    const sha = typeof raw.ciFix.sha === 'string' ? raw.ciFix.sha.trim() : ''
+    const attempts = raw.ciFix.attempts
+    if (
+      sha &&
+      sha.length <= 128 &&
+      typeof attempts === 'number' &&
+      Number.isInteger(attempts) &&
+      attempts >= 1 &&
+      attempts <= MAX_CI_FIX_ATTEMPTS
+    ) {
+      const lastAt = time(raw.ciFix.lastAt)
+      rec.ciFix = { sha, attempts, ...(lastAt !== undefined ? { lastAt } : {}) }
+    }
+  }
   return rec
 }
 
@@ -543,6 +613,7 @@ export function readRun(raw: unknown): Run | null {
       typeof n === 'number' && Number.isInteger(n) && n >= 1 && n <= MAX_PARALLEL
         ? n
         : DEFAULT_PARALLEL,
+    autoFixCi: raw.autoFixCi === true,
     presetId: typeof raw.presetId === 'string' && raw.presetId ? raw.presetId : 'claude',
     items: graph.value.items,
     records,
@@ -561,6 +632,7 @@ export interface RunView {
   pending: boolean
   mode: RunMode
   maxParallel: number
+  autoFixCi: boolean
   presetId: string
   paused: boolean
   cancelled: boolean
@@ -623,6 +695,7 @@ export interface RunDraft {
   from: string
   mode: RunMode
   maxParallel: number
+  autoFixCi: boolean
   presetId?: string
   repo?: string
   /** In start order. */
@@ -634,12 +707,14 @@ export interface RunStartRequest {
   id: string
   mode: RunMode
   maxParallel: number
+  autoFixCi?: boolean
   presetId: string
   /** The repository for items that don't name one; needed only when some item doesn't. */
   repo?: string
 }
 
-export type RunAction = 'pause' | 'resume' | 'cancel' | 'remove' | 'startNow' | 'markDone' | 'retry'
+export type RunAction =
+  'pause' | 'resume' | 'cancel' | 'remove' | 'startNow' | 'markDone' | 'retry' | 'toggleAutoFixCi'
 
 export const RUN_ACTIONS: readonly RunAction[] = [
   'pause',
@@ -648,5 +723,6 @@ export const RUN_ACTIONS: readonly RunAction[] = [
   'remove',
   'startNow',
   'markDone',
-  'retry'
+  'retry',
+  'toggleAutoFixCi'
 ]

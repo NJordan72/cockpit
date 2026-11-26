@@ -3,7 +3,7 @@ import { Terminal, type ITheme } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebglAddon } from '@xterm/addon-webgl'
 import { Unicode11Addon } from '@xterm/addon-unicode11'
-import { SearchAddon } from '@xterm/addon-search'
+import { SearchAddon, type ISearchOptions } from '@xterm/addon-search'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import { terminalFontStack, type PaneNode, type TerminalSettings } from '@shared/config'
 import type { PtyExitInfo } from '@shared/ipc'
@@ -12,8 +12,16 @@ import { OutputAcks } from './acks'
 import { classifyKey } from './keys'
 import { LabelStrip } from './LabelStrip'
 import { openHyperlink, pathLinkProvider } from './pathLinks'
-import { terminals } from './registry'
+import { terminalFinders, terminals } from './registry'
 import { runWhenReady, takeRun } from './run'
+import {
+  classifyFindKey,
+  formatMatchCount,
+  initialSearchTerm,
+  isValidRegex,
+  searchDecorations,
+  type SearchResults
+} from './search'
 
 /** How long a pane is hidden before it gives up its WebGL context. */
 const WEBGL_HIDDEN_MS = 30_000
@@ -46,17 +54,33 @@ export function TerminalPane({
   const hostRef = useRef<HTMLDivElement>(null)
   const termRef = useRef<Terminal | null>(null)
   const fitRef = useRef<FitAddon | null>(null)
+  const searchRef = useRef<SearchAddon | null>(null)
   const webglRef = useRef<WebglAddon | null>(null)
   const webglFailed = useRef(false)
   const [exit, setExit] = useState<PtyExitInfo | null>(null)
   const exitRef = useRef<PtyExitInfo | null>(null)
   const copyOnSelectRef = useRef(settings.copyOnSelect)
 
+  const [findOpen, setFindOpen] = useState(false)
+  const [findQuery, setFindQuery] = useState('')
+  const [caseSensitive, setCaseSensitive] = useState(false)
+  const [regex, setRegex] = useState(false)
+  const [searchResults, setSearchResults] = useState<SearchResults | null>(null)
+  const findInputRef = useRef<HTMLInputElement>(null)
+  const findStateRef = useRef({
+    open: findOpen,
+    query: findQuery,
+    caseSensitive,
+    regex,
+    theme
+  })
+
   // Values the long-lived terminal effect reads later without re-running.
   const spawnArgs = useRef({
     presetId: pane.presetId,
     cwd: pane.cwd,
-    resume: pane.resume === true,
+    resume: pane.resume,
+    sessionId: pane.sessionId,
     prompt: pane.prompt,
     quick: pane.quick,
     onFocus,
@@ -65,15 +89,84 @@ export function TerminalPane({
   useLayoutEffect(() => {
     exitRef.current = exit
     copyOnSelectRef.current = settings.copyOnSelect
+    findStateRef.current = {
+      open: findOpen,
+      query: findQuery,
+      caseSensitive,
+      regex,
+      theme
+    }
     spawnArgs.current = {
       presetId: pane.presetId,
       cwd: pane.cwd,
-      resume: pane.resume === true,
+      resume: pane.resume,
+      sessionId: pane.sessionId,
       prompt: pane.prompt,
       quick: pane.quick,
       onFocus,
       onStarted
     }
+  })
+
+  const runSearch = useCallback(
+    (
+      direction: 'next' | 'prev',
+      query: string,
+      opts: { caseSensitive: boolean; regex: boolean; incremental?: boolean }
+    ) => {
+      const search = searchRef.current
+      if (!search) return
+      if (!query || (opts.regex && !isValidRegex(query))) {
+        search.clearDecorations()
+        setSearchResults(null)
+        return
+      }
+      const searchOptions: ISearchOptions = {
+        caseSensitive: opts.caseSensitive,
+        regex: opts.regex,
+        decorations: searchDecorations(findStateRef.current.theme)
+      }
+      if (opts.incremental) searchOptions.incremental = true
+      if (direction === 'next') search.findNext(query, searchOptions)
+      else search.findPrevious(query, searchOptions)
+    },
+    []
+  )
+
+  const openFind = useCallback(() => {
+    const state = findStateRef.current
+    const fromSelection = initialSearchTerm(termRef.current?.getSelection() ?? '')
+    const nextQuery = fromSelection ?? state.query
+    if (fromSelection !== null) setFindQuery(fromSelection)
+    setFindOpen(true)
+    if (nextQuery) {
+      runSearch('next', nextQuery, {
+        caseSensitive: state.caseSensitive,
+        regex: state.regex,
+        incremental: true
+      })
+    }
+    requestAnimationFrame(() => {
+      const input = findInputRef.current
+      if (input) {
+        input.focus()
+        input.select()
+      }
+    })
+  }, [runSearch])
+
+  const closeFind = useCallback(() => {
+    setFindOpen(false)
+    searchRef.current?.clearDecorations()
+    setSearchResults(null)
+    termRef.current?.focus()
+  }, [])
+
+  const openFindRef = useRef(openFind)
+  const runSearchRef = useRef(runSearch)
+  useLayoutEffect(() => {
+    openFindRef.current = openFind
+    runSearchRef.current = runSearch
   })
 
   const startRef = useRef<() => void>(() => undefined)
@@ -105,7 +198,13 @@ export function TerminalPane({
     fitRef.current = fit
     term.loadAddon(new Unicode11Addon())
     term.unicode.activeVersion = '11'
-    term.loadAddon(new SearchAddon())
+    let disposed = false
+    const search = new SearchAddon()
+    term.loadAddon(search)
+    searchRef.current = search
+    const onSearchResults = search.onDidChangeResults((r) => {
+      if (!disposed) setSearchResults({ resultIndex: r.resultIndex, resultCount: r.resultCount })
+    })
     term.loadAddon(
       new WebLinksAddon((_event, uri) => {
         // The main process routes http(s) window.open calls to the browser.
@@ -116,15 +215,16 @@ export function TerminalPane({
 
     term.open(host)
     terminals.set(id, term)
+    const openFinder = (): void => openFindRef.current()
+    terminalFinders.set(id, openFinder)
 
-    let disposed = false
     // A command from the Activity log, for the first start only.
     let pending = takeRun(id)
     let typing: { dispose: () => void } | null = null
     const start = (): void => {
       setExit(null)
       fit.fit()
-      const { presetId, cwd, resume, prompt, quick } = spawnArgs.current
+      const { presetId, cwd, resume, sessionId, prompt, quick } = spawnArgs.current
       const run = pending
       pending = undefined
       typing?.dispose()
@@ -142,6 +242,7 @@ export function TerminalPane({
           presetId,
           cwd,
           resume,
+          sessionId,
           prompt,
           quick,
           strictCwd: run?.strictCwd
@@ -195,6 +296,18 @@ export function TerminalPane({
           e.preventDefault()
           term.clear()
           return false
+        case 'findNext':
+        case 'findPrev': {
+          const s = findStateRef.current
+          if (s.open && s.query) {
+            e.preventDefault()
+            runSearchRef.current(action.kind === 'findNext' ? 'next' : 'prev', s.query, {
+              caseSensitive: s.caseSensitive,
+              regex: s.regex
+            })
+          }
+          return false
+        }
       }
     })
 
@@ -272,14 +385,17 @@ export function TerminalPane({
       onInput.dispose()
       onBinary.dispose()
       onResize.dispose()
+      onSearchResults.dispose()
       pathLinks.dispose()
       offData()
       offExit()
       document.removeEventListener('visibilitychange', onVisibility)
       api.pty.kill(id)
       if (terminals.get(id) === term) terminals.delete(id)
+      if (terminalFinders.get(id) === openFinder) terminalFinders.delete(id)
       termRef.current = null
       fitRef.current = null
+      searchRef.current = null
       // Disposed along with the terminal.
       webglRef.current = null
       term.dispose()
@@ -347,18 +463,120 @@ export function TerminalPane({
   }, [theme])
 
   useEffect(() => {
-    if (focused && visible) termRef.current?.focus()
+    if (focused && visible && !findStateRef.current.open) termRef.current?.focus()
   }, [focused, visible])
 
   const restart = useCallback(() => {
     startRef.current()
   }, [])
 
+  const invalidRegex = regex && findQuery.length > 0 && !isValidRegex(findQuery)
+  const countLabel = formatMatchCount(findQuery, searchResults, invalidRegex)
+  const canStep = findQuery.length > 0 && !invalidRegex && (searchResults?.resultCount ?? 0) > 0
+
   return (
     <div className={`terminal-pane${focused ? ' focused' : ''}`}>
       {/* The host shrinks to make room, and its resize observer fits the rows again. */}
       {labels && labels.length > 0 && <LabelStrip paneId={id} labels={labels} />}
-      <div className="terminal-host" ref={hostRef} />
+      <div className="terminal-stage">
+        <div className="terminal-host" ref={hostRef} />
+        {findOpen && (
+          <div
+            className="terminal-find"
+            role="search"
+            aria-label="Find in terminal"
+            onMouseDown={() => onFocus()}
+          >
+            <input
+              ref={findInputRef}
+              type="text"
+              className={`terminal-find-input${invalidRegex ? ' invalid' : ''}`}
+              placeholder="Find…"
+              aria-label="Find in terminal"
+              value={findQuery}
+              onChange={(e) => {
+                const next = e.target.value
+                setFindQuery(next)
+                runSearch('next', next, { caseSensitive, regex, incremental: true })
+              }}
+              onKeyDown={(e) => {
+                const action = classifyFindKey(e)
+                if (!action) return
+                e.preventDefault()
+                e.stopPropagation()
+                if (action === 'close') closeFind()
+                else runSearch(action, findQuery, { caseSensitive, regex })
+              }}
+            />
+            {countLabel && (
+              <span
+                className={`terminal-find-count${invalidRegex || searchResults?.resultCount === 0 ? ' empty' : ''}`}
+                aria-live="polite"
+              >
+                {countLabel}
+              </span>
+            )}
+            <button
+              type="button"
+              tabIndex={-1}
+              className={`terminal-find-btn${caseSensitive ? ' on' : ''}`}
+              aria-pressed={caseSensitive}
+              title="Match case"
+              onClick={() => {
+                const next = !caseSensitive
+                setCaseSensitive(next)
+                if (findQuery) runSearch('next', findQuery, { caseSensitive: next, regex })
+              }}
+            >
+              Aa
+            </button>
+            <button
+              type="button"
+              tabIndex={-1}
+              className={`terminal-find-btn${regex ? ' on' : ''}`}
+              aria-pressed={regex}
+              title="Use regular expression"
+              onClick={() => {
+                const next = !regex
+                setRegex(next)
+                if (findQuery) runSearch('next', findQuery, { caseSensitive, regex: next })
+              }}
+            >
+              .*
+            </button>
+            <button
+              type="button"
+              tabIndex={-1}
+              className="terminal-find-btn"
+              title="Previous match (Shift+Enter / ⇧⌘G)"
+              disabled={!canStep}
+              onClick={() => runSearch('prev', findQuery, { caseSensitive, regex })}
+            >
+              ↑
+            </button>
+            <button
+              type="button"
+              tabIndex={-1}
+              className="terminal-find-btn"
+              title="Next match (Enter / ⌘G)"
+              disabled={!canStep}
+              onClick={() => runSearch('next', findQuery, { caseSensitive, regex })}
+            >
+              ↓
+            </button>
+            <button
+              type="button"
+              tabIndex={-1}
+              className="terminal-find-btn"
+              title="Close (Esc)"
+              aria-label="Close find bar"
+              onClick={closeFind}
+            >
+              ×
+            </button>
+          </div>
+        )}
+      </div>
       {exit && (
         <div className="exit-bar">
           <span>

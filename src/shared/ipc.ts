@@ -139,8 +139,13 @@ export interface PtyCreateOptions {
   cwd?: string
   /** Fail instead of falling back when `cwd` isn't a directory. */
   strictCwd?: boolean
-  /** Open the agent's session picker instead of a new session. */
-  resume?: boolean
+  /**
+   * Resume a past session instead of starting fresh: `true` opens the agent's
+   * session picker; `'last'` resumes `sessionId` or the directory's latest.
+   */
+  resume?: boolean | 'last'
+  /** Specific agent session to resume (Claude Code), used with `resume: 'last'`. */
+  sessionId?: string
   /** The agent's first prompt, for a new session. */
   prompt?: string
   /** The quick command the pane runs, by id; main passes on its model and effort. */
@@ -160,6 +165,8 @@ export interface TaskOpenRequest {
   presetId?: string
   /** The agent's first prompt. */
   prompt?: string
+  /** Resume the agent's last session in the worktree instead of starting fresh. */
+  resume?: boolean | 'last'
   /** Open the tab without switching to it, so a run doesn't pull the user away from their tab. */
   background?: boolean
 }
