@@ -139,6 +139,7 @@ address.
 | Cmd+Shift+T         | New shell tab, no agent, in the same dir   |
 | Cmd+Shift+N         | New task (see [Tasks](#tasks))             |
 | Cmd+Shift+J         | Run a [quick command](#quick-commands)     |
+| Cmd+Shift+U         | Jump to next waiting or done agent         |
 | Cmd+L               | Open a web page (new tab, or ⇧⏎ to split)  |
 | Cmd+R               | Reload the focused web page                |
 | Cmd+D / Cmd+Shift+D | Split right / down (picker)                |
@@ -176,7 +177,13 @@ Every pane has a status: **idle**, **working**, **needs input**, **done**
 the most urgent status among its panes (idle gets none), and the **Sessions**
 panel shows every pane with its status, Claude Code's
 title for the conversation, and how many tokens its context holds. Click a
-session to jump to it. When a pane goes to needs input or done while
+session to jump to it. Press `Cmd+Shift+U` (or click the **N waiting** badge
+that appears in the toolbar when any pane needs input) to jump to the oldest
+pane waiting for input across windows and background runs, or the oldest done
+pane when none are waiting; pressing it again cycles through the queue. In the
+Sessions panel, a waiting pane also offers inline **Approve** (Enter), **Deny**
+(Esc), **Reply**, and **Focus** actions (and the same on right-click) so simple
+prompts can be answered without leaving your current tab. When a pane goes to needs input or done while
 Cockpit's window isn't focused, macOS shows a notification; clicking it
 focuses that pane. The Dock icon's badge counts the panes that need you.
 
