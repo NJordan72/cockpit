@@ -1331,12 +1331,13 @@ function registerIpc(): void {
     if (!trusted(e) || !runs || typeof req !== 'object' || req === null) {
       return { ok: false, error: 'untrusted sender' }
     }
-    const { id, mode, maxParallel, presetId, repo } = req as Record<string, unknown>
+    const { id, mode, maxParallel, autoFixCi, presetId, repo } = req as Record<string, unknown>
     if (
       typeof id !== 'string' ||
       !RUN_MODES.includes(mode as RunMode) ||
       typeof maxParallel !== 'number' ||
       maxParallel > MAX_PARALLEL ||
+      (autoFixCi !== undefined && typeof autoFixCi !== 'boolean') ||
       typeof presetId !== 'string' ||
       !config.get().presets.some((p) => p.id === presetId) ||
       (repo !== undefined && (typeof repo !== 'string' || repo.length > 1024))
@@ -1347,6 +1348,7 @@ function registerIpc(): void {
       id,
       mode: mode as RunMode,
       maxParallel,
+      ...(typeof autoFixCi === 'boolean' ? { autoFixCi } : {}),
       presetId,
       ...(typeof repo === 'string' ? { repo } : {})
     })
@@ -1649,6 +1651,13 @@ async function startup(): Promise<void> {
     },
     defaultBranch,
     agentIn,
+    sendToWorktree: (dir, prompt) => {
+      const pane = panesIn(dir).find((id) => {
+        const s = agents.status(id)
+        return s?.agent !== null && s?.status !== 'exited'
+      })
+      return pane ? sendPrompt(pane, prompt) : false
+    },
     open: openRunItem,
     canStart: () => !kidsActive && terminalWindow() !== null,
     confirm: openRunDraft,
@@ -1656,6 +1665,17 @@ async function startup(): Promise<void> {
       const ref = prRefFromUrl(url)
       const res = ref ? await readPr(ref) : null
       return res?.ok ? res.pr.state : null
+    },
+    readPrDetail: async (url) => {
+      const ref = prRefFromUrl(url)
+      const res = ref ? await readPr(ref) : null
+      return res?.ok ? res.pr : null
+    },
+    readCheckLog: async (url, jobId) => {
+      const ref = prRefFromUrl(url)
+      if (!ref) return null
+      const res = await checkLog(ref, jobId)
+      return res.ok ? res.log : null
     },
     notify: runNotice,
     onChange: (list) => broadcast(IPC.runsChanged, list)
